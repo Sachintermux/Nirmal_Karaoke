@@ -940,9 +940,11 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive, quality = '540p') {
     '-fflags', '+nobuffer+flush_packets+genpts+discardcorrupt',
     '-probesize', '128k',
     '-analyzeduration', '500000',
+    '-use_wallclock_as_timestamps', '1',
     // Input 0: Matroska/WebM live stream from browser via stdin
     '-f', 'matroska,webm',
     '-i', 'pipe:0',
+    '-vsync', '1',
     // Adaptive resolution scaling
     '-vf', scaleFilter,
     // Video Transcode: H.264 Main profile, 30 fps, 2-second GOP (60 frames @ 30fps)
