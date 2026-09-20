@@ -26,6 +26,7 @@ export class MultiStreamManager {
     this.lyricsManager = lyricsManager;
 
     this.isStreaming = false;
+    this.hasConfirmedLive = false;
     this.sessionId = null;
     this.activePlatform = null;
     this.startTime = null;
@@ -63,6 +64,8 @@ export class MultiStreamManager {
       this.savedKeys.custom_key = key;
     } else {
       this.savedKeys[platform] = key;
+      if (platform === 'youtube_rtmps') this.savedKeys.youtube = key;
+      if (platform === 'youtube') this.savedKeys.youtube_rtmps = key;
     }
     try { localStorage.setItem(STORAGE_KEY_STREAM_KEYS, JSON.stringify(this.savedKeys)); } catch (_) {}
   }
@@ -168,13 +171,14 @@ export class MultiStreamManager {
   closeModal() { if (this.modal) this.modal.style.display = 'none'; }
 
   onPlatformChanged() {
-    const plat = this.platformSelect?.value || 'youtube';
+    const plat = this.platformSelect?.value || 'youtube_rtmps';
     if (this.customUrlWrap) this.customUrlWrap.style.display = plat === 'custom' ? 'block' : 'none';
     if (plat === 'custom') {
       if (this.inputCustomUrl)  this.inputCustomUrl.value  = this.savedKeys.custom_url || '';
       if (this.inputStreamKey)  this.inputStreamKey.value  = this.savedKeys.custom_key || '';
     } else {
-      if (this.inputStreamKey)  this.inputStreamKey.value  = this.savedKeys[plat] || '';
+      const key = this.savedKeys[plat] || (plat.startsWith('youtube') ? (this.savedKeys.youtube_rtmps || this.savedKeys.youtube) : '');
+      if (this.inputStreamKey)  this.inputStreamKey.value  = key || '';
     }
   }
 
@@ -195,7 +199,7 @@ export class MultiStreamManager {
 
   async startBroadcast() {
     this.clearError();
-    const platform   = this.platformSelect?.value || 'youtube';
+    const platform   = this.platformSelect?.value || 'youtube_rtmps';
     const streamKey  = this.inputStreamKey?.value.trim() || '';
     const customUrl  = this.inputCustomUrl?.value.trim() || '';
 
@@ -440,17 +444,25 @@ export class MultiStreamManager {
         try {
           const msg = JSON.parse(ev.data);
           if (msg.type === 'live') {
+            this.hasConfirmedLive = true;
             console.info('[MultiStream] Destination confirmed LIVE broadcast:', msg.stats);
             if (this.streamStatusBadge) {
-              const platLabel = (this.activePlatform || 'YOUTUBE').toUpperCase().replace('_RTMPS', ' RTMPS');
+              const platLabel = (this.activePlatform || 'YOUTUBE').toUpperCase().replace('_RTMPS', '').replace('_RTMP_STANDARD', '');
               const rate = msg.stats?.bitrate ? ` (${msg.stats.bitrate})` : '';
               this.streamStatusBadge.className = 'status-badge-live';
               this.streamStatusBadge.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}${rate}`;
             }
+            this.updateStateUI();
           } else if (msg.type === 'error') {
+            this.hasConfirmedLive = false;
             console.error('[MultiStream] Server streaming error:', msg.message);
-            this.showError('Stream error: ' + msg.message);
+            let friendlyMsg = 'Stream error: ' + msg.message;
+            if (/I\/O error|End of file|Broken pipe|refused|failed to connect/i.test(msg.message)) {
+              friendlyMsg = '⚠️ YouTube connection failed: ' + msg.message + '\n\n💡 Fixes in YouTube Studio:\n1. Make sure your live stream in YouTube Studio (studio.youtube.com) is in "Ready" or "Stream" mode.\n2. If you previously started or stopped a stream, YouTube marks that broadcast as finished. Click "Reset" next to your stream key in Stream Settings, copy the new key, and paste it here.\n3. Make sure you select "YouTube Live (RTMPS Secure)" which uses port 443.';
+            }
+            this.showError(friendlyMsg);
             this.stopBroadcast();
+            this.openModal();
           } else if (msg.type === 'stopped') {
             console.info('[MultiStream] Server signaled stream stopped');
             if (this.isStreaming) this.stopBroadcast();
@@ -655,10 +667,15 @@ export class MultiStreamManager {
 
   updateStateUI() {
     if (this.isStreaming) {
-      const platLabel = (this.activePlatform || 'external platform').toUpperCase();
+      const platLabel = (this.activePlatform || 'external platform').toUpperCase().replace('_RTMPS', '').replace('_RTMP_STANDARD', '');
       if (this.streamStatusBadge) {
-        this.streamStatusBadge.className = 'status-badge-live';
-        this.streamStatusBadge.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}`;
+        if (this.hasConfirmedLive) {
+          this.streamStatusBadge.className = 'status-badge-live';
+          this.streamStatusBadge.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}`;
+        } else {
+          this.streamStatusBadge.className = 'status-badge-connecting';
+          this.streamStatusBadge.innerHTML = `🟡 CONNECTING TO ${platLabel}…`;
+        }
       }
       if (this.btnStartStream)   this.btnStartStream.style.display  = 'none';
       if (this.btnStopStream)    this.btnStopStream.style.display   = 'inline-flex';
@@ -667,7 +684,14 @@ export class MultiStreamManager {
       if (this.inputCustomUrl)   this.inputCustomUrl.disabled       = true;
       if (this.topbarBadge) {
         this.topbarBadge.style.display = 'inline-flex';
-        this.topbarBadge.textContent   = `🔴 Streaming ${platLabel}`;
+        if (this.hasConfirmedLive) {
+          this.topbarBadge.style.background = '#22c55e';
+          this.topbarBadge.textContent   = `🔴 LIVE ON ${platLabel}`;
+        } else {
+          this.topbarBadge.style.background = '#f59e0b';
+          this.topbarBadge.textContent   = `🟡 Connecting ${platLabel}…`;
+        }
+        this.topbarBadge.onclick = () => this.openModal();
       }
     } else {
       if (this.streamStatusBadge) {

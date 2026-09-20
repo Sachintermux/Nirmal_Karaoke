@@ -636,8 +636,8 @@
             <div>
                 <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px; letter-spacing:0.5px;">STREAM DESTINATION</label>
                 <select id="selectStreamPlatform" style="width:100%; padding:10px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-weight:700; font-size:0.85rem;">
-                    <option value="youtube">🔴 YouTube Live (RTMP: rtmp://a.rtmp.youtube.com/live2)</option>
-                    <option value="youtube_rtmps">🔴 YouTube Live (RTMPS Secure: rtmps://a.rtmps.youtube.com:443/live2)</option>
+                    <option value="youtube_rtmps" selected>🔴 YouTube Live (RTMPS Secure: rtmps://a.rtmps.youtube.com:443/live2)</option>
+                    <option value="youtube">🔴 YouTube Live (RTMP Standard: rtmp://a.rtmp.youtube.com/live2)</option>
                     <option value="twitch">🟣 Twitch (rtmp://live.twitch.tv/app)</option>
                     <option value="facebook">🔵 Facebook Live (rtmps://live-api-s.facebook.com:443/rtmp/)</option>
                     <option value="custom">🟠 Custom RTMP Server</option>
@@ -655,7 +655,7 @@
                     <input id="inputStreamKey" type="password" placeholder="Paste your stream key here (e.g. xxxx-xxxx-xxxx-xxxx-xxxx)…" style="flex:1; padding:10px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:0.85rem;">
                     <button class="button button-quiet" id="btnToggleStreamKey" type="button" style="padding:0 12px;" title="Show/Hide Key">👁️</button>
                 </div>
-                <span style="font-size:0.68rem; color:var(--text-dim); display:block; margin-top:4px;">🔑 <b>Tip:</b> In YouTube Studio, go to the <i>Stream settings</i> tab and click <b>Copy</b> next to <i>Stream key</i>. (Do NOT paste the webpage URL).</span>
+                <span style="font-size:0.68rem; color:var(--text-dim); display:block; margin-top:4px;">🔑 <b>How to connect:</b> In YouTube Studio, copy the secret <b>Stream key</b> (`••••••••••••`) from <i>Stream settings</i>. Ensure your live stream in YouTube Studio is active (not already ended/completed).</span>
             </div>
 
             <!-- Broadcast Scene Content Selector -->

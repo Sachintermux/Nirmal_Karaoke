@@ -693,39 +693,65 @@ app.get('/api/stream/status', (req, res) => {
 const ffmpegStreams = new Map();
 
 /**
- * Build the RTMP URL for a given platform + stream key.
+ * Build the primary RTMP/RTMPS URL for a given platform + stream key.
+ * On Cloud hosting (Render / AWS / GCP), unencrypted RTMP port 1935 is blocked by firewalls.
+ * YouTube officially supports and recommends RTMPS on SSL Port 443.
  */
 function buildRtmpUrl(platform, streamKey, customUrl = '') {
-  const plat = String(platform || 'youtube').toLowerCase().trim();
-  const key = String(streamKey || '').trim().replace(/^['"]+|['"]+$/g, '');
+  const candidates = getCandidateRtmpUrls(platform, streamKey, customUrl);
+  return candidates[0];
+}
+
+/**
+ * Return an ordered list of candidate ingestion URLs for automatic failover.
+ */
+function getCandidateRtmpUrls(platform, streamKey, customUrl = '') {
+  const plat = String(platform || 'youtube_rtmps').toLowerCase().trim();
+  let key = String(streamKey || '').trim().replace(/^['"]+|['"]+$/g, '');
 
   if (key.startsWith('http://') || key.startsWith('https://')) {
-    throw new Error('Invalid Stream Key: You pasted a webpage URL instead of the secret stream key.');
+    throw new Error('Invalid Stream Key: You entered a webpage link instead of the secret stream key.');
   }
 
   if (key.startsWith('rtmp://') || key.startsWith('rtmps://')) {
     if (key.endsWith('/live2') || key.endsWith('/live2/')) {
       throw new Error('Invalid Stream Key: Missing secret key at the end of RTMP URL.');
     }
-    return key;
+    // If user entered unencrypted YouTube RTMP, convert to RTMPS port 443 for cloud compatibility
+    if (key.includes('youtube.com') && key.startsWith('rtmp://')) {
+      const secureKey = key.replace('rtmp://a.rtmp.youtube.com', 'rtmps://a.rtmps.youtube.com:443')
+                           .replace('rtmp://b.rtmp.youtube.com', 'rtmps://b.rtmps.youtube.com:443');
+      return [secureKey, key];
+    }
+    return [key];
   }
 
-  if (plat === 'youtube_rtmps') {
-    return `rtmps://a.rtmps.youtube.com/live2/${key}`;
+  // YouTube Live: Always prioritize RTMPS port 443 (firewall-friendly on Render/cloud & local)
+  if (plat === 'youtube_rtmps' || plat === 'youtube') {
+    return [
+      `rtmps://a.rtmps.youtube.com:443/live2/${key}`,
+      `rtmps://b.rtmps.youtube.com:443/live2?backup=1/${key}`,
+      `rtmp://a.rtmp.youtube.com/live2/${key}`
+    ];
   }
-  if (plat === 'youtube') {
-    // Standard YouTube Live RTMP Ingestion URL
-    return `rtmp://a.rtmp.youtube.com/live2/${key}`;
+  if (plat === 'youtube_standard_rtmp') {
+    return [
+      `rtmp://a.rtmp.youtube.com/live2/${key}`,
+      `rtmps://a.rtmps.youtube.com:443/live2/${key}`
+    ];
   }
   if (plat === 'twitch') {
-    return `rtmp://live.twitch.tv/app/${key}`;
+    return [
+      `rtmp://live.twitch.tv/app/${key}`,
+      `rtmps://live.twitch.tv:443/app/${key}`
+    ];
   }
   if (plat === 'facebook') {
-    return `rtmps://live-api-s.facebook.com:443/rtmp/${key}`;
+    return [`rtmps://live-api-s.facebook.com:443/rtmp/${key}`];
   }
   // custom
   if (!customUrl) throw new Error('Custom RTMP URL is required for custom platform');
-  return `${String(customUrl).replace(/\/$/, '')}/${key}`;
+  return [`${String(customUrl).replace(/\/$/, '')}/${key}`];
 }
 
 /**
@@ -835,14 +861,17 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  let rtmpUrl;
+  let candidateUrls = [];
   try {
-    rtmpUrl = buildRtmpUrl(platform, streamKey, customUrl);
+    candidateUrls = getCandidateRtmpUrls(platform, streamKey, customUrl);
   } catch (err) {
     ws.send(JSON.stringify({ type: 'error', message: err.message }));
     ws.close(1008, err.message);
     return;
   }
+
+  let candidateIdx = 0;
+  let rtmpUrl = candidateUrls[0];
 
   // Kill any existing stream for this room
   const existing = ffmpegStreams.get(roomName);
@@ -854,6 +883,8 @@ wss.on('connection', (ws, req) => {
   let ffmpegProc = null;
   let totalBytes = 0;
   let startedAt = 0;
+  let initialHeaderChunk = null;
+  let hasTransmittedFrames = false;
   const recentLogs = [];
 
   const handleLog = (line) => {
@@ -862,15 +893,59 @@ wss.on('connection', (ws, req) => {
   };
 
   const handleLive = (stats) => {
+    hasTransmittedFrames = true;
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify({
         type: 'live',
         sessionId,
         platform,
+        url: rtmpUrl.replace(streamKey, '***'),
         message: 'Broadcasting live to destination',
         stats
       }));
     }
+  };
+
+  const startFfmpegForUrl = (targetUrl) => {
+    recentLogs.length = 0;
+    console.info(`[ffmpeg-stream] Launching FFmpeg for target: ${targetUrl.replace(streamKey, '***')} (attempt ${candidateIdx + 1}/${candidateUrls.length})`);
+    const proc = spawnFfmpeg(targetUrl, handleLog, handleLive);
+    const record = { ffmpeg: proc, platform, streamKey, rtmpUrl: targetUrl, startedAt, sessionId, roomName };
+    ffmpegStreams.set(roomName, record);
+    activeStreams.set(roomName, { egressId: sessionId, platform, roomName, startedAt, status: 'live', method: 'ffmpeg-ws' });
+
+    proc.on('exit', (code, signal) => {
+      console.warn(`[ffmpeg-stream] FFmpeg process exited (code: ${code}, signal: ${signal}) for ${targetUrl.replace(streamKey, '***')}`);
+
+      // If failed before transmitting any frames and we have another candidate URL, try failover!
+      if (!hasTransmittedFrames && candidateIdx + 1 < candidateUrls.length && ws.readyState === ws.OPEN) {
+        candidateIdx++;
+        const nextUrl = candidateUrls[candidateIdx];
+        console.info(`[ffmpeg-stream] Ingestion error on ${targetUrl.slice(0, 12)}... — automatically attempting failover to: ${nextUrl.replace(streamKey, '***')}`);
+        rtmpUrl = nextUrl;
+        ffmpegProc = startFfmpegForUrl(nextUrl);
+        if (initialHeaderChunk && ffmpegProc.stdin && ffmpegProc.stdin.writable) {
+          try { ffmpegProc.stdin.write(initialHeaderChunk); } catch (_) {}
+        }
+        return;
+      }
+
+      const errorDetail = recentLogs.filter(l => /error|invalid|failed|refused|denied|timeout|unreachable|End of file/i.test(l)).slice(-3).join(' ') || `FFmpeg exited (code ${code})`;
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: code === 0 ? 'stopped' : 'error',
+          message: code === 0 ? 'FFmpeg stream finished' : errorDetail
+        }));
+        ws.close();
+      }
+      const current = ffmpegStreams.get(roomName);
+      if (current?.sessionId === sessionId) {
+        ffmpegStreams.delete(roomName);
+        activeStreams.delete(roomName);
+      }
+    });
+
+    return proc;
   };
 
   ws.send(JSON.stringify({ type: 'ready', sessionId, platform, message: 'Ready for media chunks' }));
@@ -880,29 +955,9 @@ wss.on('connection', (ws, req) => {
     // Lazy spawn FFmpeg on the FIRST chunk containing the WebM EBML Header
     if (!ffmpegProc) {
       startedAt = Date.now();
+      initialHeaderChunk = chunk;
       console.info(`[ffmpeg-stream] First media chunk received (${chunk.length} bytes), spawning FFmpeg for RTMP...`);
-      ffmpegProc = spawnFfmpeg(rtmpUrl, handleLog, handleLive);
-      const record = { ffmpeg: ffmpegProc, platform, streamKey, rtmpUrl, startedAt, sessionId, roomName };
-      ffmpegStreams.set(roomName, record);
-      activeStreams.set(roomName, { egressId: sessionId, platform, roomName, startedAt, status: 'live', method: 'ffmpeg-ws' });
-
-      ffmpegProc.on('exit', (code, signal) => {
-        console.warn(`[ffmpeg-stream] FFmpeg process exited (code: ${code}, signal: ${signal})`);
-        const errorDetail = recentLogs.filter(l => /error|invalid|failed|refused|denied|timeout|unreachable/i.test(l)).slice(-3).join(' ') || `FFmpeg exited (code ${code})`;
-        if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({
-            type: code === 0 ? 'stopped' : 'error',
-            message: code === 0 ? 'FFmpeg stream finished' : errorDetail
-          }));
-          ws.close();
-        }
-        const current = ffmpegStreams.get(roomName);
-        if (current?.sessionId === sessionId) {
-          ffmpegStreams.delete(roomName);
-          activeStreams.delete(roomName);
-        }
-      });
-
+      ffmpegProc = startFfmpegForUrl(rtmpUrl);
       ws.send(JSON.stringify({ type: 'started', sessionId, platform, message: 'ffmpeg stream started' }));
     }
 
