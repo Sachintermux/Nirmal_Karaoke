@@ -716,13 +716,14 @@ function buildRtmpUrl(platform, streamKey, customUrl = '') {
  */
 function spawnFfmpeg(rtmpUrl) {
   const args = [
-    // Fast probe & low latency flags for live input pipe
-    '-fflags', '+nobuffer+flush_packets',
-    '-probesize', '64k',
-    '-analyzeduration', '100000',
+    // Error tolerance & timestamp recovery flags for live network pipe
+    '-err_detect', 'ignore_err',
+    '-fflags', '+nobuffer+flush_packets+genpts+discardcorrupt',
+    '-probesize', '128k',
+    '-analyzeduration', '500000',
     '-flags', '+low_delay',
-    // Input 0: WebM live stream (Canvas Video + Mixed Audio) from browser via stdin
-    '-f', 'webm',
+    // Input 0: Matroska/WebM live stream (Canvas Video + Mixed Audio) from browser via stdin
+    '-f', 'matroska,webm',
     '-i', 'pipe:0',
     // Video Transcode: H.264 ultrafast, 1.5 Mbps, 30 fps, 2-second GOP (60 frames @ 30fps)
     '-c:v', 'libx264',
@@ -736,11 +737,12 @@ function spawnFfmpeg(rtmpUrl) {
     '-g', '60',
     '-keyint_min', '60',
     '-sc_threshold', '0',
-    // Audio Transcode: AAC Stereo 44.1 kHz 128 Kbps (YouTube Standard)
+    // Audio Transcode: AAC Stereo 44.1 kHz 128 Kbps with async resampler for clock sync
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
     '-ac', '2',
+    '-af', 'aresample=async=1000',
     // FLV container for RTMP live streaming
     '-f', 'flv',
     '-flvflags', 'no_duration_filesize',

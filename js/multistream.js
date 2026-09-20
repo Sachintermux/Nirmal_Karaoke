@@ -460,8 +460,8 @@ export class MultiStreamManager {
   _startMediaRecorder(stream, ws) {
     let mimeType = '';
     const candidates = [
-      'video/webm;codecs=vp8,opus',
       'video/webm;codecs=h264,opus',
+      'video/webm;codecs=vp8,opus',
       'video/webm',
       'video/mp4;codecs=avc1,mp4a',
       'video/mp4'
@@ -505,9 +505,10 @@ export class MultiStreamManager {
       console.info('[MultiStream] MediaRecorder stopped');
     };
 
-    recorder.start(250);
+    // 1000ms timeslice ensures clean 1-second keyframe clusters without sub-second cluster fragmentation
+    recorder.start(1000);
     this._recorder = recorder;
-    console.info('[MultiStream] MediaRecorder active (Video+Audio 128k AAC)', { mimeType: recorder.mimeType || 'default' });
+    console.info('[MultiStream] MediaRecorder active (1000ms clusters @ 128k AAC / 1.5M video)', { mimeType: recorder.mimeType || 'default' });
   }
 
   _stopMediaRecorder() {
