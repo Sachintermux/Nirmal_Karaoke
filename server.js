@@ -716,10 +716,15 @@ function buildRtmpUrl(platform, streamKey, customUrl = '') {
  */
 function spawnFfmpeg(rtmpUrl) {
   const args = [
-    // Read live WebM container (Canvas Video + Mixed Audio) from browser MediaRecorder via stdin
+    // Fast probe & low latency flags for live input pipe
+    '-fflags', '+nobuffer+flush_packets',
+    '-probesize', '64k',
+    '-analyzeduration', '100000',
+    '-flags', '+low_delay',
+    // Input 0: WebM live stream (Canvas Video + Mixed Audio) from browser via stdin
     '-f', 'webm',
     '-i', 'pipe:0',
-    // Video Transcode: H.264 ultrafast, 1.5 Mbps, 30 fps, zero-latency
+    // Video Transcode: H.264 ultrafast, 1.5 Mbps, 30 fps, 2-second GOP (60 frames @ 30fps)
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
     '-tune', 'zerolatency',
@@ -727,13 +732,16 @@ function spawnFfmpeg(rtmpUrl) {
     '-maxrate', '1500k',
     '-bufsize', '3000k',
     '-pix_fmt', 'yuv420p',
+    '-r', '30',
     '-g', '60',
+    '-keyint_min', '60',
+    '-sc_threshold', '0',
     // Audio Transcode: AAC Stereo 44.1 kHz 128 Kbps (YouTube Standard)
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
     '-ac', '2',
-    // Output container: Flash Video for RTMP live streaming
+    // FLV container for RTMP live streaming
     '-f', 'flv',
     '-flvflags', 'no_duration_filesize',
     rtmpUrl

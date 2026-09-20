@@ -68,28 +68,36 @@ export class BroadcastCompositor {
   start() {
     if (this._isRunning) return;
     this._isRunning = true;
-    const targetFps = 30;
-    const interval = 1000 / targetFps;
-    let lastTime = performance.now();
 
-    const render = (now) => {
-      if (!this._isRunning) return;
-      this._rafId = requestAnimationFrame(render);
-      const delta = now - lastTime;
-      if (delta >= interval) {
-        lastTime = now - (delta % interval);
+    // Attach canvas to DOM in hidden offscreen position for hardware acceleration
+    if (!this.canvas.parentElement && typeof document !== 'undefined' && document.body) {
+      this.canvas.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:320px;height:180px;pointer-events:none;opacity:0.01;z-index:-999;';
+      document.body.appendChild(this.canvas);
+    }
+
+    // Draw initial frame immediately
+    this.drawScene();
+
+    // Use a solid 33ms interval loop so background tabs never pause or throttle
+    this._timer = setInterval(() => {
+      if (this._isRunning) {
         this.drawScene();
       }
-    };
-
-    this._rafId = requestAnimationFrame(render);
+    }, 33);
   }
 
   stop() {
     this._isRunning = false;
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
     if (this._rafId) {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
+    }
+    if (this.canvas.parentElement) {
+      try { this.canvas.parentElement.removeChild(this.canvas); } catch (_) {}
     }
   }
 
