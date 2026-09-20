@@ -24,10 +24,68 @@ export class AudioEngine {
     this.recChunks = [];
   }
 
+  isGraphComplete() {
+    const e = this.engine;
+    if (!this.ctx || this.ctx.state === 'closed') return false;
+    if (!e || typeof e !== 'object') return false;
+    return !!(
+      e.mediaGain &&
+      e.micGain &&
+      e.micOutBus &&
+      e.mediaOutBus &&
+      e.mixBus &&
+      e.airEq &&
+      e.masterGain &&
+      e.limiter &&
+      e.analyser &&
+      e.programOut &&
+      e.stereoOutputBus &&
+      e.dest &&
+      e.dest.stream &&
+      e.dest.stream.getAudioTracks &&
+      e.dest.stream.getAudioTracks().length > 0
+    );
+  }
+
+  _teardownGraph() {
+    if (this._gateTimer) {
+      clearInterval(this._gateTimer);
+      this._gateTimer = null;
+    }
+    this._autoTuneTelemetryListeners = [];
+
+    const e = this.engine;
+    if (e && typeof e === 'object') {
+      for (const key of Object.keys(e)) {
+        const node = e[key];
+        if (node && typeof node.disconnect === 'function') {
+          try { node.disconnect(); } catch (_) {}
+        }
+      }
+    }
+    this.engine = {};
+    const dspLed = document.getElementById('led-dsp');
+    if (dspLed) dspLed.classList.remove('active-blue');
+  }
+
+  async rebuild() {
+    console.info('[Nirmal] Rebuilding AudioEngine DSP graph...');
+    this._teardownGraph();
+    this.bootPromise = null;
+    return this.boot();
+  }
+
   boot() {
+    if (this.isGraphComplete()) {
+      if (this.ctx && this.ctx.state === 'suspended') {
+        return this.ctx.resume().catch(() => {}).then(() => this.engine);
+      }
+      return Promise.resolve(this.engine);
+    }
     if (!this.bootPromise) {
       this.bootPromise = this._buildEngine().catch((err) => {
         this.bootPromise = null;
+        this._teardownGraph();
         throw err;
       });
     }
@@ -66,26 +124,43 @@ export class AudioEngine {
 
   async _buildEngine() {
     try {
-      if (!this.ctx) {
+      if (!this.ctx || this.ctx.state === 'closed') {
         try {
           this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
         } catch (_) {
           this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
         }
-        const dataUri = "data:application/javascript;base64," + btoa(unescape(encodeURIComponent(dspWorkletCode)));
-        await this.ctx.audioWorklet.addModule(dataUri);
+      }
+
+      this._workletsLoaded = false;
+      if (this.ctx && this.ctx.audioWorklet) {
+        try {
+          const dataUri = "data:application/javascript;base64," + btoa(unescape(encodeURIComponent(dspWorkletCode)));
+          await this.ctx.audioWorklet.addModule(dataUri);
+          this._workletsLoaded = true;
+        } catch (workletLoadErr) {
+          console.warn('[Nirmal] DSP AudioWorklet load notice, using standard Web Audio fallback:', workletLoadErr?.message || workletLoadErr);
+        }
         try {
           await this.ctx.audioWorklet.addModule('./js/worklets/native-pcm-player.js');
-        } catch (workletErr) {
-          console.warn('[Nirmal] native-pcm-player worklet optional load skipped:', workletErr?.message || workletErr);
+        } catch (nativeErr) {
+          console.warn('[Nirmal] native-pcm-player worklet optional load skipped:', nativeErr?.message || nativeErr);
         }
       }
+
       if (this.ctx.state === 'suspended') {
         await this.ctx.resume().catch(() => {});
       }
 
+      if (this.isGraphComplete()) {
+        return this.engine;
+      }
+
+      // Clean teardown if rebuilding from partial state
+      this._teardownGraph();
+
       const e = this.engine;
-    if (!e.mediaGain) {
+
       // Pin an AudioNode to 2-ch stereo so no intermediate node collapses
       // the stereo field mid-graph. Silently ignores read-only nodes.
       const setStereo = (node) => {
@@ -122,8 +197,17 @@ export class AudioEngine {
       e.micAnalyser.fftSize = 256;
       e.micGain.connect(e.micAnalyser);
 
-      // Auto-Tune Node & Pitch Detector
-      e.autoTuneNode = new AudioWorkletNode(this.ctx, 'auto-tune', { outputChannelCount: [2] });
+      // Auto-Tune Node & Pitch Detector (with fallback)
+      if (this._workletsLoaded) {
+        try {
+          e.autoTuneNode = new AudioWorkletNode(this.ctx, 'auto-tune', { outputChannelCount: [2] });
+        } catch (_) {
+          e.autoTuneNode = this.ctx.createGain();
+        }
+      } else {
+        e.autoTuneNode = this.ctx.createGain();
+      }
+
       e.autoTuneDry = this.ctx.createGain();
       e.autoTuneDry.gain.value = autoTuneToggle?.checked ? 0.0 : 1.0;
       e.autoTuneWet = this.ctx.createGain();
@@ -131,42 +215,44 @@ export class AudioEngine {
 
       const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
       this._autoTuneTelemetryListeners = [];
-      e.autoTuneNode.port.onmessage = (msg) => {
-        const data = msg.data;
-        if (!data) return;
+      if (e.autoTuneNode.port) {
+        e.autoTuneNode.port.onmessage = (msg) => {
+          const data = msg.data;
+          if (!data) return;
 
-        if (data.detectedFreq) {
-          const midi = Math.round(69 + 12 * Math.log2(data.detectedFreq / 440));
-          const note = noteNames[((midi % 12) + 12) % 12];
-          const oct = Math.floor(midi / 12) - 1;
-          if (hudNote) hudNote.textContent = `🎤 PITCH: ${note}${oct}`;
+          if (data.detectedFreq) {
+            const midi = Math.round(69 + 12 * Math.log2(data.detectedFreq / 440));
+            const note = noteNames[((midi % 12) + 12) % 12];
+            const oct = Math.floor(midi / 12) - 1;
+            if (hudNote) hudNote.textContent = `🎤 PITCH: ${note}${oct}`;
 
-          const isAutoTuneOn = document.getElementById('autoTuneToggle')?.checked;
-          if (data.targetFreq && hudCoach && isAutoTuneOn) {
-            const diff = data.detectedFreq - data.targetFreq;
-            if (Math.abs(diff) < 3.5) {
-              hudCoach.textContent = `🎯 COACH: PERFECT (${note})`;
-              hudCoach.style.color = "var(--accent-green)";
-              hudCoach.style.borderColor = "rgba(0, 255, 136, 0.4)";
-            } else if (diff < 0) {
-              hudCoach.textContent = `⬆ COACH: FLAT (${note})`;
-              hudCoach.style.color = "var(--accent-orange)";
-              hudCoach.style.borderColor = "rgba(255, 153, 0, 0.4)";
-            } else {
-              hudCoach.textContent = `⬇ COACH: SHARP (${note})`;
-              hudCoach.style.color = "var(--accent-pink)";
-              hudCoach.style.borderColor = "rgba(255, 0, 127, 0.4)";
+            const isAutoTuneOn = document.getElementById('autoTuneToggle')?.checked;
+            if (data.targetFreq && hudCoach && isAutoTuneOn) {
+              const diff = data.detectedFreq - data.targetFreq;
+              if (Math.abs(diff) < 3.5) {
+                hudCoach.textContent = `🎯 COACH: PERFECT (${note})`;
+                hudCoach.style.color = "var(--accent-green)";
+                hudCoach.style.borderColor = "rgba(0, 255, 136, 0.4)";
+              } else if (diff < 0) {
+                hudCoach.textContent = `⬆ COACH: FLAT (${note})`;
+                hudCoach.style.color = "var(--accent-orange)";
+                hudCoach.style.borderColor = "rgba(255, 153, 0, 0.4)";
+              } else {
+                hudCoach.textContent = `⬇ COACH: SHARP (${note})`;
+                hudCoach.style.color = "var(--accent-pink)";
+                hudCoach.style.borderColor = "rgba(255, 0, 127, 0.4)";
+              }
             }
           }
-        }
 
-        // Broadcast to all Pro X telemetry listeners (pitch needle, roll graph, HUD, piano keys)
-        if (this._autoTuneTelemetryListeners && this._autoTuneTelemetryListeners.length) {
-          for (let i = 0; i < this._autoTuneTelemetryListeners.length; i++) {
-            try { this._autoTuneTelemetryListeners[i](data); } catch (_) {}
+          // Broadcast to all Pro X telemetry listeners (pitch needle, roll graph, HUD, piano keys)
+          if (this._autoTuneTelemetryListeners && this._autoTuneTelemetryListeners.length) {
+            for (let i = 0; i < this._autoTuneTelemetryListeners.length; i++) {
+              try { this._autoTuneTelemetryListeners[i](data); } catch (_) {}
+            }
           }
-        }
-      };
+        };
+      }
 
       e.micGain.connect(e.autoTuneNode);
       e.autoTuneNode.connect(e.autoTuneWet);
@@ -175,8 +261,17 @@ export class AudioEngine {
       e.autoTuneDry.connect(e.micOutBus);
       e.autoTuneWet.connect(e.micOutBus);
 
-      // Backing Track Center Vocal Remover & Key Pitcher
-      e.mediaPitcher = new AudioWorkletNode(this.ctx, 'polyphonic-shifter', { outputChannelCount: [2] });
+      // Backing Track Center Vocal Remover & Key Pitcher (with fallback)
+      if (this._workletsLoaded) {
+        try {
+          e.mediaPitcher = new AudioWorkletNode(this.ctx, 'polyphonic-shifter', { outputChannelCount: [2] });
+        } catch (_) {
+          e.mediaPitcher = this.ctx.createGain();
+        }
+      } else {
+        e.mediaPitcher = this.ctx.createGain();
+      }
+
       e.mediaVrDry = this.ctx.createGain();
       e.mediaVrDry.gain.value = vocalRemoverToggle?.checked ? 0.0 : 1.0;
       e.mediaVrWet = this.ctx.createGain();
@@ -258,8 +353,7 @@ export class AudioEngine {
       e.proOutput.connect(e.micToFx);
       e.proOutput.connect(e.micToDry);
 
-      // Vocal noise gate: inserted into the microphone path so when the singer
-      // is silent, vocal room noise is gated without muting the backing music.
+      // Vocal noise gate
       e.gateGain = this.ctx.createGain();
       e.gateGain.gain.value = 1.0;
       e.micOutBus.connect(e.gateGain);
@@ -279,7 +373,16 @@ export class AudioEngine {
       e.fxInBus.connect(e.fxBypassGain);
       e.fxInBus.connect(e.fxActiveGain);
 
-      e.pitcher = new AudioWorkletNode(this.ctx, 'polyphonic-shifter', { outputChannelCount: [2] });
+      if (this._workletsLoaded) {
+        try {
+          e.pitcher = new AudioWorkletNode(this.ctx, 'polyphonic-shifter', { outputChannelCount: [2] });
+        } catch (_) {
+          e.pitcher = this.ctx.createGain();
+        }
+      } else {
+        e.pitcher = this.ctx.createGain();
+      }
+
       e.hp = this.ctx.createBiquadFilter();
       e.hp.type = 'highpass';
       e.hp.frequency.value = 20;
@@ -310,19 +413,12 @@ export class AudioEngine {
       // System audio stays outside the vocal DSP chain so desktop/browser audio is preserved.
       e.systemAudioGain = this.ctx.createGain();
       e.systemAudioGain.gain.value = 1.0;
-      // Keep loud desktop audio from slamming the master limiter when the
-      // duet microphone arrives at the same time. This reduces pumping and
-      // audible recovery gaps without changing the vocal chain.
       e.systemAudioComp = this.ctx.createDynamicsCompressor();
       e.systemAudioComp.threshold.value = -8;
       e.systemAudioComp.knee.value = 10;
       e.systemAudioComp.ratio.value = 2;
       e.systemAudioComp.attack.value = 0.01;
       e.systemAudioComp.release.value = 0.12;
-      // Screen/system audio is already mastered by the source application. Avoid
-      // inserting a dynamics compressor into the transport path: compression
-      // can pump the music and consumes another processing stage. The final
-      // master limiter still protects the combined karaoke output.
       e.systemAudioGain.connect(e.mixBus);
 
       // Air EQ
@@ -381,10 +477,6 @@ export class AudioEngine {
       e.limiter.connect(e.programOut);
 
       // Final live program bus: explicitly create a 2-channel, discrete stereo
-      // WebRTC source. Using the MediaStreamAudioDestinationNode constructor
-      // with explicit channelCount avoids relying on browser defaults. MDN
-      // documents that this node's stream carries the same number of channels
-      // as the destination node.
       try {
         e.dest = new MediaStreamAudioDestinationNode(this.ctx, {
           channelCount: 2,
@@ -406,9 +498,6 @@ export class AudioEngine {
         e.stereoOutputBus.channelInterpretation = 'discrete';
       } catch (_) {}
 
-      // A final splitter/merger pins the left/right channels independently and
-      // prevents any intermediate speakers-style remapping from collapsing the
-      // music program to mono before WebRTC publication.
       e.stereoSplit = this.ctx.createChannelSplitter(2);
       e.stereoMerge = this.ctx.createChannelMerger(2);
       e.stereoMerge.channelCountMode = 'explicit';
@@ -425,10 +514,6 @@ export class AudioEngine {
       e.stereoMerge.connect(e.monitorGain);
       e.monitorGain.connect(this.ctx.destination);
 
-      // Fix A: pin every intermediate node to 2-ch explicit/discrete so the
-      // stereo field is never collapsed mid-graph.  Splitter/merger nodes
-      // intentionally excluded — their channel counts are fixed by
-      // construction and must not be overridden.
       [
         e.mediaGain, e.micGain, e.micAnalyser,
         e.autoTuneDry, e.autoTuneWet, e.micOutBus,
@@ -456,20 +541,15 @@ export class AudioEngine {
 
       this.startGateAndVoiceAssists();
       this.updateAutoTuneSettings();
+
+      return this.engine;
+    } catch (err) {
+      console.error('[Nirmal] AudioEngine boot failed, cleaning up state:', err);
+      this._teardownGraph();
+      this.bootPromise = null;
+      throw err;
     }
-  } catch (err) {
-    console.error('[Nirmal] AudioEngine boot failed, cleaning up state:', err);
-    try {
-      if (this.ctx && typeof this.ctx.close === 'function') {
-        await this.ctx.close().catch(() => {});
-      }
-    } catch (_) {}
-    this.ctx = null;
-    this.engine = {};
-    this.bootPromise = null;
-    throw err;
   }
-}
 
   async startSystemAudioShare() {
     await this.boot();

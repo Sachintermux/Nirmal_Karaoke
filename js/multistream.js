@@ -219,7 +219,9 @@ export class MultiStreamManager {
     const ae = this.audioEngine || this.liveHost?.impl?.audioEngine || this.liveHost?.audioEngine;
     if (ae) {
       try {
-        if (!ae.ctx) await ae.boot();
+        if (!ae.isGraphComplete || !ae.isGraphComplete()) {
+          await ae.boot();
+        }
         if (ae.ctx && ae.ctx.state === 'suspended') {
           await ae.ctx.resume();
         }

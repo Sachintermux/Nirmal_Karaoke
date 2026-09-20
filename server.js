@@ -704,7 +704,8 @@ function buildRtmpUrl(platform, streamKey, customUrl = '') {
   }
 
   if (plat === 'youtube') {
-    return `rtmp://a.rtmp.youtube.com/live2/${key}`;
+    // RTMPS over port 443 bypasses cloud/container port 1935 firewall restrictions
+    return `rtmps://a.rtmps.youtube.com:443/live2/${key}`;
   }
   if (plat === 'twitch') {
     return `rtmp://live.twitch.tv/app/${key}`;
@@ -720,9 +721,9 @@ function buildRtmpUrl(platform, streamKey, customUrl = '') {
 /**
  * Start an ffmpeg child process that:
  *  - Reads WebM live stream (Canvas Video + Mixed Audio) from stdin (pipe:0)
- *  - Encodes H.264 video (Main profile, 2.5 Mbps, 30 fps, 2-sec GOP)
+ *  - Encodes H.264 video (Main profile, 2.5 Mbps, 30 fps, 2-sec GOP, global SPS/PPS headers)
  *  - Encodes AAC Stereo audio (128 kbps, 44.1 kHz)
- *  - Muxes to FLV and pushes to the RTMP URL (YouTube, Twitch, FB, etc.)
+ *  - Muxes to FLV and pushes to the RTMP/RTMPS URL (YouTube, Twitch, FB, etc.)
  */
 function spawnFfmpeg(rtmpUrl, onLog) {
   const args = [
@@ -731,7 +732,7 @@ function spawnFfmpeg(rtmpUrl, onLog) {
     '-fflags', '+nobuffer+flush_packets+genpts+discardcorrupt',
     '-probesize', '1M',
     '-analyzeduration', '2000000',
-    '-flags', '+low_delay',
+    '-flags', '+low_delay+global_header',
     // Input 0: Matroska/WebM live stream from browser via stdin
     '-f', 'matroska,webm',
     '-i', 'pipe:0',
@@ -757,7 +758,7 @@ function spawnFfmpeg(rtmpUrl, onLog) {
     '-max_muxing_queue_size', '2048',
     // FLV container for RTMP live streaming
     '-f', 'flv',
-    '-flvflags', 'no_duration_filesize',
+    '-flvflags', 'no_duration_filesize+add_keyframe_index',
     rtmpUrl
   ];
 
