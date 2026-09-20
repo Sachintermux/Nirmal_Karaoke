@@ -1,19 +1,16 @@
 # Production Dockerfile for Nirmal Karaoke Backend + FFmpeg RTMP Streaming Relay
-FROM node:22-bullseye-slim
+FROM node:22-alpine
 
-# Install ffmpeg and required audio libraries
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Install FFmpeg & CA certificates on Alpine
+RUN apk add --no-cache ffmpeg ca-certificates
 
 WORKDIR /app
 
 # Copy dependency definitions
 COPY package*.json ./
 
-# Install dependencies (including ws and livekit-server-sdk)
-RUN npm ci --only=production
+# Install production dependencies
+RUN npm install --omit=dev
 
 # Copy application source code
 COPY . .
