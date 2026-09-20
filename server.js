@@ -934,25 +934,29 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive, quality = '540p') {
   }
 
   const args = [
-    // Error tolerance & fast probe on first 128KB chunk
+    // 1. Error resilience & fast header probe on incoming WebM stdin stream
     '-err_detect', 'ignore_err',
     '-max_error_rate', '1.0',
     '-fflags', '+nobuffer+flush_packets+genpts+discardcorrupt',
-    '-probesize', '128k',
-    '-analyzeduration', '500000',
-    '-use_wallclock_as_timestamps', '1',
-    // Input 0: Matroska/WebM live stream from browser via stdin
+    '-probesize', '256k',
+    '-analyzeduration', '1000000',
+    // Input 0: Matroska/WebM live stream from browser via stdin (retains internal WebM timecodes)
     '-f', 'matroska,webm',
     '-i', 'pipe:0',
-    '-vsync', '1',
-    // Adaptive resolution scaling
-    '-vf', scaleFilter,
-    // Video Transcode: H.264 Main profile, 30 fps, 2-second GOP (60 frames @ 30fps)
-    // Preset ultrafast is required for real-time (>= 1.0x) performance on cloud container vCPU
+
+    // 2. Video Filter: Enforce Constant 30.000 FPS (CFR), monotonic timestamps starting from 0, and YUV420P
+    // - setpts=PTS-STARTPTS: Normalizes timestamps to start at t=0, eliminating cluster timecode jitter
+    // - fps=fps=30:round=near: Guarantees strict 30.000 FPS output cadence by duplicating/dropping frames as needed
+    // - format=yuv420p: Strictly ensures standard pixel format required by YouTube H.264
+    '-vf', `${scaleFilter}:flags=fast_bilinear,setpts=PTS-STARTPTS,fps=fps=30:round=near,format=yuv420p`,
+
+    // 3. Video Encoder: H.264 Main Profile @ Level 3.1, Strict 30 FPS CFR, 2-Second GOP (60 frames @ 30fps)
+    '-fps_mode', 'cfr',
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
     '-tune', 'zerolatency',
     '-profile:v', 'main',
+    '-level', '3.1',
     '-pix_fmt', 'yuv420p',
     '-r', '30',
     '-g', '60',
@@ -963,14 +967,17 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive, quality = '540p') {
     '-b:v', videoBitrate,
     '-maxrate', videoBitrate,
     '-bufsize', bufSize,
-    // Audio Transcode: AAC Stereo 44.1 kHz 128 Kbps with async resampler for clock sync
+
+    // 4. Audio Encoder: AAC Stereo 44.1 kHz 128 kbps synchronized with video timeline
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
     '-ac', '2',
-    '-af', 'aresample=async=1:min_hard_comp=0.100000:first_pts=0',
+    '-af', 'aresample=async=1000:min_hard_comp=0.100000:first_pts=0,asetpts=PTS-STARTPTS',
     '-max_muxing_queue_size', '4096',
-    // FLV container for RTMP live streaming
+
+    // 5. Output FLV Container for RTMP / YouTube Live Ingest
+    '-avoid_negative_ts', 'make_zero',
     '-f', 'flv',
     '-flvflags', 'no_duration_filesize',
     rtmpUrl
