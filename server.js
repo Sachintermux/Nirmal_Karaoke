@@ -808,18 +808,21 @@ function getCandidateRtmpUrls(platform, streamKey, customUrl = '') {
     return [key];
   }
 
-  // YouTube Live: Always prioritize RTMPS port 443 (firewall-friendly on Render/cloud & local)
+  // YouTube Live: Prioritize RTMPS port 443 (firewall-friendly on Render/cloud & local) and fallback to RTMP port 1935
   if (plat === 'youtube_rtmps' || plat === 'youtube') {
     return [
       `rtmps://a.rtmps.youtube.com:443/live2/${key}`,
-      `rtmps://b.rtmps.youtube.com:443/live2?backup=1/${key}`,
-      `rtmp://a.rtmp.youtube.com/live2/${key}`
+      `rtmp://a.rtmp.youtube.com/live2/${key}`,
+      `rtmps://b.rtmps.youtube.com:443/live2/${key}?backup=1`,
+      `rtmp://b.rtmp.youtube.com/live2/${key}?backup=1`
     ];
   }
   if (plat === 'youtube_standard_rtmp') {
     return [
       `rtmp://a.rtmp.youtube.com/live2/${key}`,
-      `rtmps://a.rtmps.youtube.com:443/live2/${key}`
+      `rtmps://a.rtmps.youtube.com:443/live2/${key}`,
+      `rtmp://b.rtmp.youtube.com/live2/${key}?backup=1`,
+      `rtmps://b.rtmps.youtube.com:443/live2/${key}?backup=1`
     ];
   }
   if (plat === 'twitch') {
@@ -862,6 +865,7 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
         '-v', 'verbose',
         '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=30',
         '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=44100',
+        '-pix_fmt', 'yuv420p',
         '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', '1500k', '-g', '60',
         '-flags', '+global_header',
         '-c:a', 'aac', '-b:a', '128k',
