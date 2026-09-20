@@ -200,6 +200,14 @@ export class MultiStreamManager {
     const customUrl  = this.inputCustomUrl?.value.trim() || '';
 
     if (!streamKey) { this.showError('Please enter your stream key to go live.'); return; }
+    if (streamKey.startsWith('http://') || streamKey.startsWith('https://')) {
+      this.showError('⚠️ You entered a webpage link (https://...). Please copy the secret "Stream key" from the Stream Settings section in YouTube Studio (looks like xxxx-xxxx-xxxx-xxxx-xxxx).');
+      return;
+    }
+    if (streamKey === 'rtmp://a.rtmp.youtube.com/live2' || streamKey === 'rtmps://a.rtmps.youtube.com/live2' || streamKey.endsWith('/live2') || streamKey.endsWith('/live2/')) {
+      this.showError('⚠️ You entered the Stream URL instead of the Stream Key. Please copy the secret "Stream key" from the Stream Settings box on YouTube Studio.');
+      return;
+    }
     if (platform === 'custom' && !customUrl) {
       this.showError('Please enter your custom RTMP server URL (e.g. rtmp://my-server/live).');
       return;

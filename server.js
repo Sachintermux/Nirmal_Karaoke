@@ -699,12 +699,19 @@ function buildRtmpUrl(platform, streamKey, customUrl = '') {
   const plat = String(platform || 'youtube').toLowerCase().trim();
   const key = String(streamKey || '').trim().replace(/^['"]+|['"]+$/g, '');
 
+  if (key.startsWith('http://') || key.startsWith('https://')) {
+    throw new Error('Invalid Stream Key: You pasted a webpage URL instead of the secret stream key.');
+  }
+
   if (key.startsWith('rtmp://') || key.startsWith('rtmps://')) {
+    if (key.endsWith('/live2') || key.endsWith('/live2/')) {
+      throw new Error('Invalid Stream Key: Missing secret key at the end of RTMP URL.');
+    }
     return key;
   }
 
   if (plat === 'youtube_rtmps') {
-    return `rtmps://a.rtmps.youtube.com:443/live2/${key}`;
+    return `rtmps://a.rtmps.youtube.com/live2/${key}`;
   }
   if (plat === 'youtube') {
     // Standard YouTube Live RTMP Ingestion URL
