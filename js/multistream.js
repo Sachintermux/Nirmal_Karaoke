@@ -336,21 +336,32 @@ export class MultiStreamManager {
 
     let audioTrack = mixedStream?.getAudioTracks?.()[0] || null;
 
-    // Fallback: If no active audio track, create a continuous silent stereo track
+    // Robust Fallback: If no active audio track, synthesize an inaudible audio carrier
     // so YouTube never rejects the live stream due to missing audio.
-    if (!audioTrack && ae?.ctx) {
+    if (!audioTrack) {
       try {
-        const destNode = ae.ctx.createMediaStreamDestination();
-        const osc = ae.ctx.createConstantSource ? ae.ctx.createConstantSource() : ae.ctx.createOscillator();
-        const gain = ae.ctx.createGain();
-        gain.gain.value = 0.0001;
-        osc.connect(gain);
-        gain.connect(destNode);
-        osc.start();
-        audioTrack = destNode.stream.getAudioTracks()[0];
+        const audioCtx = ae?.ctx || (window.AudioContext ? new (window.AudioContext || window.webkitAudioContext)() : null);
+        if (audioCtx) {
+          if (audioCtx.state === 'suspended') {
+            audioCtx.resume().catch(() => {});
+          }
+          const destNode = audioCtx.createMediaStreamDestination();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.frequency.value = 440;
+          gain.gain.value = 0.00001;
+          osc.connect(gain);
+          gain.connect(destNode);
+          osc.start();
+          audioTrack = destNode.stream.getAudioTracks()[0];
+        }
       } catch (synthErr) {
         console.warn('[MultiStream] Audio synthesis fallback notice:', synthErr);
       }
+    }
+
+    if (audioTrack) {
+      audioTrack.enabled = true;
     }
 
     if (!audioTrack) {
@@ -361,6 +372,10 @@ export class MultiStreamManager {
 
     // 4. Generate Unified Broadcast Stream (Canvas Video + Mixed Audio)
     const broadcastStream = this.compositor.getMediaStream(audioTrack);
+    console.info('[MultiStream] Unified stream active tracks:', {
+      video: broadcastStream.getVideoTracks().length,
+      audio: broadcastStream.getAudioTracks().length
+    });
 
     this.setStatus('Connecting Server…');
 

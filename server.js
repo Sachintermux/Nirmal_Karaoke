@@ -917,15 +917,17 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive) {
   const args = [
     // Error tolerance & fast probe on first 128KB chunk
     '-err_detect', 'ignore_err',
+    '-max_error_rate', '1.0',
     '-fflags', '+nobuffer+flush_packets+genpts+discardcorrupt',
     '-probesize', '128k',
     '-analyzeduration', '500000',
     // Input 0: Matroska/WebM live stream from browser via stdin
     '-f', 'matroska,webm',
     '-i', 'pipe:0',
-    // Video Transcode: H.264 Main profile, 2500 kbps, 30 fps, 2-second GOP (60 frames @ 30fps)
+    // Video Transcode: H.264 Main profile, 2000 kbps, 30 fps, 2-second GOP (60 frames @ 30fps)
+    // Preset ultrafast is required for real-time (>= 1.0x) performance on cloud container vCPU
     '-c:v', 'libx264',
-    '-preset', 'veryfast',
+    '-preset', 'ultrafast',
     '-tune', 'zerolatency',
     '-profile:v', 'main',
     '-pix_fmt', 'yuv420p',
@@ -935,9 +937,9 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive) {
     '-sc_threshold', '0',
     '-flags', '+global_header',
     '-x264-params', 'keyint=60:min-keyint=60:scenecut=0:force-cfr=1',
-    '-b:v', '2500k',
-    '-maxrate', '2500k',
-    '-bufsize', '5000k',
+    '-b:v', '2000k',
+    '-maxrate', '2000k',
+    '-bufsize', '4000k',
     // Audio Transcode: AAC Stereo 44.1 kHz 128 Kbps with async resampler for clock sync
     '-c:a', 'aac',
     '-b:a', '128k',

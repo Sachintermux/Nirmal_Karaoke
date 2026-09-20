@@ -140,16 +140,22 @@ export class BroadcastCompositor {
 
   /**
    * Generates a combined MediaStream (Canvas Video + Mixed Stereo Audio)
+   * Constructs a new MediaStream so MediaRecorder reliably recognizes both tracks in Chromium.
    */
   getMediaStream(audioTrack) {
     this.start();
     this.drawScene();
-    const stream = this.canvas.captureStream(30);
-    this._videoTrack = stream.getVideoTracks()[0] || null;
-    if (audioTrack) {
-      stream.addTrack(audioTrack);
-    }
-    return stream;
+    const canvasStream = this.canvas.captureStream(30);
+    this._videoTrack = canvasStream.getVideoTracks()[0] || null;
+
+    const tracks = [];
+    if (this._videoTrack) tracks.push(this._videoTrack);
+    if (audioTrack) tracks.push(audioTrack);
+
+    console.info(`[BroadcastCompositor] Combined stream created with ${tracks.length} tracks:`,
+      tracks.map(t => `${t.kind}:${t.label || 'track'}`));
+
+    return new MediaStream(tracks);
   }
 
   drawScene() {
