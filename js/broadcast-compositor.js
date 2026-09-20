@@ -113,6 +113,7 @@ export class BroadcastCompositor {
 
   stop() {
     this._isRunning = false;
+    this._videoTrack = null;
     if (this._worker) {
       try {
         this._worker.postMessage('stop');
@@ -144,6 +145,7 @@ export class BroadcastCompositor {
     this.start();
     this.drawScene();
     const stream = this.canvas.captureStream(30);
+    this._videoTrack = stream.getVideoTracks()[0] || null;
     if (audioTrack) {
       stream.addTrack(audioTrack);
     }
@@ -154,6 +156,7 @@ export class BroadcastCompositor {
     const ctx = this.ctx;
     const w = this.width;
     const h = this.height;
+    const time = performance.now() * 0.001;
 
     // ─── 1. Background Stage ──────────────────────────────────────────────────
     const grad = ctx.createLinearGradient(0, 0, w, h);
@@ -163,15 +166,16 @@ export class BroadcastCompositor {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // Subtle ambient glow circles
-    const time = performance.now() * 0.001;
-    const glow1 = ctx.createRadialGradient(w * 0.2, h * 0.3, 20, w * 0.2, h * 0.3, 400);
+    // Subtle dynamic ambient glow circles (animated coordinates keep canvas dirty & video clock running)
+    const pulse1 = Math.sin(time * 1.5) * 25;
+    const pulse2 = Math.cos(time * 1.2) * 25;
+    const glow1 = ctx.createRadialGradient(w * 0.2 + pulse1, h * 0.3 + pulse2, 20, w * 0.2 + pulse1, h * 0.3 + pulse2, 420);
     glow1.addColorStop(0, 'rgba(0, 229, 255, 0.12)');
     glow1.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow1;
     ctx.fillRect(0, 0, w, h);
 
-    const glow2 = ctx.createRadialGradient(w * 0.8, h * 0.4, 20, w * 0.8, h * 0.4, 450);
+    const glow2 = ctx.createRadialGradient(w * 0.8 - pulse2, h * 0.4 + pulse1, 20, w * 0.8 - pulse2, h * 0.4 + pulse1, 460);
     glow2.addColorStop(0, 'rgba(255, 0, 128, 0.10)');
     glow2.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow2;
@@ -261,19 +265,25 @@ export class BroadcastCompositor {
 
   drawVisualizer(ctx, w, h, hasCameras) {
     const engine = this.audioEngine?.engine;
-    if (!engine?.analyser) return;
+    let hasSignal = false;
 
-    if (!this._visDataArray) {
-      this._visDataArray = new Uint8Array(engine.analyser.frequencyBinCount);
+    if (engine?.analyser) {
+      if (!this._visDataArray) {
+        this._visDataArray = new Uint8Array(engine.analyser.frequencyBinCount);
+      }
+      engine.analyser.getByteFrequencyData(this._visDataArray);
+      for (let i = 0; i < Math.min(32, this._visDataArray.length); i++) {
+        if (this._visDataArray[i] > 2) { hasSignal = true; break; }
+      }
     }
-    engine.analyser.getByteFrequencyData(this._visDataArray);
 
     const numBars = 64;
-    const step = Math.max(1, Math.floor(this._visDataArray.length / (numBars * 2)));
+    const step = this._visDataArray ? Math.max(1, Math.floor(this._visDataArray.length / (numBars * 2))) : 1;
     const baseY = hasCameras ? 490 : 420;
     const barSpacing = w / (numBars + 8);
     const barWidth = Math.max(4, barSpacing * 0.7);
     const startX = (w - (numBars * barSpacing)) / 2;
+    const time = performance.now() * 0.001;
 
     ctx.save();
     const grad = ctx.createLinearGradient(0, baseY - 120, 0, baseY);
@@ -283,8 +293,12 @@ export class BroadcastCompositor {
     ctx.fillStyle = grad;
 
     for (let i = 0; i < numBars; i++) {
-      const val = this._visDataArray[i * step] || 0;
-      const barHeight = Math.max(3, (val / 255) * 110);
+      let val = (this._visDataArray && hasSignal) ? (this._visDataArray[i * step] || 0) : 0;
+      if (!hasSignal) {
+        // Idle ambient equalizer wave: continuously animates dirty rect & keeps video encoder warm
+        val = Math.floor((Math.sin(i * 0.22 + time * 2.8) * 0.5 + 0.5) * 55 + 12);
+      }
+      const barHeight = Math.max(4, (val / 255) * 110);
       const x = startX + (i * barSpacing);
       const y = baseY - barHeight;
 
@@ -351,6 +365,7 @@ export class BroadcastCompositor {
   }
 
   drawHeader(ctx, w, h) {
+    const time = performance.now() * 0.001;
     ctx.save();
 
     // Top Header Bar
@@ -369,8 +384,9 @@ export class BroadcastCompositor {
     ctx.font = 'bold 22px sans-serif';
     ctx.fillText('🎤 NIRMAL KARAOKE', 30, 42);
 
-    // Live Dot & Tag
-    ctx.fillStyle = '#ff0055';
+    // Live Dot & Tag with pulsating brightness
+    const dotAlpha = 0.65 + 0.35 * Math.sin(time * 5);
+    ctx.fillStyle = `rgba(255, 0, 85, ${dotAlpha})`;
     ctx.beginPath();
     ctx.arc(280, 36, 6, 0, Math.PI * 2);
     ctx.fill();
@@ -388,5 +404,10 @@ export class BroadcastCompositor {
     ctx.fillText('♫ ' + songName.slice(0, 45), w - 30, 42);
 
     ctx.restore();
+
+    // Trigger explicit frame capture on canvas video track if supported
+    if (this._videoTrack && typeof this._videoTrack.requestFrame === 'function') {
+      try { this._videoTrack.requestFrame(); } catch (_) {}
+    }
   }
 }

@@ -655,7 +655,11 @@
                     <input id="inputStreamKey" type="password" placeholder="Paste your stream key here (e.g. xxxx-xxxx-xxxx-xxxx-xxxx)…" style="flex:1; padding:10px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:0.85rem;">
                     <button class="button button-quiet" id="btnToggleStreamKey" type="button" style="padding:0 12px;" title="Show/Hide Key">👁️</button>
                 </div>
-                <span style="font-size:0.68rem; color:var(--text-dim); display:block; margin-top:4px;">🔑 <b>How to connect:</b> In YouTube Studio, copy the secret <b>Stream key</b> (`••••••••••••`) from <i>Stream settings</i>. Ensure your live stream in YouTube Studio is active (not already ended/completed).</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                    <span style="font-size:0.68rem; color:var(--text-dim); flex:1;">🔑 <b>How to connect:</b> In YouTube Studio, copy the secret <b>Stream key</b> (`••••••••••••`) from <i>Stream settings</i>.</span>
+                    <button class="button button-quiet" id="btnTestStreamKey" type="button" style="padding:4px 10px; font-size:0.72rem; border-radius:6px; background:rgba(0,229,255,0.12); color:#00e5ff; border:1px solid rgba(0,229,255,0.3); font-weight:700; white-space:nowrap; cursor:pointer;">🧪 Test Connection</button>
+                </div>
+                <div id="testStreamResult" style="display:none; font-size:0.75rem; padding:8px 10px; border-radius:6px; margin-top:6px;"></div>
             </div>
 
             <!-- Broadcast Scene Content Selector -->

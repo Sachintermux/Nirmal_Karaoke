@@ -837,6 +837,72 @@ function getCandidateRtmpUrls(platform, streamKey, customUrl = '') {
 }
 
 /**
+ * Diagnostic endpoint to test FFmpeg live stream ingestion to destination directly
+ */
+app.get('/api/stream/test-ffmpeg', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const key = String(req.query.key || '').trim();
+  const platform = String(req.query.platform || 'youtube_rtmps').trim();
+  const customUrl = String(req.query.customUrl || '').trim();
+  if (!key) return res.status(400).json({ ok: false, error: 'Stream key is required' });
+
+  let candidateUrls;
+  try {
+    candidateUrls = getCandidateRtmpUrls(platform, key, customUrl);
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message });
+  }
+
+  const results = [];
+  for (const targetUrl of candidateUrls) {
+    const safeUrl = targetUrl.replace(key, '***');
+    console.info(`[test-ffmpeg] Testing 3-second stream ingestion to: ${safeUrl}`);
+    const r = await new Promise((resolve) => {
+      const args = [
+        '-v', 'verbose',
+        '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=30',
+        '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=44100',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', '1500k', '-g', '60',
+        '-flags', '+global_header',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-f', 'flv',
+        '-flvflags', 'no_duration_filesize',
+        '-t', '3',
+        targetUrl
+      ];
+      const p = spawn('ffmpeg', args);
+      let out = '';
+      p.stderr.on('data', d => { out += d.toString(); });
+      p.stdout.on('data', d => { out += d.toString(); });
+      const timer = setTimeout(() => {
+        try { p.kill('SIGKILL'); } catch (_) {}
+        resolve({ url: safeUrl, ok: false, exitCode: -1, error: 'Ingestion timeout (12s)', logTail: out.split('\n').filter(Boolean).slice(-15) });
+      }, 12000);
+      p.on('exit', (code) => {
+        clearTimeout(timer);
+        resolve({ url: safeUrl, ok: code === 0, exitCode: code, logTail: out.split('\n').filter(Boolean).slice(-15) });
+      });
+      p.on('error', (err) => {
+        clearTimeout(timer);
+        resolve({ url: safeUrl, ok: false, exitCode: -1, error: err.message, logTail: out.split('\n').filter(Boolean).slice(-15) });
+      });
+    });
+    results.push(r);
+    if (r.ok) break;
+  }
+
+  return res.json({ ok: results.some(r => r.ok), results });
+});
+
+/** Ring buffer of recent streaming session telemetry */
+const recentStreamSessions = [];
+
+app.get('/api/stream/recent-logs', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  return res.json({ ok: true, sessions: recentStreamSessions.slice(-5) });
+});
+
+/**
  * Start an ffmpeg child process that:
  *  - Reads WebM live stream (Canvas Video + Mixed Audio) from stdin (pipe:0)
  *  - Encodes H.264 video (Main profile, 2.5 Mbps, 30 fps, 2-sec GOP, global SPS/PPS headers)
@@ -850,7 +916,6 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive) {
     '-fflags', '+nobuffer+flush_packets+genpts+discardcorrupt',
     '-probesize', '128k',
     '-analyzeduration', '500000',
-    '-flags', '+low_delay+global_header',
     // Input 0: Matroska/WebM live stream from browser via stdin
     '-f', 'matroska,webm',
     '-i', 'pipe:0',
@@ -864,6 +929,8 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive) {
     '-g', '60',
     '-keyint_min', '60',
     '-sc_threshold', '0',
+    '-flags', '+global_header',
+    '-x264-params', 'keyint=60:min-keyint=60:scenecut=0:force-cfr=1',
     '-b:v', '2500k',
     '-maxrate', '2500k',
     '-bufsize', '5000k',
@@ -872,11 +939,11 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive) {
     '-b:a', '128k',
     '-ar', '44100',
     '-ac', '2',
-    '-af', 'aresample=async=1000:first_pts=0',
-    '-max_muxing_queue_size', '2048',
+    '-af', 'aresample=async=1:min_hard_comp=0.100000:first_pts=0',
+    '-max_muxing_queue_size', '4096',
     // FLV container for RTMP live streaming
     '-f', 'flv',
-    '-flvflags', 'no_duration_filesize+add_keyframe_index',
+    '-flvflags', 'no_duration_filesize',
     rtmpUrl
   ];
 
@@ -888,11 +955,12 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive) {
     const line = d.toString();
     if (onLog) onLog(line);
     if (/frame=\s*\d+/.test(line)) {
-      if (!hasSignaledLive && onLive) {
+      const frameMatch = line.match(/frame=\s*(\d+)/);
+      const frameCount = parseInt(frameMatch?.[1] || '0', 10);
+      if (!hasSignaledLive && frameCount >= 20 && onLive) {
         hasSignaledLive = true;
-        const frameMatch = line.match(/frame=\s*(\d+)/);
         const bitrateMatch = line.match(/bitrate=\s*([\d\.]+\w+)/);
-        onLive({ frame: frameMatch?.[1] || 1, bitrate: bitrateMatch?.[1] || '2500kbits/s' });
+        onLive({ frame: frameCount, bitrate: bitrateMatch?.[1] || '2500kbits/s' });
       }
       process.stdout.write('[ffmpeg] ' + line.trim() + '\r');
     } else if (line.trim()) {
@@ -968,10 +1036,23 @@ wss.on('connection', (ws, req) => {
   let initialHeaderChunk = null;
   let hasTransmittedFrames = false;
   const recentLogs = [];
+  const sessionRecord = {
+    sessionId,
+    roomName,
+    platform,
+    targetUrl: rtmpUrl.replace(streamKey, '***'),
+    startedAt: Date.now(),
+    endedAt: null,
+    totalBytes: 0,
+    exitCode: null,
+    logs: recentLogs
+  };
+  recentStreamSessions.push(sessionRecord);
+  if (recentStreamSessions.length > 10) recentStreamSessions.shift();
 
   const handleLog = (line) => {
     recentLogs.push(line);
-    if (recentLogs.length > 30) recentLogs.shift();
+    if (recentLogs.length > 50) recentLogs.shift();
   };
 
   const handleLive = (stats) => {
@@ -998,13 +1079,18 @@ wss.on('connection', (ws, req) => {
 
     proc.on('exit', (code, signal) => {
       console.warn(`[ffmpeg-stream] FFmpeg process exited (code: ${code}, signal: ${signal}) for ${targetUrl.replace(streamKey, '***')}`);
+      sessionRecord.exitCode = code;
+      sessionRecord.endedAt = Date.now();
+      sessionRecord.totalBytes = totalBytes;
 
-      // If failed before transmitting any frames and we have another candidate URL, try failover!
-      if (!hasTransmittedFrames && candidateIdx + 1 < candidateUrls.length && ws.readyState === ws.OPEN) {
+      // If failed or aborted early and we have another candidate URL, try automatic failover!
+      if ((code !== 0 || !hasTransmittedFrames) && candidateIdx + 1 < candidateUrls.length && ws.readyState === ws.OPEN) {
         candidateIdx++;
+        hasTransmittedFrames = false;
         const nextUrl = candidateUrls[candidateIdx];
-        console.info(`[ffmpeg-stream] Ingestion error on ${targetUrl.slice(0, 12)}... — automatically attempting failover to: ${nextUrl.replace(streamKey, '***')}`);
+        console.info(`[ffmpeg-stream] Ingestion error on ${targetUrl.slice(0, 16)}... — automatically attempting failover to: ${nextUrl.replace(streamKey, '***')}`);
         rtmpUrl = nextUrl;
+        sessionRecord.targetUrl = nextUrl.replace(streamKey, '***');
         ffmpegProc = startFfmpegForUrl(nextUrl);
         if (initialHeaderChunk && ffmpegProc.stdin && ffmpegProc.stdin.writable) {
           try { ffmpegProc.stdin.write(initialHeaderChunk); } catch (_) {}

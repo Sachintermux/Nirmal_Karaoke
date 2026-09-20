@@ -52,9 +52,12 @@ export class MultiStreamManager {
   loadSavedKeys() {
     try {
       const data = localStorage.getItem(STORAGE_KEY_STREAM_KEYS);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (parsed.youtube || parsed.youtube_rtmps) return parsed;
+      }
     } catch (_) {}
-    return { youtube: '', twitch: '', facebook: '', custom_url: '', custom_key: '' };
+    return { youtube: '2k5t-7stf-gt2v-cbm1-22b6', youtube_rtmps: '2k5t-7stf-gt2v-cbm1-22b6', twitch: '', facebook: '', custom_url: '', custom_key: '' };
   }
 
   saveKey(platform, key, customUrl = '') {
@@ -97,6 +100,8 @@ export class MultiStreamManager {
     this.inputStreamKey    = document.getElementById('inputStreamKey');
     this.inputCloudRelay   = document.getElementById('inputCloudRelayUrl');
     this.btnToggleKey      = document.getElementById('btnToggleStreamKey');
+    this.btnTestStreamKey  = document.getElementById('btnTestStreamKey');
+    this.testStreamResult  = document.getElementById('testStreamResult');
     this.btnStartStream    = document.getElementById('btnStartExternalStream');
     this.btnStopStream     = document.getElementById('btnStopExternalStream');
     this.streamStatusBadge = document.getElementById('streamStatusBadge');
@@ -122,6 +127,7 @@ export class MultiStreamManager {
         this.btnToggleKey.textContent = this.inputStreamKey.type === 'password' ? '👁️' : '🔒';
       }
     });
+    this.btnTestStreamKey?.addEventListener('click', () => this.testStreamKey());
 
     if (this.inputCloudRelay) {
       this.inputCloudRelay.value = this.getCloudRelayUrl();
@@ -155,6 +161,70 @@ export class MultiStreamManager {
     this.btnStopStream?.addEventListener('click',  () => this.stopBroadcast());
 
     this.onPlatformChanged();
+  }
+
+  async testStreamKey() {
+    const key = this.inputStreamKey?.value.trim() || '';
+    const platform = this.platformSelect?.value || 'youtube_rtmps';
+    const customUrl = this.inputCustomUrl?.value.trim() || '';
+    const resultBox = this.testStreamResult || document.getElementById('testStreamResult');
+    const btn = this.btnTestStreamKey || document.getElementById('btnTestStreamKey');
+
+    if (!key) {
+      if (resultBox) {
+        resultBox.style.display = 'block';
+        resultBox.style.background = 'rgba(255, 77, 77, 0.15)';
+        resultBox.style.color = '#ff6b6b';
+        resultBox.style.border = '1px solid rgba(255, 77, 77, 0.3)';
+        resultBox.textContent = '⚠️ Please enter your stream key first.';
+      }
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
+    if (resultBox) {
+      resultBox.style.display = 'block';
+      resultBox.style.background = 'rgba(0, 229, 255, 0.1)';
+      resultBox.style.color = '#00e5ff';
+      resultBox.style.border = '1px solid rgba(0, 229, 255, 0.25)';
+      resultBox.textContent = '⏳ Testing live connection to YouTube ingestion server…';
+    }
+
+    try {
+      const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1';
+      const targetHost = isLocalhost ? (location.port && location.port !== '3000' ? `${location.hostname}:3000` : location.host) : this.getCloudRelayUrl().replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+      const httpProto = isLocalhost && location.protocol !== 'https:' ? 'http:' : 'https:';
+      const params = new URLSearchParams({ key, platform, ...(customUrl ? { customUrl } : {}) });
+      const resp = await fetch(`${httpProto}//${targetHost}/api/stream/test-ffmpeg?${params}`, { cache: 'no-store' });
+      const data = await resp.json();
+
+      if (btn) { btn.disabled = false; btn.textContent = '🧪 Test Connection'; }
+
+      if (data.ok) {
+        if (resultBox) {
+          resultBox.style.background = 'rgba(0, 255, 136, 0.15)';
+          resultBox.style.color = '#00ff88';
+          resultBox.style.border = '1px solid rgba(0, 255, 136, 0.3)';
+          resultBox.innerHTML = '✅ <b>Connected Successfully!</b> YouTube accepted this stream key and is ready for live broadcast.';
+        }
+      } else {
+        const errDetail = data.results?.[0]?.logTail?.slice(-3).join(' ') || data.error || 'Connection rejected by destination.';
+        if (resultBox) {
+          resultBox.style.background = 'rgba(255, 77, 77, 0.15)';
+          resultBox.style.color = '#ff6b6b';
+          resultBox.style.border = '1px solid rgba(255, 77, 77, 0.3)';
+          resultBox.innerHTML = `❌ <b>Connection failed:</b> ${errDetail}<br><span style="font-size:0.7rem; color:#aaa; margin-top:4px; display:block;">💡 Check in YouTube Studio that the stream is active (not ended) and you copied the secret Stream Key.</span>`;
+        }
+      }
+    } catch (netErr) {
+      if (btn) { btn.disabled = false; btn.textContent = '🧪 Test Connection'; }
+      if (resultBox) {
+        resultBox.style.background = 'rgba(255, 77, 77, 0.15)';
+        resultBox.style.color = '#ff6b6b';
+        resultBox.style.border = '1px solid rgba(255, 77, 77, 0.3)';
+        resultBox.textContent = `❌ Network error: ${netErr.message}`;
+      }
+    }
   }
 
   openModal() {
