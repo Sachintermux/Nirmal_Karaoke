@@ -913,7 +913,26 @@ app.get('/api/stream/recent-logs', (_req, res) => {
  *  - Encodes AAC Stereo audio (128 kbps, 44.1 kHz)
  *  - Muxes to FLV and pushes to the RTMP/RTMPS URL (YouTube, Twitch, FB, etc.)
  */
-function spawnFfmpeg(rtmpUrl, onLog, onLive) {
+function spawnFfmpeg(rtmpUrl, onLog, onLive, quality = '540p') {
+  let scaleFilter = 'scale=960:540';
+  let videoBitrate = '1800k';
+  let bufSize = '3600k';
+
+  if (quality === '720p') {
+    scaleFilter = 'scale=1280:720';
+    videoBitrate = '2500k';
+    bufSize = '5000k';
+  } else if (quality === '480p') {
+    scaleFilter = 'scale=854:480';
+    videoBitrate = '1200k';
+    bufSize = '2400k';
+  } else {
+    // 540p default: optimal sweet-spot for YouTube Live on cloud container vCPU
+    scaleFilter = 'scale=960:540';
+    videoBitrate = '1800k';
+    bufSize = '3600k';
+  }
+
   const args = [
     // Error tolerance & fast probe on first 128KB chunk
     '-err_detect', 'ignore_err',
@@ -924,7 +943,9 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive) {
     // Input 0: Matroska/WebM live stream from browser via stdin
     '-f', 'matroska,webm',
     '-i', 'pipe:0',
-    // Video Transcode: H.264 Main profile, 2000 kbps, 30 fps, 2-second GOP (60 frames @ 30fps)
+    // Adaptive resolution scaling
+    '-vf', scaleFilter,
+    // Video Transcode: H.264 Main profile, 30 fps, 2-second GOP (60 frames @ 30fps)
     // Preset ultrafast is required for real-time (>= 1.0x) performance on cloud container vCPU
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
@@ -937,9 +958,9 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive) {
     '-sc_threshold', '0',
     '-flags', '+global_header',
     '-x264-params', 'keyint=60:min-keyint=60:scenecut=0:force-cfr=1',
-    '-b:v', '2000k',
-    '-maxrate', '2000k',
-    '-bufsize', '4000k',
+    '-b:v', videoBitrate,
+    '-maxrate', videoBitrate,
+    '-bufsize', bufSize,
     // Audio Transcode: AAC Stereo 44.1 kHz 128 Kbps with async resampler for clock sync
     '-c:a', 'aac',
     '-b:a', '128k',
@@ -953,7 +974,7 @@ function spawnFfmpeg(rtmpUrl, onLog, onLive) {
     rtmpUrl
   ];
 
-  console.info('[ffmpeg-stream] Spawning ffmpeg for RTMP:', rtmpUrl.replace(/\/[^/]+$/, '/***'));
+  console.info(`[ffmpeg-stream] Spawning ffmpeg [quality=${quality}, ${scaleFilter}] for RTMP:`, rtmpUrl.replace(/\/[^/]+$/, '/***'));
   const proc = spawn('ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] });
   let hasSignaledLive = false;
 
@@ -1007,6 +1028,7 @@ wss.on('connection', (ws, req) => {
   const platform  = url.searchParams.get('platform') || 'youtube';
   const streamKey = url.searchParams.get('key') || '';
   const customUrl = url.searchParams.get('customUrl') || '';
+  const quality   = url.searchParams.get('quality') || '540p';
   const sessionId = url.searchParams.get('sessionId') || ('ws_' + Math.random().toString(36).slice(2, 9));
   const roomName  = url.searchParams.get('roomName') || sessionId;
 
@@ -1078,7 +1100,7 @@ wss.on('connection', (ws, req) => {
   const startFfmpegForUrl = (targetUrl) => {
     recentLogs.length = 0;
     console.info(`[ffmpeg-stream] Launching FFmpeg for target: ${targetUrl.replace(streamKey, '***')} (attempt ${candidateIdx + 1}/${candidateUrls.length})`);
-    const proc = spawnFfmpeg(targetUrl, handleLog, handleLive);
+    const proc = spawnFfmpeg(targetUrl, handleLog, handleLive, quality);
     const record = { ffmpeg: proc, platform, streamKey, rtmpUrl: targetUrl, startedAt, sessionId, roomName };
     ffmpegStreams.set(roomName, record);
     activeStreams.set(roomName, { egressId: sessionId, platform, roomName, startedAt, status: 'live', method: 'ffmpeg-ws' });

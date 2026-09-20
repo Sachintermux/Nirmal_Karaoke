@@ -37,21 +37,33 @@ export class BroadcastCompositor {
       songBanner: true
     };
 
+    // Real-Time Layout & Theme
+    this.layout = 'spotlight'; // 'spotlight' | 'karaoke' | 'duet' | 'visualizer'
+    this.theme = 'cyberpunk';   // 'cyberpunk' | 'sunset' | 'midnight' | 'emerald'
+
+    // Live Modal Preview Monitor
+    this._previewCanvas = null;
+    this._previewCtx = null;
+
     this.loadSavedLayers();
   }
 
   loadSavedLayers() {
     try {
-      const saved = localStorage.getItem('nirmal_broadcast_layers');
-      if (saved) {
-        this.layers = Object.assign(this.layers, JSON.parse(saved));
-      }
+      const savedLayers = localStorage.getItem('nirmal_broadcast_layers');
+      if (savedLayers) this.layers = Object.assign(this.layers, JSON.parse(savedLayers));
+      const savedLayout = localStorage.getItem('nirmal_broadcast_layout');
+      if (savedLayout) this.layout = savedLayout;
+      const savedTheme = localStorage.getItem('nirmal_broadcast_theme');
+      if (savedTheme) this.theme = savedTheme;
     } catch (_) {}
   }
 
   saveLayers() {
     try {
       localStorage.setItem('nirmal_broadcast_layers', JSON.stringify(this.layers));
+      localStorage.setItem('nirmal_broadcast_layout', this.layout);
+      localStorage.setItem('nirmal_broadcast_theme', this.theme);
     } catch (_) {}
   }
 
@@ -60,6 +72,36 @@ export class BroadcastCompositor {
       this.layers[layerName] = !!enabled;
       this.saveLayers();
     }
+  }
+
+  setLayout(layoutName) {
+    const valid = ['spotlight', 'karaoke', 'duet', 'visualizer'];
+    if (valid.includes(layoutName)) {
+      this.layout = layoutName;
+      this.saveLayers();
+      console.info('[BroadcastCompositor] Layout switched to:', layoutName);
+    }
+  }
+
+  setTheme(themeName) {
+    const valid = ['cyberpunk', 'sunset', 'midnight', 'emerald'];
+    if (valid.includes(themeName)) {
+      this.theme = themeName;
+      this.saveLayers();
+      console.info('[BroadcastCompositor] Theme switched to:', themeName);
+    }
+  }
+
+  attachPreview(canvasEl) {
+    if (!canvasEl) return;
+    this._previewCanvas = canvasEl;
+    this._previewCtx = canvasEl.getContext('2d', { alpha: false });
+    this.start();
+  }
+
+  detachPreview() {
+    this._previewCanvas = null;
+    this._previewCtx = null;
   }
 
   /**
@@ -158,31 +200,66 @@ export class BroadcastCompositor {
     return new MediaStream(tracks);
   }
 
+  getThemeColors() {
+    switch (this.theme) {
+      case 'sunset':
+        return {
+          bg1: '#15081c', bg2: '#280c26', bg3: '#0f0516',
+          accent1: '#ffaa00', accent2: '#ff3366',
+          glow1: 'rgba(255, 170, 0, 0.12)', glow2: 'rgba(255, 51, 102, 0.10)',
+          border: 'rgba(255, 170, 0, 0.45)', textGlow: '#ffaa00'
+        };
+      case 'midnight':
+        return {
+          bg1: '#030712', bg2: '#0b1329', bg3: '#020617',
+          accent1: '#38bdf8', accent2: '#6366f1',
+          glow1: 'rgba(56, 189, 248, 0.12)', glow2: 'rgba(99, 102, 241, 0.10)',
+          border: 'rgba(56, 189, 248, 0.45)', textGlow: '#38bdf8'
+        };
+      case 'emerald':
+        return {
+          bg1: '#021a12', bg2: '#062e20', bg3: '#01120c',
+          accent1: '#10b981', accent2: '#4ade80',
+          glow1: 'rgba(16, 185, 129, 0.12)', glow2: 'rgba(74, 222, 128, 0.10)',
+          border: 'rgba(16, 185, 129, 0.45)', textGlow: '#10b981'
+        };
+      case 'cyberpunk':
+      default:
+        return {
+          bg1: '#0a0a14', bg2: '#120c1f', bg3: '#05070e',
+          accent1: '#00e5ff', accent2: '#ff007f',
+          glow1: 'rgba(0, 229, 255, 0.12)', glow2: 'rgba(255, 0, 128, 0.10)',
+          border: 'rgba(0, 229, 255, 0.45)', textGlow: '#00e5ff'
+        };
+    }
+  }
+
   drawScene() {
     const ctx = this.ctx;
     const w = this.width;
     const h = this.height;
     const time = performance.now() * 0.001;
+    const colors = this.getThemeColors();
 
-    // ─── 1. Background Stage ──────────────────────────────────────────────────
+    // ─── 1. Background Stage Theme ───────────────────────────────────────────
     const grad = ctx.createLinearGradient(0, 0, w, h);
-    grad.addColorStop(0, '#0a0a14');
-    grad.addColorStop(0.5, '#120c1f');
-    grad.addColorStop(1, '#05070e');
+    grad.addColorStop(0, colors.bg1);
+    grad.addColorStop(0.5, colors.bg2);
+    grad.addColorStop(1, colors.bg3);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // Subtle dynamic ambient glow circles (animated coordinates keep canvas dirty & video clock running)
+    // Dynamic ambient glow lights
     const pulse1 = Math.sin(time * 1.5) * 25;
     const pulse2 = Math.cos(time * 1.2) * 25;
     const glow1 = ctx.createRadialGradient(w * 0.2 + pulse1, h * 0.3 + pulse2, 20, w * 0.2 + pulse1, h * 0.3 + pulse2, 420);
-    glow1.addColorStop(0, 'rgba(0, 229, 255, 0.12)');
+    glow1.addColorStop(0, colors.glow1);
     glow1.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow1;
     ctx.fillRect(0, 0, w, h);
 
     const glow2 = ctx.createRadialGradient(w * 0.8 - pulse2, h * 0.4 + pulse1, 20, w * 0.8 - pulse2, h * 0.4 + pulse1, 460);
-    glow2.addColorStop(0, 'rgba(255, 0, 128, 0.10)');
+    glow2.addColorStop(0, colors.glow2);
     glow2.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow2;
     ctx.fillRect(0, 0, w, h);
@@ -191,9 +268,10 @@ export class BroadcastCompositor {
     let hasHostCam = false;
     let hasGuestCam = false;
 
-    // Find host video element in DOM
-    const hostVideoCard = document.querySelector('#liveStageVideoGrid [data-is-admin="1"] video');
-    const guestVideoCards = Array.from(document.querySelectorAll('#liveStageVideoGrid [data-is-admin="0"] video'));
+    // Find host and guest video elements in DOM
+    const hostVideoCard = document.querySelector('#liveStageVideoGrid [data-is-admin="1"] video')
+                       || document.querySelector('.stage-video-grid [data-is-admin="1"] video');
+    const guestVideoCards = Array.from(document.querySelectorAll('#liveStageVideoGrid [data-is-admin="0"] video, .stage-video-grid [data-is-admin="0"] video'));
 
     if (this.layers.hostCamera && hostVideoCard && hostVideoCard.videoWidth > 0 && !hostVideoCard.paused) {
       hasHostCam = true;
@@ -202,37 +280,57 @@ export class BroadcastCompositor {
       hasGuestCam = true;
     }
 
-    if (hasHostCam && hasGuestCam) {
-      // Split Screen: Host on left, Guest on right
-      this.drawVideoBox(ctx, hostVideoCard, 40, 100, 580, 360, '🎤 HOST SINGER');
-      this.drawVideoBox(ctx, guestVideoCards[0], 660, 100, 580, 360, '👥 GUEST DUET');
-    } else if (hasHostCam) {
-      // Single Host Camera (Center Top)
-      this.drawVideoBox(ctx, hostVideoCard, 340, 100, 600, 360, '🎤 HOST SINGER');
-    } else if (hasGuestCam) {
-      // Single Guest Camera
-      this.drawVideoBox(ctx, guestVideoCards[0], 340, 100, 600, 360, '👥 GUEST DUET');
+    const mode = this.layout || 'spotlight';
+
+    if (mode !== 'visualizer') {
+      if (mode === 'karaoke') {
+        // Karaoke Focus Layout: Big central lyrics, camera in top-right Picture-in-Picture
+        if (hasHostCam) {
+          this.drawVideoBox(ctx, hostVideoCard, w - 340, 90, 310, 185, '🎤 SINGER PIP', colors);
+        } else if (hasGuestCam) {
+          this.drawVideoBox(ctx, guestVideoCards[0], w - 340, 90, 310, 185, '👥 GUEST PIP', colors);
+        }
+      } else if (mode === 'duet' || (hasHostCam && hasGuestCam)) {
+        // Duet Split Screen: Host on left, Guest on right
+        if (hasHostCam) {
+          this.drawVideoBox(ctx, hostVideoCard, 40, 95, 580, 360, '🎤 HOST SINGER', colors);
+        }
+        if (hasGuestCam) {
+          this.drawVideoBox(ctx, guestVideoCards[0], 660, 95, 580, 360, '👥 GUEST DUET', colors);
+        }
+      } else if (hasHostCam) {
+        // Spotlight Layout: Center camera
+        this.drawVideoBox(ctx, hostVideoCard, 340, 95, 600, 360, '🎤 HOST SINGER', colors);
+      } else if (hasGuestCam) {
+        this.drawVideoBox(ctx, guestVideoCards[0], 340, 95, 600, 360, '👥 GUEST DUET', colors);
+      }
     }
 
     // ─── 3. Audio Visualizer Layer ────────────────────────────────────────────
     if (this.layers.visualizer) {
-      this.drawVisualizer(ctx, w, h, hasHostCam || hasGuestCam);
+      this.drawVisualizer(ctx, w, h, (hasHostCam || hasGuestCam) && mode !== 'visualizer', colors, mode);
     }
 
     // ─── 4. Karaoke Lyrics Layer ──────────────────────────────────────────────
     if (this.layers.lyrics) {
-      this.drawLyrics(ctx, w, h, hasHostCam || hasGuestCam);
+      this.drawLyrics(ctx, w, h, (hasHostCam || hasGuestCam) && mode !== 'visualizer', colors, mode);
     }
 
     // ─── 5. Stage Header & Song Banner ────────────────────────────────────────
     if (this.layers.songBanner) {
-      this.drawHeader(ctx, w, h);
+      this.drawHeader(ctx, w, h, colors);
+    }
+
+    // ─── 6. Live Modal Preview Monitor Mirroring ──────────────────────────────
+    if (this._previewCtx && this._previewCanvas) {
+      try {
+        this._previewCtx.drawImage(this.canvas, 0, 0, this._previewCanvas.width, this._previewCanvas.height);
+      } catch (_) {}
     }
   }
 
-  drawVideoBox(ctx, videoEl, x, y, width, height, label) {
+  drawVideoBox(ctx, videoEl, x, y, width, height, label, colors) {
     ctx.save();
-    // Rounded Card Background & Border
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, 16);
     ctx.clip();
@@ -241,7 +339,7 @@ export class BroadcastCompositor {
       ctx.drawImage(videoEl, x, y, width, height);
     } catch (_) {}
 
-    // Subtle dark gradient vignette at bottom of video
+    // Dark gradient vignette at bottom of video
     const vig = ctx.createLinearGradient(x, y + height - 60, x, y + height);
     vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
     vig.addColorStop(1, 'rgba(0, 0, 0, 0.85)');
@@ -252,7 +350,7 @@ export class BroadcastCompositor {
 
     // Border Glow
     ctx.save();
-    ctx.strokeStyle = 'rgba(0, 229, 255, 0.4)';
+    ctx.strokeStyle = colors?.border || 'rgba(0, 229, 255, 0.45)';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, 16);
@@ -263,13 +361,13 @@ export class BroadcastCompositor {
     ctx.beginPath();
     ctx.roundRect(x + 14, y + height - 38, 140, 26, 6);
     ctx.fill();
-    ctx.fillStyle = '#00e5ff';
+    ctx.fillStyle = colors?.accent1 || '#00e5ff';
     ctx.font = 'bold 12px sans-serif';
     ctx.fillText(label, x + 24, y + height - 21);
     ctx.restore();
   }
 
-  drawVisualizer(ctx, w, h, hasCameras) {
+  drawVisualizer(ctx, w, h, hasCameras, colors, mode) {
     const engine = this.audioEngine?.engine;
     let hasSignal = false;
 
@@ -283,28 +381,40 @@ export class BroadcastCompositor {
       }
     }
 
-    const numBars = 64;
+    const isVisMode = mode === 'visualizer';
+    const isKaraokeMode = mode === 'karaoke';
+    const numBars = isVisMode ? 96 : 64;
     const step = this._visDataArray ? Math.max(1, Math.floor(this._visDataArray.length / (numBars * 2))) : 1;
-    const baseY = hasCameras ? 490 : 420;
+    
+    let baseY = hasCameras ? 490 : 430;
+    let maxBarHeight = 110;
+
+    if (isVisMode) {
+      baseY = 460;
+      maxBarHeight = 220;
+    } else if (isKaraokeMode) {
+      baseY = 520;
+      maxBarHeight = 90;
+    }
+
     const barSpacing = w / (numBars + 8);
-    const barWidth = Math.max(4, barSpacing * 0.7);
+    const barWidth = Math.max(4, barSpacing * 0.72);
     const startX = (w - (numBars * barSpacing)) / 2;
     const time = performance.now() * 0.001;
 
     ctx.save();
-    const grad = ctx.createLinearGradient(0, baseY - 120, 0, baseY);
-    grad.addColorStop(0, '#00e5ff');
+    const grad = ctx.createLinearGradient(0, baseY - maxBarHeight, 0, baseY);
+    grad.addColorStop(0, colors?.accent1 || '#00e5ff');
     grad.addColorStop(0.5, '#a855f7');
-    grad.addColorStop(1, '#ff007f');
+    grad.addColorStop(1, colors?.accent2 || '#ff007f');
     ctx.fillStyle = grad;
 
     for (let i = 0; i < numBars; i++) {
       let val = (this._visDataArray && hasSignal) ? (this._visDataArray[i * step] || 0) : 0;
       if (!hasSignal) {
-        // Idle ambient equalizer wave: continuously animates dirty rect & keeps video encoder warm
         val = Math.floor((Math.sin(i * 0.22 + time * 2.8) * 0.5 + 0.5) * 55 + 12);
       }
-      const barHeight = Math.max(4, (val / 255) * 110);
+      const barHeight = Math.max(4, (val / 255) * maxBarHeight);
       const x = startX + (i * barSpacing);
       const y = baseY - barHeight;
 
@@ -315,11 +425,10 @@ export class BroadcastCompositor {
     ctx.restore();
   }
 
-  drawLyrics(ctx, w, h, hasCameras) {
+  drawLyrics(ctx, w, h, hasCameras, colors, mode) {
     let currentLine = '';
     let nextLine = '';
 
-    // Extract active lyric text from DOM or LyricsManager
     const activeEl = document.querySelector('.lyric-line.active');
     if (activeEl) {
       currentLine = activeEl.textContent?.trim() || '';
@@ -328,54 +437,68 @@ export class BroadcastCompositor {
         nextLine = nextEl.textContent?.trim() || '';
       }
     } else {
-      currentLine = '♪ ♫ ♪ Nirmal Karaoke Stage ♪ ♫ ♪';
+      currentLine = '♪ ♫ ♪ Nirmal Karaoke Live ♪ ♫ ♪';
       nextLine = 'Sing along with your favorite tracks';
     }
 
-    const y = hasCameras ? 560 : 540;
+    const isKaraokeMode = mode === 'karaoke';
+    const isVisMode = mode === 'visualizer';
+    let y = hasCameras ? 560 : 540;
+    let mainFontSize = 32;
+    let nextFontSize = 20;
+
+    if (isKaraokeMode) {
+      y = 310;
+      mainFontSize = 42;
+      nextFontSize = 24;
+    } else if (isVisMode) {
+      y = 530;
+      mainFontSize = 36;
+      nextFontSize = 22;
+    }
 
     ctx.save();
     ctx.textAlign = 'center';
 
     // Current Line Background Pill
     if (currentLine) {
-      ctx.font = 'bold 32px sans-serif';
+      ctx.font = `bold ${mainFontSize}px sans-serif`;
       const textWidth = ctx.measureText(currentLine).width;
       const pillW = Math.min(w - 80, textWidth + 60);
-      const pillH = 58;
+      const pillH = mainFontSize + 26;
 
-      ctx.fillStyle = 'rgba(10, 15, 30, 0.85)';
-      ctx.strokeStyle = 'rgba(0, 229, 255, 0.5)';
+      ctx.fillStyle = 'rgba(8, 12, 24, 0.88)';
+      ctx.strokeStyle = colors?.border || 'rgba(0, 229, 255, 0.5)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.roundRect((w - pillW) / 2, y, pillW, pillH, 14);
       ctx.fill();
       ctx.stroke();
 
-      // Current Line Text Glow & Typography
-      ctx.shadowColor = '#00e5ff';
-      ctx.shadowBlur = 12;
+      // Current Line Typography
+      ctx.shadowColor = colors?.textGlow || '#00e5ff';
+      ctx.shadowBlur = 14;
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(currentLine, w / 2, y + 40);
+      ctx.fillText(currentLine, w / 2, y + mainFontSize + 8);
     }
 
-    // Next Line (Preview below)
+    // Next Line Preview
     if (nextLine) {
       ctx.shadowBlur = 0;
-      ctx.font = '600 20px sans-serif';
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-      ctx.fillText(nextLine, w / 2, y + 90);
+      ctx.font = `600 ${nextFontSize}px sans-serif`;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+      ctx.fillText(nextLine, w / 2, y + mainFontSize + 45);
     }
 
     ctx.restore();
   }
 
-  drawHeader(ctx, w, h) {
+  drawHeader(ctx, w, h, colors) {
     const time = performance.now() * 0.001;
     ctx.save();
 
     // Top Header Bar
-    ctx.fillStyle = 'rgba(5, 5, 15, 0.75)';
+    ctx.fillStyle = 'rgba(5, 5, 15, 0.82)';
     ctx.fillRect(0, 0, w, 68);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.lineWidth = 1;
@@ -402,16 +525,16 @@ export class BroadcastCompositor {
 
     // Song Title / Track Info on Right
     const titleEl = document.getElementById('hudNote') || document.querySelector('.now-playing .title');
-    const songName = titleEl?.textContent?.trim() || 'Live Singing Session';
+    const songName = titleEl?.textContent?.trim() || 'Live Karaoke Session';
 
     ctx.textAlign = 'right';
-    ctx.fillStyle = '#00e5ff';
+    ctx.fillStyle = colors?.accent1 || '#00e5ff';
     ctx.font = 'bold 16px sans-serif';
     ctx.fillText('♫ ' + songName.slice(0, 45), w - 30, 42);
 
     ctx.restore();
 
-    // Trigger explicit frame capture on canvas video track if supported
+    // Explicit frame capture on canvas video track if supported
     if (this._videoTrack && typeof this._videoTrack.requestFrame === 'function') {
       try { this._videoTrack.requestFrame(); } catch (_) {}
     }

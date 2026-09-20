@@ -632,7 +632,50 @@
             Livestream your mixed karaoke audio, Auto-Tune vocals and video directly to YouTube Live, Twitch, Facebook or any custom RTMP server.
         </p>
 
+        <!-- Live Broadcast Scene Monitor (Interactive Preview Screen) -->
+        <div style="position:relative; width:100%; aspect-ratio:16/9; background:#05070e; border-radius:10px; overflow:hidden; border:1px solid rgba(0,229,255,0.35); margin-bottom:12px; box-shadow:0 8px 24px rgba(0,0,0,0.6);">
+            <canvas id="broadcastScenePreview" width="640" height="360" style="width:100%; height:100%; display:block; object-fit:cover;"></canvas>
+            <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; font-weight:800; color:#00e5ff; display:flex; align-items:center; gap:5px;">
+                <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#00e5ff;"></span> LIVE MONITOR (VIEWER FEED)
+            </div>
+            <div id="previewActiveLayoutBadge" style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; color:#00e5ff; font-weight:700;">
+                Spotlight Layout
+            </div>
+        </div>
+
         <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px;">
+            <!-- Real-Time Layout Switcher -->
+            <div>
+                <label style="font-size:0.72rem; font-weight:800; color:#00e5ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">LAYOUT PRESET</label>
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;" id="broadcastLayoutPills">
+                    <button type="button" class="button button-quiet" data-layout="spotlight" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px; background:rgba(0,229,255,0.15); border:1px solid #00e5ff; color:#00e5ff;">🎤 Spotlight</button>
+                    <button type="button" class="button button-quiet" data-layout="karaoke" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">🎼 Karaoke</button>
+                    <button type="button" class="button button-quiet" data-layout="duet" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">👥 Duet</button>
+                    <button type="button" class="button button-quiet" data-layout="visualizer" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">📊 Visualizer</button>
+                </div>
+            </div>
+
+            <!-- Stage Theme & Stream Resolution -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div>
+                    <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px;">STAGE THEME</label>
+                    <select id="selectStreamTheme" style="width:100%; padding:8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:0.78rem; font-weight:700;">
+                        <option value="cyberpunk" selected>⚡ Cyberpunk Neon</option>
+                        <option value="sunset">🌅 Sunset Glow</option>
+                        <option value="midnight">🌌 Midnight Electric</option>
+                        <option value="emerald">🌿 Emerald Stage</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px;">STREAM RESOLUTION</label>
+                    <select id="selectStreamQuality" style="width:100%; padding:8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:0.78rem; font-weight:700;">
+                        <option value="540p" selected>540p Smooth (Recommended)</option>
+                        <option value="720p">720p HD (High Bandwidth)</option>
+                        <option value="480p">480p Fast (Ultra-low Latency)</option>
+                    </select>
+                </div>
+            </div>
+
             <div>
                 <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px; letter-spacing:0.5px;">STREAM DESTINATION</label>
                 <select id="selectStreamPlatform" style="width:100%; padding:10px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-weight:700; font-size:0.85rem;">
@@ -664,7 +707,7 @@
 
             <!-- Broadcast Scene Content Selector -->
             <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
-                <label style="font-size:0.72rem; font-weight:800; color:#00e5ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">🎬 BROADCAST SCENE (CHOOSE WHAT VIEWERS SEE)</label>
+                <label style="font-size:0.72rem; font-weight:800; color:#00e5ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">🎬 BROADCAST SCENE LAYERS (TOGGLE ON/OFF)</label>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:0.78rem;">
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
                         <input type="checkbox" id="chkStreamVisualizer" checked style="accent-color:#00e5ff;">

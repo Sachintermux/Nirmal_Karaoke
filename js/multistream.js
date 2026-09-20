@@ -115,6 +115,15 @@ export class MultiStreamManager {
     this.chkHostCam        = document.getElementById('chkStreamHostCam');
     this.chkGuestCam       = document.getElementById('chkStreamGuestCam');
 
+    // Real-Time Preview & Layout Engine
+    this.previewCanvas        = document.getElementById('broadcastScenePreview');
+    this.previewLayoutBadge   = document.getElementById('previewActiveLayoutBadge');
+    this.selectTheme          = document.getElementById('selectStreamTheme');
+    this.selectQuality        = document.getElementById('selectStreamQuality');
+    this.layoutPillsContainer = document.getElementById('broadcastLayoutPills');
+
+    this.selectedQuality = localStorage.getItem('nirmal_stream_quality') || '540p';
+
     if (!this.modal) return;
 
     this.btnOpen?.addEventListener('click',  () => this.openModal());
@@ -137,6 +146,60 @@ export class MultiStreamManager {
       this.inputCloudRelay.addEventListener('input', () => {
         this.saveCloudRelayUrl(this.inputCloudRelay.value);
       });
+    }
+
+    // Bind Stage Theme Dropdown
+    if (this.selectTheme) {
+      this.selectTheme.value = this.compositor.theme;
+      this.selectTheme.addEventListener('change', () => {
+        this.compositor.setTheme(this.selectTheme.value);
+      });
+    }
+
+    // Bind Stream Quality Dropdown
+    if (this.selectQuality) {
+      this.selectQuality.value = this.selectedQuality;
+      this.selectQuality.addEventListener('change', () => {
+        this.selectedQuality = this.selectQuality.value;
+        try { localStorage.setItem('nirmal_stream_quality', this.selectedQuality); } catch (_) {}
+      });
+    }
+
+    // Bind Layout Preset Switcher Buttons
+    if (this.layoutPillsContainer) {
+      const pills = this.layoutPillsContainer.querySelectorAll('button[data-layout]');
+      const updatePillsUi = (activeLayout) => {
+        pills.forEach(btn => {
+          const isMatch = btn.getAttribute('data-layout') === activeLayout;
+          if (isMatch) {
+            btn.style.background = 'rgba(0,229,255,0.15)';
+            btn.style.border = '1px solid #00e5ff';
+            btn.style.color = '#00e5ff';
+          } else {
+            btn.style.background = 'transparent';
+            btn.style.border = '1px solid var(--border)';
+            btn.style.color = 'var(--text-dim)';
+          }
+        });
+        if (this.previewLayoutBadge) {
+          const labels = {
+            spotlight: '🎤 Spotlight Layout',
+            karaoke: '🎼 Karaoke Stage',
+            duet: '👥 Side-by-Side Duet',
+            visualizer: '📊 Full Visualizer'
+          };
+          this.previewLayoutBadge.textContent = labels[activeLayout] || activeLayout;
+        }
+      };
+      this._updatePillsUi = updatePillsUi;
+      pills.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const layoutName = btn.getAttribute('data-layout');
+          this.compositor.setLayout(layoutName);
+          updatePillsUi(layoutName);
+        });
+      });
+      updatePillsUi(this.compositor.layout);
     }
 
     // Bind Scene Layer Checkboxes
@@ -235,10 +298,25 @@ export class MultiStreamManager {
     if (this.chkLyrics) this.chkLyrics.checked = this.compositor.layers.lyrics;
     if (this.chkHostCam) this.chkHostCam.checked = this.compositor.layers.hostCamera;
     if (this.chkGuestCam) this.chkGuestCam.checked = this.compositor.layers.guestCamera;
+    if (this.selectTheme) this.selectTheme.value = this.compositor.theme;
+    if (this._updatePillsUi) this._updatePillsUi(this.compositor.layout);
+    if (this.selectQuality) this.selectQuality.value = this.selectedQuality;
+
+    // Attach live stage preview monitor
+    if (this.previewCanvas) {
+      this.compositor.attachPreview(this.previewCanvas);
+    }
+
     this.clearError();
   }
 
-  closeModal() { if (this.modal) this.modal.style.display = 'none'; }
+  closeModal() {
+    if (this.modal) this.modal.style.display = 'none';
+    this.compositor.detachPreview();
+    if (!this.isStreaming) {
+      this.compositor.stop();
+    }
+  }
 
   onPlatformChanged() {
     const plat = this.platformSelect?.value || 'youtube_rtmps';
@@ -473,6 +551,7 @@ export class MultiStreamManager {
         key: streamKey,
         roomName,
         sessionId: sid,
+        quality: this.selectedQuality || '540p',
         ...(customUrl ? { customUrl } : {})
       });
       const wsUrl = `${proto}://${targetHost}/api/stream/ws?${params}`;
