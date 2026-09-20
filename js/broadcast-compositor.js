@@ -64,6 +64,7 @@ export class BroadcastCompositor {
 
   /**
    * Start rendering the 30 FPS broadcast stage loop
+   * Uses an unthrottled Web Worker clock ticker so background tabs never drop below 30 FPS.
    */
   start() {
     if (this._isRunning) return;
@@ -78,16 +79,51 @@ export class BroadcastCompositor {
     // Draw initial frame immediately
     this.drawScene();
 
-    // Use a solid 33ms interval loop so background tabs never pause or throttle
-    this._timer = setInterval(() => {
-      if (this._isRunning) {
-        this.drawScene();
-      }
-    }, 33);
+    // Create an unthrottled Web Worker 33.3ms (30 FPS) clock ticker
+    try {
+      const workerBlob = new Blob([
+        `let intervalId = null;
+         self.onmessage = function(e) {
+           if (e.data === 'start') {
+             if (!intervalId) {
+               intervalId = setInterval(function() { self.postMessage('tick'); }, 33);
+             }
+           } else if (e.data === 'stop') {
+             if (intervalId) { clearInterval(intervalId); intervalId = null; }
+           }
+         };`
+      ], { type: 'application/javascript' });
+      this._workerUrl = URL.createObjectURL(workerBlob);
+      this._worker = new Worker(this._workerUrl);
+      this._worker.onmessage = () => {
+        if (this._isRunning) {
+          this.drawScene();
+        }
+      };
+      this._worker.postMessage('start');
+    } catch (workerErr) {
+      console.warn('[BroadcastCompositor] Web Worker clock fallback to setInterval:', workerErr);
+      this._timer = setInterval(() => {
+        if (this._isRunning) {
+          this.drawScene();
+        }
+      }, 33);
+    }
   }
 
   stop() {
     this._isRunning = false;
+    if (this._worker) {
+      try {
+        this._worker.postMessage('stop');
+        this._worker.terminate();
+      } catch (_) {}
+      this._worker = null;
+    }
+    if (this._workerUrl) {
+      try { URL.revokeObjectURL(this._workerUrl); } catch (_) {}
+      this._workerUrl = null;
+    }
     if (this._timer) {
       clearInterval(this._timer);
       this._timer = null;

@@ -703,9 +703,12 @@ function buildRtmpUrl(platform, streamKey, customUrl = '') {
     return key;
   }
 
-  if (plat === 'youtube') {
-    // RTMPS over port 443 bypasses cloud/container port 1935 firewall restrictions
+  if (plat === 'youtube_rtmps') {
     return `rtmps://a.rtmps.youtube.com:443/live2/${key}`;
+  }
+  if (plat === 'youtube') {
+    // Standard YouTube Live RTMP Ingestion URL
+    return `rtmp://a.rtmp.youtube.com/live2/${key}`;
   }
   if (plat === 'twitch') {
     return `rtmp://live.twitch.tv/app/${key}`;
@@ -725,13 +728,13 @@ function buildRtmpUrl(platform, streamKey, customUrl = '') {
  *  - Encodes AAC Stereo audio (128 kbps, 44.1 kHz)
  *  - Muxes to FLV and pushes to the RTMP/RTMPS URL (YouTube, Twitch, FB, etc.)
  */
-function spawnFfmpeg(rtmpUrl, onLog) {
+function spawnFfmpeg(rtmpUrl, onLog, onLive) {
   const args = [
-    // Error tolerance & timestamp recovery flags for live network pipe
+    // Error tolerance & fast probe on first 128KB chunk
     '-err_detect', 'ignore_err',
     '-fflags', '+nobuffer+flush_packets+genpts+discardcorrupt',
-    '-probesize', '1M',
-    '-analyzeduration', '2000000',
+    '-probesize', '128k',
+    '-analyzeduration', '500000',
     '-flags', '+low_delay+global_header',
     // Input 0: Matroska/WebM live stream from browser via stdin
     '-f', 'matroska,webm',
@@ -764,11 +767,18 @@ function spawnFfmpeg(rtmpUrl, onLog) {
 
   console.info('[ffmpeg-stream] Spawning ffmpeg for RTMP:', rtmpUrl.replace(/\/[^/]+$/, '/***'));
   const proc = spawn('ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+  let hasSignaledLive = false;
 
   proc.stderr.on('data', (d) => {
     const line = d.toString();
     if (onLog) onLog(line);
-    if (/frame=|fps=|bitrate=|speed=/.test(line)) {
+    if (/frame=\s*\d+/.test(line)) {
+      if (!hasSignaledLive && onLive) {
+        hasSignaledLive = true;
+        const frameMatch = line.match(/frame=\s*(\d+)/);
+        const bitrateMatch = line.match(/bitrate=\s*([\d\.]+\w+)/);
+        onLive({ frame: frameMatch?.[1] || 1, bitrate: bitrateMatch?.[1] || '2500kbits/s' });
+      }
       process.stdout.write('[ffmpeg] ' + line.trim() + '\r');
     } else if (line.trim()) {
       console.log('[ffmpeg log]', line.trim());
@@ -844,6 +854,18 @@ wss.on('connection', (ws, req) => {
     if (recentLogs.length > 30) recentLogs.shift();
   };
 
+  const handleLive = (stats) => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'live',
+        sessionId,
+        platform,
+        message: 'Broadcasting live to destination',
+        stats
+      }));
+    }
+  };
+
   ws.send(JSON.stringify({ type: 'ready', sessionId, platform, message: 'Ready for media chunks' }));
   console.info(`[ffmpeg-stream] Client connected sessionId=${sessionId} platform=${platform} room=${roomName}`);
 
@@ -852,7 +874,7 @@ wss.on('connection', (ws, req) => {
     if (!ffmpegProc) {
       startedAt = Date.now();
       console.info(`[ffmpeg-stream] First media chunk received (${chunk.length} bytes), spawning FFmpeg for RTMP...`);
-      ffmpegProc = spawnFfmpeg(rtmpUrl, handleLog);
+      ffmpegProc = spawnFfmpeg(rtmpUrl, handleLog, handleLive);
       const record = { ffmpeg: ffmpegProc, platform, streamKey, rtmpUrl, startedAt, sessionId, roomName };
       ffmpegStreams.set(roomName, record);
       activeStreams.set(roomName, { egressId: sessionId, platform, roomName, startedAt, status: 'live', method: 'ffmpeg-ws' });

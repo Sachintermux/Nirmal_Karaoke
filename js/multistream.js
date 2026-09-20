@@ -404,6 +404,20 @@ export class MultiStreamManager {
         clearTimeout(connectTimer);
         console.info('[MultiStream] WebSocket connected to backend. Starting unified MediaRecorder.');
         try {
+          // Flush any buffered chunks before new recording starts
+          if (this._pendingChunks && this._pendingChunks.length > 0) {
+            console.info(`[MultiStream] Flushing ${this._pendingChunks.length} queued media chunks...`);
+            while (this._pendingChunks.length > 0) {
+              const chunk = this._pendingChunks.shift();
+              try {
+                if (typeof chunk.arrayBuffer === 'function') {
+                  chunk.arrayBuffer().then(buf => { if (ws.readyState === WebSocket.OPEN) ws.send(buf); });
+                } else if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(chunk);
+                }
+              } catch (_) {}
+            }
+          }
           this._startMediaRecorder(stream, ws);
           resolve();
         } catch (recErr) {
@@ -417,7 +431,15 @@ export class MultiStreamManager {
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
-          if (msg.type === 'error') {
+          if (msg.type === 'live') {
+            console.info('[MultiStream] Destination confirmed LIVE broadcast:', msg.stats);
+            if (this.streamStatusBadge) {
+              const platLabel = (this.activePlatform || 'YOUTUBE').toUpperCase().replace('_RTMPS', ' RTMPS');
+              const rate = msg.stats?.bitrate ? ` (${msg.stats.bitrate})` : '';
+              this.streamStatusBadge.className = 'status-badge-live';
+              this.streamStatusBadge.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}${rate}`;
+            }
+          } else if (msg.type === 'error') {
             console.error('[MultiStream] Server streaming error:', msg.message);
             this.showError('Stream error: ' + msg.message);
             this.stopBroadcast();
