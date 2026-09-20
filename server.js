@@ -50,6 +50,88 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'nirmal-karaoke-web', transport: 'livekit-sfu', livekitConfigured: livekitConfigured() });
 });
 
+app.get('/api/stream/diag', async (_req, res) => {
+  const dns = require('dns').promises;
+  const net = require('net');
+  const tls = require('tls');
+  const { exec } = require('child_process');
+
+  const results = {
+    timestamp: new Date().toISOString(),
+    platform: process.platform,
+    nodeVersion: process.version,
+    env: process.env.NODE_ENV
+  };
+
+  // 1. DNS check
+  try {
+    const ytDns = await dns.lookup('a.rtmps.youtube.com', { all: true });
+    results.dns_rtmps = ytDns;
+  } catch (e) {
+    results.dns_rtmps = { error: e.message };
+  }
+
+  try {
+    const ytDnsStandard = await dns.lookup('a.rtmp.youtube.com', { all: true });
+    results.dns_rtmp = ytDnsStandard;
+  } catch (e) {
+    results.dns_rtmp = { error: e.message };
+  }
+
+  // 2. TCP Port 443 check (RTMPS)
+  results.tcp_443 = await new Promise((resolve) => {
+    const start = Date.now();
+    const sock = net.connect({ host: 'a.rtmps.youtube.com', port: 443, timeout: 3500 }, () => {
+      const elapsed = Date.now() - start;
+      sock.destroy();
+      resolve({ open: true, elapsedMs: elapsed });
+    });
+    sock.on('timeout', () => { sock.destroy(); resolve({ open: false, error: 'TIMEOUT (3500ms)' }); });
+    sock.on('error', (err) => resolve({ open: false, error: err.message }));
+  });
+
+  // 3. TCP Port 1935 check (Standard RTMP)
+  results.tcp_1935 = await new Promise((resolve) => {
+    const start = Date.now();
+    const sock = net.connect({ host: 'a.rtmp.youtube.com', port: 1935, timeout: 3500 }, () => {
+      const elapsed = Date.now() - start;
+      sock.destroy();
+      resolve({ open: true, elapsedMs: elapsed });
+    });
+    sock.on('timeout', () => { sock.destroy(); resolve({ open: false, error: 'TIMEOUT (3500ms)' }); });
+    sock.on('error', (err) => resolve({ open: false, error: err.message }));
+  });
+
+  // 4. TLS Handshake on 443
+  results.tls_443 = await new Promise((resolve) => {
+    const start = Date.now();
+    const tlsSock = tls.connect({
+      host: 'a.rtmps.youtube.com',
+      port: 443,
+      servername: 'a.rtmps.youtube.com',
+      timeout: 3500
+    }, () => {
+      const elapsed = Date.now() - start;
+      const cert = tlsSock.getPeerCertificate(false);
+      tlsSock.destroy();
+      resolve({ ok: true, elapsedMs: elapsed, subject: cert?.subject?.CN });
+    });
+    tlsSock.on('timeout', () => { tlsSock.destroy(); resolve({ ok: false, error: 'TIMEOUT (3500ms)' }); });
+    tlsSock.on('error', (err) => resolve({ ok: false, error: err.message }));
+  });
+
+  // 5. FFmpeg check
+  results.ffmpeg = await new Promise((resolve) => {
+    exec('ffmpeg -version', (err, stdout) => {
+      if (err) return resolve({ installed: false, error: err.message });
+      const firstLine = stdout.split('\n')[0] || '';
+      resolve({ installed: true, version: firstLine.trim() });
+    });
+  });
+
+  res.json({ ok: true, diagnostics: results });
+});
+
 app.get('/api/livekit/config', (_req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
