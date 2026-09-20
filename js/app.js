@@ -14,7 +14,7 @@ const searchManager = new MusicSearchManager(audioEngine, lyricsManager);
 const visualizer = new VisualizerRenderer(audioEngine);
 const liveHost = new LiveStreamHost(audioEngine);
 const presence = new PresenceManager();
-const multistream = new MultiStreamManager(liveHost);
+const multistream = new MultiStreamManager(liveHost, audioEngine, lyricsManager);
 
 let stopClockSync = () => {};
 let pushPlaybackClock = () => {};
