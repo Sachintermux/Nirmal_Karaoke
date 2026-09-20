@@ -2,16 +2,18 @@
  * Multistream / External RTMP Livestreaming Manager
  * Streams live karaoke audio to YouTube Live, Twitch, Facebook Live & Custom RTMP.
  *
- * Architecture (no LiveKit Egress needed — works on FREE LiveKit plan):
+ * Architecture:
  *   Browser AudioContext mix
  *     → MediaRecorder (WebM/Opus, 250ms chunks)
- *       → WebSocket (/api/stream/ws)
+ *       → WebSocket (/api/stream/ws on Render cloud relay or localhost)
  *         → Node.js server
- *           → ffmpeg (AAC + black video frame)
+ *           → FFmpeg (FLV with AAC stereo audio + black video frame)
  *             → RTMP → YouTube / Twitch / Facebook
  */
 
 const STORAGE_KEY_STREAM_KEYS = 'nirmal_karaoke_stream_keys';
+const STORAGE_KEY_RELAY_URL   = 'nirmal_stream_relay_url';
+const DEFAULT_CLOUD_RELAY_URL = 'https://nirmal-karaoke.onrender.com';
 
 export class MultiStreamManager {
   constructor(liveHost) {
@@ -21,6 +23,7 @@ export class MultiStreamManager {
     this.activePlatform = null;
     this.startTime = null;
     this.timerInterval = null;
+    this.streamMethod = 'websocket';
 
     /** @type {MediaRecorder|null} */
     this._recorder = null;
@@ -56,23 +59,39 @@ export class MultiStreamManager {
     try { localStorage.setItem(STORAGE_KEY_STREAM_KEYS, JSON.stringify(this.savedKeys)); } catch (_) {}
   }
 
+  getCloudRelayUrl() {
+    const saved = localStorage.getItem(STORAGE_KEY_RELAY_URL);
+    if (saved && saved.trim()) return saved.trim();
+    if (typeof window !== 'undefined' && window.NIRMAL_STREAM_RELAY_URL && window.NIRMAL_STREAM_RELAY_URL.trim()) {
+      return window.NIRMAL_STREAM_RELAY_URL.trim();
+    }
+    return DEFAULT_CLOUD_RELAY_URL;
+  }
+
+  saveCloudRelayUrl(url) {
+    try {
+      localStorage.setItem(STORAGE_KEY_RELAY_URL, String(url || '').trim());
+    } catch (_) {}
+  }
+
   // ─── UI Init ──────────────────────────────────────────────────────────────
 
   initUI() {
-    this.modal            = document.getElementById('modalExternalStream');
-    this.btnOpen          = document.getElementById('btnOpenMultistream');
-    this.btnClose         = document.getElementById('btnCloseMultistream');
-    this.platformSelect   = document.getElementById('selectStreamPlatform');
-    this.customUrlWrap    = document.getElementById('wrapCustomRtmpUrl');
-    this.inputCustomUrl   = document.getElementById('inputCustomRtmpUrl');
-    this.inputStreamKey   = document.getElementById('inputStreamKey');
-    this.btnToggleKey     = document.getElementById('btnToggleStreamKey');
-    this.btnStartStream   = document.getElementById('btnStartExternalStream');
-    this.btnStopStream    = document.getElementById('btnStopExternalStream');
+    this.modal             = document.getElementById('modalExternalStream');
+    this.btnOpen           = document.getElementById('btnOpenMultistream');
+    this.btnClose          = document.getElementById('btnCloseMultistream');
+    this.platformSelect    = document.getElementById('selectStreamPlatform');
+    this.customUrlWrap     = document.getElementById('wrapCustomRtmpUrl');
+    this.inputCustomUrl    = document.getElementById('inputCustomRtmpUrl');
+    this.inputStreamKey    = document.getElementById('inputStreamKey');
+    this.inputCloudRelay   = document.getElementById('inputCloudRelayUrl');
+    this.btnToggleKey      = document.getElementById('btnToggleStreamKey');
+    this.btnStartStream    = document.getElementById('btnStartExternalStream');
+    this.btnStopStream     = document.getElementById('btnStopExternalStream');
     this.streamStatusBadge = document.getElementById('streamStatusBadge');
-    this.streamTimer      = document.getElementById('streamTimer');
+    this.streamTimer       = document.getElementById('streamTimer');
     this.streamErrorNotice = document.getElementById('streamErrorNotice');
-    this.topbarBadge      = document.getElementById('badgeExternalStreamLive');
+    this.topbarBadge       = document.getElementById('badgeExternalStreamLive');
 
     if (!this.modal) return;
 
@@ -86,13 +105,30 @@ export class MultiStreamManager {
         this.btnToggleKey.textContent = this.inputStreamKey.type === 'password' ? '👁️' : '🔒';
       }
     });
+
+    if (this.inputCloudRelay) {
+      this.inputCloudRelay.value = this.getCloudRelayUrl();
+      this.inputCloudRelay.addEventListener('change', () => {
+        this.saveCloudRelayUrl(this.inputCloudRelay.value);
+      });
+      this.inputCloudRelay.addEventListener('input', () => {
+        this.saveCloudRelayUrl(this.inputCloudRelay.value);
+      });
+    }
+
     this.btnStartStream?.addEventListener('click', () => this.startBroadcast());
     this.btnStopStream?.addEventListener('click',  () => this.stopBroadcast());
 
     this.onPlatformChanged();
   }
 
-  openModal()  { if (this.modal) this.modal.style.display = 'flex'; this.onPlatformChanged(); this.clearError(); }
+  openModal()  {
+    if (this.modal) this.modal.style.display = 'flex';
+    this.onPlatformChanged();
+    if (this.inputCloudRelay) this.inputCloudRelay.value = this.getCloudRelayUrl();
+    this.clearError();
+  }
+
   closeModal() { if (this.modal) this.modal.style.display = 'none'; }
 
   onPlatformChanged() {
@@ -123,9 +159,9 @@ export class MultiStreamManager {
 
   async startBroadcast() {
     this.clearError();
-    const platform  = this.platformSelect?.value || 'youtube';
-    const streamKey = this.inputStreamKey?.value.trim() || '';
-    const customUrl = this.inputCustomUrl?.value.trim() || '';
+    const platform   = this.platformSelect?.value || 'youtube';
+    const streamKey  = this.inputStreamKey?.value.trim() || '';
+    const customUrl  = this.inputCustomUrl?.value.trim() || '';
 
     if (!streamKey) { this.showError('Please enter your stream key to go live.'); return; }
     if (platform === 'custom' && !customUrl) {
@@ -134,16 +170,35 @@ export class MultiStreamManager {
     }
 
     this.saveKey(platform, streamKey, customUrl);
+    if (this.inputCloudRelay?.value) {
+      this.saveCloudRelayUrl(this.inputCloudRelay.value);
+    }
 
-    // Ensure the LiveKit room is live (so audio is being mixed)
-    if (this.btnStartStream) { this.btnStartStream.disabled = true; this.btnStartStream.textContent = 'Connecting…'; }
+    if (this.btnStartStream) {
+      this.btnStartStream.disabled = true;
+      this.btnStartStream.textContent = 'Connecting Stage…';
+    }
 
+    // 1. Ensure Audio Engine is booted & AudioContext is active
+    const audioEngine = this.liveHost?.impl?.audioEngine || this.liveHost?.audioEngine;
+    if (audioEngine) {
+      try {
+        if (!audioEngine.ctx) await audioEngine.boot();
+        if (audioEngine.ctx && audioEngine.ctx.state === 'suspended') {
+          await audioEngine.ctx.resume();
+        }
+      } catch (aeErr) {
+        console.warn('[MultiStream] AudioEngine boot notice:', aeErr);
+      }
+    }
+
+    // 2. Ensure LiveKit Room is created & Program Audio Published
     let roomName = this.liveHost?.roomId;
     if (!roomName || this.liveHost?.room?.state !== 'connected') {
       try {
         this.setStatus('Connecting Stage…');
         roomName = await this.liveHost.createRoom(true);
-        await new Promise(r => setTimeout(r, 1200));
+        await new Promise(r => setTimeout(r, 1000));
         await this.liveHost.ensureProgramAudioPublished?.();
       } catch (err) {
         this.showError('Could not start live stage: ' + (err.message || err));
@@ -154,17 +209,17 @@ export class MultiStreamManager {
       try { await this.liveHost.ensureProgramAudioPublished?.(); } catch (_) {}
     }
 
-    // Get the mixed audio stream from the AudioContext
+    // 3. Get the mixed audio stream
     const mixedStream = this.liveHost?.impl?.audioEngine?.engine?.dest?.stream
                      || this.liveHost?.audioEngine?.engine?.dest?.stream;
 
     if (!mixedStream || mixedStream.getAudioTracks().length === 0) {
-      this.showError('No audio mix available. Start playing a song or speak into the mic first, then try again.');
+      this.showError('No audio mix ready. Tap "Go Live" or play a song, then try starting the stream again.');
       this.resetStartButton();
       return;
     }
 
-    this.setStatus('Starting stream…');
+    this.setStatus('Connecting Server…');
 
     const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1';
 
@@ -172,41 +227,39 @@ export class MultiStreamManager {
     let lastError = null;
 
     if (isLocalhost) {
-      // Local development: use browser MediaRecorder -> local WebSocket -> ffmpeg
+      // Local development: route to local Node server on current port / 3000
       try {
-        await this._startWebSocketStream(roomName, platform, streamKey, customUrl, mixedStream, location.host);
+        const localTarget = (location.port && location.port !== '3000') ? `${location.hostname}:3000` : location.host;
+        await this._startWebSocketStream(roomName, platform, streamKey, customUrl, mixedStream, localTarget);
         started = true;
       } catch (wsErr) {
         lastError = wsErr;
       }
     } else {
-      // Remote (Netlify / Vercel) deployment:
-      // 1. Check for configured Cloud Backend Relay URL (Render, Railway, VPS, etc.)
-      const cloudRelay = window.NIRMAL_STREAM_RELAY_URL 
-                      || localStorage.getItem('nirmal_stream_relay_url') 
-                      || '';
-
+      // Remote / Netlify / Vercel deployment:
+      // Option A: Use configured Cloud Streaming Relay (Render / Railway / VPS)
+      const cloudRelay = this.getCloudRelayUrl();
       if (cloudRelay) {
         try {
           const cleanHost = cloudRelay.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
-          console.info(`[MultiStream] Connecting to configured Cloud Streaming Relay: ${cleanHost}`);
+          console.info(`[MultiStream] Connecting to Cloud Streaming Relay: ${cleanHost}`);
           await this._startWebSocketStream(roomName, platform, streamKey, customUrl, mixedStream, cleanHost);
           started = true;
         } catch (cloudRelayErr) {
-          console.warn('[MultiStream] Configured cloud relay failed:', cloudRelayErr?.message);
+          console.warn('[MultiStream] Cloud relay connection failed:', cloudRelayErr?.message);
           lastError = cloudRelayErr;
         }
       }
 
-      // 2. Try local relay (if host is running 'node server.js' on localhost:3000)
+      // Option B: Try local relay (if host is running 'node server.js' on localhost:3000)
       if (!started) {
         try {
           console.info('[MultiStream] Attempting local relay on 127.0.0.1:3000...');
           await this._startWebSocketStream(roomName, platform, streamKey, customUrl, mixedStream, '127.0.0.1:3000');
           started = true;
         } catch (localRelayErr) {
-          console.info('[MultiStream] Local relay not active, attempting Cloud LiveKit Egress fallback...');
-          // 3. Cloud LiveKit Egress fallback
+          console.info('[MultiStream] Local relay not available, trying Cloud LiveKit Egress fallback...');
+          // Option C: Cloud LiveKit Egress fallback
           try {
             await this._startCloudEgressStream(roomName, platform, streamKey, customUrl);
             started = true;
@@ -219,44 +272,42 @@ export class MultiStreamManager {
 
     if (!started) {
       console.error('[MultiStream] start failed:', lastError);
-      if (!isLocalhost) {
-        this.showError(
-          'Streaming requires a live Node+FFmpeg backend (or LiveKit Egress).\n\n' +
-          '💡 Options to stream:\n' +
-          '1. Deploy your backend to Render / Railway using the provided Dockerfile.\n' +
-          '2. Open the app locally at http://localhost:3000 (with "node server.js").\n' +
-          '3. Or use OBS Studio to stream this window directly to YouTube.'
-        );
-      } else {
-        this.showError(lastError?.message || 'Stream connection failed. Make sure "node server.js" is running in terminal.');
-      }
+      this.showError(lastError?.message || 'Could not connect to streaming server. Check your Cloud Server URL in settings.');
       this.resetStartButton();
       return;
     }
 
-    this.isStreaming   = true;
+    this.isStreaming    = true;
     this.activePlatform = platform;
-    this.startTime     = Date.now();
+    this.startTime      = Date.now();
     this.updateStateUI();
     this.startTimer();
     this.resetStartButton();
   }
 
-  // ─── WebSocket + MediaRecorder pipeline (Local) ───────────────────────────
+  // ─── WebSocket + MediaRecorder pipeline ───────────────────────────────────
 
-  async _startWebSocketStream(roomName, platform, streamKey, customUrl, mixedStream, targetHost = 'localhost:3000') {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const httpProto = location.protocol === 'https:' ? 'https:' : 'http:';
+  async _startWebSocketStream(roomName, platform, streamKey, customUrl, mixedStream, targetHost) {
+    const isLocal = targetHost.includes('localhost') || targetHost.includes('127.0.0.1');
+    const proto = isLocal && location.protocol !== 'https:' ? 'ws' : 'wss';
+    const httpProto = isLocal && location.protocol !== 'https:' ? 'http:' : 'https:';
 
-    // Pre-flight health check to verify backend server is reachable
+    // Fast non-blocking pre-flight health check (4s timeout)
     try {
-      const healthCheck = await fetch(`${httpProto}//${targetHost}/api/health`, { cache: 'no-store' });
+      const controller = new AbortController();
+      const hTimer = setTimeout(() => controller.abort(), 4000);
+      const healthCheck = await fetch(`${httpProto}//${targetHost}/api/health`, {
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      clearTimeout(hTimer);
       if (!healthCheck.ok) throw new Error(`Server returned ${healthCheck.status}`);
     } catch (netErr) {
-      throw new Error(`Cannot reach local server on ${httpProto}//${targetHost}. Ensure 'node server.js' is running.`);
+      console.info(`[MultiStream] Pre-flight notice for ${targetHost} (${netErr.message}) — proceeding with WebSocket.`);
     }
 
     return new Promise((resolve, reject) => {
+      let resolved = false;
       const sid = 'ms_' + Math.random().toString(36).slice(2, 9);
       const params = new URLSearchParams({
         platform,
@@ -277,17 +328,19 @@ export class MultiStreamManager {
       ws.binaryType = 'arraybuffer';
       this._ws = ws;
 
-      const CONNECT_TIMEOUT = 10000;
+      const CONNECT_TIMEOUT = 12000;
       let connectTimer = setTimeout(() => {
-        if (ws.readyState !== WebSocket.OPEN) {
-          ws.close();
-          reject(new Error(`WebSocket connection timed out on ${wsUrl}.`));
+        if (!resolved) {
+          try { ws.close(); } catch (_) {}
+          reject(new Error(`Connection to streaming server timed out (${targetHost}). Make sure Render service is awake.`));
         }
       }, CONNECT_TIMEOUT);
 
       ws.onopen = () => {
+        if (resolved) return;
+        resolved = true;
         clearTimeout(connectTimer);
-        console.info('[MultiStream] WebSocket connected. Starting MediaRecorder.');
+        console.info('[MultiStream] WebSocket connected to backend. Starting MediaRecorder.');
         this._startMediaRecorder(mixedStream, ws);
         resolve();
       };
@@ -296,31 +349,32 @@ export class MultiStreamManager {
         try {
           const msg = JSON.parse(ev.data);
           if (msg.type === 'error') {
-            console.error('[MultiStream] server error:', msg.message);
+            console.error('[MultiStream] Server streaming error:', msg.message);
             this.showError('Stream error: ' + msg.message);
             this.stopBroadcast();
           } else if (msg.type === 'stopped') {
-            console.info('[MultiStream] server stopped stream');
+            console.info('[MultiStream] Server signaled stream stopped');
             if (this.isStreaming) this.stopBroadcast();
           }
         } catch (_) {}
       };
 
       ws.onerror = (e) => {
-        clearTimeout(connectTimer);
-        console.error('[MultiStream] WebSocket error', e);
-        reject(new Error('WebSocket connection error.'));
+        if (!resolved) {
+          clearTimeout(connectTimer);
+          reject(new Error(`WebSocket connection error to ${targetHost}. Verify server is running and CORS is enabled.`));
+        }
       };
 
       ws.onclose = (ev) => {
         clearTimeout(connectTimer);
         if (this.isStreaming && this.streamMethod === 'websocket') {
-          console.warn('[MultiStream] WebSocket closed:', ev.code, ev.reason);
+          console.warn('[MultiStream] WebSocket closed unexpectedly:', ev.code, ev.reason);
           this._stopMediaRecorder();
           this.isStreaming = false;
           this.stopTimer();
           this.updateStateUI();
-          this.showError('Stream disconnected. Check terminal logs.');
+          this.showError('Stream disconnected. Please try starting again.');
         }
       };
     });
@@ -356,7 +410,6 @@ export class MultiStreamManager {
   }
 
   _startMediaRecorder(mixedStream, ws) {
-    // Pick the best supported MIME type
     const mimeTypes = [
       'audio/webm;codecs=opus',
       'audio/webm',
@@ -372,7 +425,6 @@ export class MultiStreamManager {
         audioBitsPerSecond: 128000
       });
     } catch (e) {
-      // Fallback: no options
       recorder = new MediaRecorder(mixedStream);
     }
 
@@ -381,9 +433,8 @@ export class MultiStreamManager {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(ev.data);
       } else {
-        // Buffer briefly in case WS is mid-reconnect
         this._pendingChunks.push(ev.data);
-        if (this._pendingChunks.length > 20) this._pendingChunks.shift(); // cap buffer
+        if (this._pendingChunks.length > 20) this._pendingChunks.shift();
       }
     };
 
@@ -396,7 +447,6 @@ export class MultiStreamManager {
       console.info('[MultiStream] MediaRecorder stopped');
     };
 
-    // 250ms chunks = low latency with manageable overhead
     recorder.start(250);
     this._recorder = recorder;
     console.info('[MultiStream] MediaRecorder started', { mimeType: recorder.mimeType });
@@ -417,9 +467,11 @@ export class MultiStreamManager {
 
     this._stopMediaRecorder();
 
-    // Tell server to stop stream
     const roomName  = this.liveHost?.roomId;
     const sessionId = this.sessionId;
+    const targetHost = this.getCloudRelayUrl().replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+    const httpProto = location.protocol === 'https:' ? 'https:' : 'http:';
+
     if (this.streamMethod === 'egress') {
       try {
         await fetch('/api/stream/stop-egress', {
@@ -429,16 +481,19 @@ export class MultiStreamManager {
         });
       } catch (_) {}
     } else {
-      try {
-        await fetch('/api/stream/stop-ffmpeg', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roomName, sessionId })
-        });
-      } catch (_) {}
+      // Stop on local and on Render
+      const targets = ['/api/stream/stop-ffmpeg', `${httpProto}//${targetHost}/api/stream/stop-ffmpeg`];
+      for (const t of targets) {
+        try {
+          await fetch(t, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomName, sessionId })
+          });
+        } catch (_) {}
+      }
     }
 
-    // Close WebSocket
     if (this._ws) {
       try { this._ws.close(); } catch (_) {}
       this._ws = null;
