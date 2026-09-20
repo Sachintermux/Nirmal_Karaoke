@@ -1,0 +1,259 @@
+/* ==========================================================================
+   BGMI / FREE FIRE STYLE DUET & AUDIENCE INVITATION POPUP
+   ========================================================================== */
+
+.game-invite-overlay {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 999999;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  pointer-events: auto;
+  perspective: 1000px;
+  animation: gameInviteSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes gameInviteSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-24px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.game-invite-overlay.slide-out {
+  animation: gameInviteSlideOut 0.35s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+}
+
+@keyframes gameInviteSlideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.85);
+  }
+}
+
+.game-invite-card {
+  position: relative;
+  background: linear-gradient(135deg, rgba(16, 20, 29, 0.96) 0%, rgba(9, 11, 17, 0.98) 100%);
+  border: 1.5px solid rgba(0, 229, 255, 0.55);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 
+    0 12px 35px rgba(0, 0, 0, 0.8),
+    0 0 24px rgba(0, 229, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(16px);
+  overflow: hidden;
+}
+
+/* Free fire / BGMI top accent bar with neon sweep */
+.game-invite-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #ff0077, #ffbb00, #00e5ff, #00ff88);
+  background-size: 200% 100%;
+  animation: gameAccentSweep 3s linear infinite;
+}
+
+@keyframes gameAccentSweep {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.game-invite-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.game-invite-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #ffbb00;
+  background: rgba(255, 187, 0, 0.12);
+  border: 1px solid rgba(255, 187, 0, 0.35);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.game-invite-timer-text {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #00e5ff;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-invite-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.game-invite-avatar-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.game-invite-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #252d3d, #0d1117);
+  border: 2px solid rgba(0, 229, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+}
+
+.game-invite-avatar-ring {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 187, 0, 0.7);
+  animation: gameRingRotate 6s linear infinite;
+}
+
+@keyframes gameRingRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.game-invite-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.game-invite-inviter {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.game-invite-status {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+.game-invite-room-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  color: #38bdf8;
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+/* Progress bar timer */
+.game-invite-progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.game-invite-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #00e5ff, #00ff88);
+  width: 100%;
+  transition: width 1s linear;
+}
+
+.game-invite-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 10px;
+}
+
+.btn-game-decline {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+  font-weight: 800;
+  font-size: 0.78rem;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.btn-game-decline:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: #ef4444;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.btn-game-accept {
+  background: linear-gradient(135deg, #059669 0%, #10b981 50%, #00e5ff 100%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+  font-weight: 900;
+  font-size: 0.82rem;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.45);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  letter-spacing: 0.4px;
+}
+
+.btn-game-accept:hover {
+  box-shadow: 0 6px 22px rgba(0, 229, 255, 0.65);
+  transform: translateY(-1.5px) scale(1.02);
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+  .game-invite-overlay {
+    top: auto;
+    bottom: 74px; /* above mobile nav */
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+  }
+}

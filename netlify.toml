@@ -1,0 +1,27 @@
+[build]
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+[[redirects]]
+  from = "/api/livekit/*"
+  to = "/.netlify/functions/livekit-token"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/presence/*"
+  to = "/.netlify/functions/presence"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/stream/*"
+  to = "/.netlify/functions/livekit-token"
+  status = 200
+  force = true
+
+

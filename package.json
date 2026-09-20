@@ -1,0 +1,17 @@
+{
+  "name": "nirmal-karaoke-web",
+  "version": "14.0.0",
+  "private": true,
+  "description": "Web-only low-latency karaoke broadcast and duet app using Web Audio + LiveKit SFU",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.3",
+    "livekit-server-sdk": "^2.19.0",
+    "ws": "^8.21.3"
+  }
+}

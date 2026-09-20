@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport">
+    <title>Live Singers & Duet Lobby — Nirmal Karaoke</title>
+    <link href="./css/style.css?v=24" rel="stylesheet">
+    <link href="./css/game-invite.css?v=24" rel="stylesheet">
+    <style>
+        body {
+            background: radial-gradient(circle at center, #10141e 0%, #06070a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px;
+            color: #f1f5f9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            box-sizing: border-box;
+        }
+
+        .lobby-container {
+            width: 100%;
+            max-width: 640px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .lobby-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+
+        .btn-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--border);
+            color: #f1f5f9;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-back:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: #00e5ff;
+            color: #00e5ff;
+        }
+
+        .lobby-title-box {
+            text-align: center;
+        }
+
+        .lobby-title {
+            font-size: 0.95rem;
+            font-weight: 900;
+            letter-spacing: 0.8px;
+            background: linear-gradient(90deg, #00e5ff, #ffbb00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0;
+            text-transform: uppercase;
+        }
+
+        .lobby-badge-live {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            color: #00ff88;
+        }
+
+        .lobby-badge-live::before {
+            content: '';
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #00ff88;
+            box-shadow: 0 0 8px #00ff88;
+            animation: pulseDot 1.5s infinite;
+        }
+
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+
+        /* User Profile Card */
+        .my-profile-card {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+            border: 1px solid rgba(0, 229, 255, 0.35);
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+        }
+
+        .my-profile-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .my-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(0, 229, 255, 0.15);
+            border: 2px solid #00e5ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.35);
+        }
+
+        .my-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .my-name-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .my-name {
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .btn-edit-name {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 0.8rem;
+            cursor: pointer;
+            padding: 2px 4px;
+        }
+
+        .btn-edit-name:hover {
+            color: #00e5ff;
+        }
+
+        .my-status {
+            font-size: 0.72rem;
+            color: #94a3b8;
+        }
+
+        /* Search & Filter Bar */
+        .search-bar-wrap {
+            position: relative;
+            width: 100%;
+        }
+
+        .search-input {
+            width: 100%;
+            box-sizing: border-box;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 14px 10px 38px;
+            color: #fff;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            border-color: #00e5ff;
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: 8px;
+        }
+
+        .filter-btn {
+            flex: 1;
+            padding: 7px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: #94a3b8;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .filter-btn.active {
+            background: rgba(0, 229, 255, 0.15);
+            border-color: #00e5ff;
+            color: #00e5ff;
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
+        }
+
+        /* Singer List Grid */
+        .singers-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 240px;
+        }
+
+        .singer-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+            transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .singer-card:hover {
+            border-color: rgba(0, 229, 255, 0.45);
+            transform: translateY(-1.5px);
+            box-shadow: 0 6px 20px rgba(0, 229, 255, 0.15);
+        }
+
+        .singer-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .singer-avatar-wrap {
+            position: relative;
+            width: 44px;
+            height: 44px;
+            flex-shrink: 0;
+        }
+
+        .singer-avatar {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: var(--bg-surface);
+            border: 1.5px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+        }
+
+        .singer-avatar.live {
+            border-color: #ff3366;
+            box-shadow: 0 0 10px rgba(255, 51, 102, 0.5);
+        }
+
+        .singer-avatar.duet {
+            border-color: #ffbb00;
+            box-shadow: 0 0 10px rgba(255, 187, 0, 0.5);
+        }
+
+        .singer-avatar.idle {
+            border-color: #00ff88;
+        }
+
+        .device-badge {
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            font-size: 0.65rem;
+            background: #0f172a;
+            border-radius: 50%;
+            padding: 1px;
+        }
+
+        .singer-details {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .singer-name {
+            font-size: 0.88rem;
+            font-weight: 800;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .singer-status-line {
+            font-size: 0.72rem;
+            color: #94a3b8;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .singer-status-line.live {
+            color: #ff6b8b;
+            font-weight: 700;
+        }
+
+        .singer-status-line.duet {
+            color: #fbbf24;
+            font-weight: 700;
+        }
+
+        .singer-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .btn-action-invite {
+            background: linear-gradient(135deg, rgba(0, 229, 255, 0.15) 0%, rgba(0, 255, 136, 0.2) 100%);
+            border: 1px solid #00e5ff;
+            color: #00e5ff;
+            font-size: 0.76rem;
+            font-weight: 800;
+            padding: 7px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .btn-action-invite:hover {
+            background: #00e5ff;
+            color: #06070a;
+            box-shadow: 0 0 14px rgba(0, 229, 255, 0.6);
+            transform: scale(1.03);
+        }
+
+        .btn-action-join {
+            background: linear-gradient(135deg, #ff0077 0%, #ff5500 100%);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            font-size: 0.76rem;
+            font-weight: 900;
+            padding: 7px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 4px 14px rgba(255, 0, 119, 0.4);
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-action-join:hover {
+            box-shadow: 0 6px 20px rgba(255, 0, 119, 0.7);
+            transform: scale(1.03);
+        }
+
+        .stage-join-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-action-watch {
+            background: rgba(0, 229, 255, 0.15);
+            border: 1px solid #00e5ff;
+            color: #00e5ff;
+            font-size: 0.74rem;
+            font-weight: 800;
+            padding: 7px 10px;
+            border-radius: 8px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .btn-action-watch:hover {
+            background: #00e5ff;
+            color: #06070a;
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
+            transform: scale(1.03);
+        }
+
+        .my-stage-card {
+            background: linear-gradient(135deg, rgba(255, 0, 119, 0.18) 0%, rgba(138, 43, 226, 0.22) 100%);
+            border: 1px solid rgba(255, 0, 119, 0.55);
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            box-shadow: 0 6px 24px rgba(255, 0, 119, 0.25);
+        }
+
+        .my-stage-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .live-dot-pulse {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff0055;
+            box-shadow: 0 0 10px #ff0055;
+            animation: pulseDot 1.4s infinite;
+            flex-shrink: 0;
+        }
+
+        .my-stage-title {
+            font-size: 0.85rem;
+            font-weight: 900;
+            color: #ff3366;
+            letter-spacing: 0.3px;
+        }
+
+        .my-stage-sub {
+            font-size: 0.72rem;
+            color: #cbd5e1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .my-stage-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .btn-stage-return {
+            background: linear-gradient(135deg, #ff0077 0%, #ff5500 100%);
+            color: #fff;
+            border: none;
+            padding: 7px 12px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-decoration: none;
+            box-shadow: 0 2px 10px rgba(255, 0, 119, 0.4);
+            white-space: nowrap;
+        }
+
+        .btn-stage-view {
+            background: rgba(255, 255, 255, 0.1);
+            color: #00e5ff;
+            border: 1px solid rgba(0, 229, 255, 0.4);
+            padding: 7px 10px;
+            border-radius: 8px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+
+        .btn-action-invited {
+            background: rgba(255, 187, 0, 0.15);
+            border: 1px solid #ffbb00;
+            color: #ffbb00;
+            font-size: 0.74rem;
+            font-weight: 700;
+            padding: 7px 10px;
+            border-radius: 8px;
+            cursor: default;
+        }
+
+        /* Empty state */
+        .empty-roster {
+            text-align: center;
+            padding: 40px 16px;
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
+        .empty-roster .icon {
+            font-size: 2.2rem;
+            margin-bottom: 8px;
+            opacity: 0.6;
+        }
+
+        /* Bottom Action Bar */
+        .bottom-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-start-stage {
+            flex: 1;
+            padding: 12px;
+            background: linear-gradient(135deg, #0284c7 0%, #00e5ff 100%);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.88rem;
+            font-weight: 900;
+            text-align: center;
+            text-decoration: none;
+            cursor: pointer;
+            box-shadow: 0 4px 18px rgba(0, 229, 255, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-start-stage:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 24px rgba(0, 229, 255, 0.55);
+        }
+    </style>
+</head>
+<body>
+
+<div class="lobby-container">
+    <!-- Header -->
+    <header class="lobby-header">
+        <a href="./index.html" class="btn-back">← Studio Stage</a>
+        <div class="lobby-title-box">
+            <h1 class="lobby-title">Singers Lobby</h1>
+            <span class="lobby-badge-live" id="lblOnlineCount">0 Online</span>
+        </div>
+        <button class="btn-back" id="btnRefreshList" style="cursor:pointer;" title="Refresh list">↺</button>
+    </header>
+
+    <!-- My User Card -->
+    <div class="my-profile-card">
+        <div class="my-profile-left">
+            <div class="my-avatar" id="myAvatar" title="Click to cycle avatar">🎤</div>
+            <div class="my-info">
+                <div class="my-name-row">
+                    <span class="my-name" id="myName">Loading...</span>
+                    <button class="btn-edit-name" id="btnEditName" title="Change nickname">✎</button>
+                </div>
+                <span class="my-status" id="myStatus">🟢 Online in Lobby</span>
+            </div>
+        </div>
+        <div style="font-size:0.72rem; color:var(--accent-blue); font-weight:700;">
+            You are ready to invite & duet
+        </div>
+    </div>
+
+    <!-- Active Stage Banner if user is live -->
+    <div id="myActiveStageWrap"></div>
+
+    <!-- Search & Filter -->
+    <div class="search-bar-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search online singers by name…">
+    </div>
+
+    <div class="filter-tabs">
+        <button class="filter-btn active" data-filter="all">All Singers</button>
+        <button class="filter-btn" data-filter="live">🔴 Live in Stage</button>
+        <button class="filter-btn" data-filter="idle">🟢 Available</button>
+    </div>
+
+    <!-- Singers List -->
+    <div class="singers-list" id="singersList">
+        <div class="empty-roster">
+            <div class="icon">📡</div>
+            <p>Scanning for online singers…</p>
+        </div>
+    </div>
+
+    <!-- Bottom Actions -->
+    <div class="bottom-actions">
+        <a href="./index.html" class="btn-start-stage">🎙 Go to Karaoke Studio & Sing</a>
+    </div>
+</div>
+
+<script type="module">
+    import { PresenceManager } from './js/presence-manager.js?v=24';
+
+    const presence = new PresenceManager();
+
+    const singersList = document.getElementById('singersList');
+    const lblOnlineCount = document.getElementById('lblOnlineCount');
+    const myAvatar = document.getElementById('myAvatar');
+    const myName = document.getElementById('myName');
+    const myStatus = document.getElementById('myStatus');
+    const btnEditName = document.getElementById('btnEditName');
+    const searchInput = document.getElementById('searchInput');
+    const btnRefreshList = document.getElementById('btnRefreshList');
+    const filterBtns = document.querySelectorAll('.filter-btn');
+
+    let currentFilter = 'all';
+    let currentQuery = '';
+    const pendingInvitedUsers = new Set();
+
+    const myActiveStageWrap = document.getElementById('myActiveStageWrap');
+
+    // Render my profile & active stage
+    function updateMyProfileUI() {
+        if (myAvatar) myAvatar.textContent = presence.user.avatar || '🎤';
+        if (myName) myName.textContent = presence.user.name || 'Singer';
+
+        if (myActiveStageWrap) {
+            if (presence.isLive && presence.currentRoomId) {
+                myActiveStageWrap.innerHTML = `
+                    <div class="my-stage-card">
+                        <div class="my-stage-info">
+                            <span class="live-dot-pulse"></span>
+                            <div>
+                                <div class="my-stage-title">👑 Your Live Broadcast Stage</div>
+                                <div class="my-stage-sub">Room: <b>${escapeHtml(presence.currentRoomName || presence.currentRoomId)}</b> • LiveKit SFU</div>
+                            </div>
+                        </div>
+                        <div class="my-stage-actions">
+                            <a href="./index.html" class="btn-stage-return">🎙️ Studio</a>
+                            <a href="./audience.html?room=${encodeURIComponent(presence.currentRoomId)}&role=audience" target="_blank" class="btn-stage-view">👁️ View Stream</a>
+                        </div>
+                    </div>
+                `;
+            } else {
+                myActiveStageWrap.innerHTML = '';
+            }
+        }
+    }
+
+    updateMyProfileUI();
+
+    // Change avatar on click
+    const avatars = ['🎤', '🎧', '🎸', '🎹', '⚡', '👑', '🔥', '🌟', '🎶', '💎'];
+    myAvatar?.addEventListener('click', () => {
+        const curIdx = avatars.indexOf(presence.user.avatar);
+        const nextAvatar = avatars[(curIdx + 1) % avatars.length];
+        presence.updateProfile(presence.user.name, nextAvatar);
+        updateMyProfileUI();
+    });
+
+    // Edit Name
+    btnEditName?.addEventListener('click', () => {
+        const newName = prompt('Enter your singer name / nickname:', presence.user.name);
+        if (newName && newName.trim()) {
+            presence.updateProfile(newName.trim(), presence.user.avatar);
+            updateMyProfileUI();
+        }
+    });
+
+    // Render user roster
+    function renderRoster(users) {
+        if (!singersList) return;
+
+        // Filter out myself and my own active live stage
+        let list = users.filter(u => {
+            if (u.id === presence.user.id) return false;
+            if (presence.currentRoomId && (u.roomId === presence.currentRoomId || u.id === `host_${presence.currentRoomId}`)) return false;
+            return true;
+        });
+
+        if (lblOnlineCount) {
+            lblOnlineCount.textContent = `${users.length} Online`;
+        }
+
+        // Apply search query
+        if (currentQuery) {
+            const q = currentQuery.toLowerCase();
+            list = list.filter(u => u.name.toLowerCase().includes(q));
+        }
+
+        // Apply filter tab
+        if (currentFilter === 'live') {
+            list = list.filter(u => u.isLive || u.role === 'host');
+        } else if (currentFilter === 'idle') {
+            list = list.filter(u => !u.isLive && u.role !== 'host');
+        }
+
+        if (list.length === 0) {
+            singersList.innerHTML = `
+                <div class="empty-roster">
+                    <div class="icon">👥</div>
+                    <p>${currentQuery ? 'No singers match your search.' : 'No other singers online right now.<br>Open Nirmal Karaoke in another tab to test invitations!'}</p>
+                </div>
+            `;
+            return;
+        }
+
+        singersList.innerHTML = '';
+        list.forEach(u => {
+            const card = document.createElement('div');
+            card.className = 'singer-card';
+
+            const isLive = !!u.isLive || u.role === 'host';
+            const inDuet = u.role === 'duet';
+            const avatarClass = isLive ? 'live' : (inDuet ? 'duet' : 'idle');
+            const deviceIcon = u.device === 'mobile' ? '📱' : '💻';
+
+            let statusText = '🟢 Available to Sing';
+            let statusClass = 'idle';
+            if (isLive) {
+                statusText = `🔴 LIVE • ${u.roomName || 'Karaoke Stage'}`;
+                statusClass = 'live';
+            } else if (inDuet) {
+                statusText = `🎶 In Duet • ${u.roomName || 'Duet Stage'}`;
+                statusClass = 'duet';
+            }
+
+            const isInvited = pendingInvitedUsers.has(u.id);
+
+            card.innerHTML = `
+                <div class="singer-left">
+                    <div class="singer-avatar-wrap">
+                        <div class="singer-avatar ${avatarClass}">${u.avatar || '🎤'}</div>
+                        <span class="device-badge">${deviceIcon}</span>
+                    </div>
+                    <div class="singer-details">
+                        <div class="singer-name">
+                            <span>${escapeHtml(u.name)}</span>
+                        </div>
+                        <div class="singer-status-line ${statusClass}">${statusText}</div>
+                    </div>
+                </div>
+                <div class="singer-right">
+                    ${isLive && u.roomId ? `
+                        <div class="stage-join-actions">
+                            <a href="./audience.html?room=${encodeURIComponent(u.roomId)}&role=audience&autoJoin=1" class="btn-action-watch" title="Watch broadcast as audience">👁️ Watch</a>
+                            <a href="./audience.html?room=${encodeURIComponent(u.roomId)}&role=duet&autoJoin=1" class="btn-action-join" title="Join live stage with microphone to sing duet">🎤 Duet</a>
+                        </div>
+                    ` : (isInvited ? `
+                        <span class="btn-action-invited">⏳ Invited...</span>
+                    ` : `
+                        <button class="btn-action-invite" data-user-id="${u.id}">📩 Invite Duet</button>
+                    `)}
+                </div>
+            `;
+
+            const btnInvite = card.querySelector('.btn-action-invite');
+            if (btnInvite) {
+                btnInvite.addEventListener('click', async () => {
+                    btnInvite.disabled = true;
+                    btnInvite.textContent = 'Sending...';
+                    try {
+                        await presence.sendInvite(u.id, 'duet');
+                        pendingInvitedUsers.add(u.id);
+                        renderRoster(presence.onlineUsers);
+                    } catch (err) {
+                        alert('Could not send invite: ' + (err.message || 'User offline'));
+                        btnInvite.disabled = false;
+                        btnInvite.textContent = '📩 Invite Duet';
+                    }
+                });
+            }
+
+            singersList.appendChild(card);
+        });
+    }
+
+    // Subscribe to SSE updates
+    presence.onUserListUpdated = (users) => {
+        renderRoster(users);
+    };
+
+    // Handle invite response (accepted/declined)
+    presence.onInviteResponse = (res) => {
+        if (res.accepted) {
+            alert(`🎉 ${res.responder?.name || 'Singer'} accepted your Duet invite! Connecting...`);
+            if (res.roomId) {
+                window.location.href = `./audience.html?room=${encodeURIComponent(res.roomId)}&role=duet&autoJoin=1`;
+            }
+        } else {
+            pendingInvitedUsers.delete(res.responder?.id);
+            renderRoster(presence.onlineUsers);
+        }
+    };
+
+    // Filter clicks
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            filterBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentFilter = btn.getAttribute('data-filter');
+            renderRoster(presence.onlineUsers);
+        });
+    });
+
+    // Search input
+    searchInput?.addEventListener('input', (e) => {
+        currentQuery = e.target.value.trim();
+        renderRoster(presence.onlineUsers);
+    });
+
+    // Refresh button
+    btnRefreshList?.addEventListener('click', async () => {
+        try {
+            const r = await fetch('/api/presence/users');
+            const data = await r.json();
+            if (data?.users) {
+                presence.onlineUsers = data.users;
+                renderRoster(data.users);
+            }
+        } catch (_) {}
+    });
+
+    function escapeHtml(str) {
+        return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+</script>
+</body>
+</html>
