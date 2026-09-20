@@ -750,13 +750,12 @@ function spawnFfmpeg(rtmpUrl) {
   console.info('[ffmpeg-stream] Spawning ffmpeg for RTMP:', rtmpUrl.replace(/\/[^/]+$/, '/***'));
   const proc = spawn('ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
-  proc.stdout.on('data', () => {}); // consume stdout
   proc.stderr.on('data', (d) => {
     const line = d.toString();
     if (/frame=|fps=|bitrate=|speed=/.test(line)) {
       process.stdout.write('[ffmpeg] ' + line.trim() + '\r');
-    } else if (/error|fail|invalid|refused/i.test(line)) {
-      console.warn('[ffmpeg stderr]', line.trim());
+    } else if (line.trim()) {
+      console.log('[ffmpeg log]', line.trim());
     }
   });
 
@@ -819,24 +818,46 @@ wss.on('connection', (ws, req) => {
     ffmpegStreams.delete(roomName);
   }
 
-  const ffmpegProc = spawnFfmpeg(rtmpUrl);
-  const record = { ffmpeg: ffmpegProc, platform, streamKey, rtmpUrl, startedAt: Date.now(), sessionId, roomName };
-  ffmpegStreams.set(roomName, record);
-
-  // Also update the legacy activeStreams map so /api/stream/status works
-  activeStreams.set(roomName, { egressId: sessionId, platform, roomName, startedAt: record.startedAt, status: 'live', method: 'ffmpeg-ws' });
-
-  ws.send(JSON.stringify({ type: 'started', sessionId, platform, message: 'ffmpeg stream started' }));
-  console.info(`[ffmpeg-stream] WebSocket stream started sessionId=${sessionId} platform=${platform} room=${roomName}`);
-
+  let ffmpegProc = null;
   let totalBytes = 0;
+  let startedAt = 0;
+
+  ws.send(JSON.stringify({ type: 'ready', sessionId, platform, message: 'Ready for media chunks' }));
+  console.info(`[ffmpeg-stream] Client connected sessionId=${sessionId} platform=${platform} room=${roomName}`);
+
   ws.on('message', (chunk) => {
-    if (!ffmpegProc.stdin.writable) return;
-    try {
-      ffmpegProc.stdin.write(chunk);
-      totalBytes += chunk.length;
-    } catch (e) {
-      console.warn('[ffmpeg-stream] stdin write error:', e.message);
+    // Lazy spawn FFmpeg on the FIRST chunk containing the WebM EBML Header
+    if (!ffmpegProc) {
+      startedAt = Date.now();
+      console.info(`[ffmpeg-stream] First media chunk received (${chunk.length} bytes), spawning FFmpeg for RTMP...`);
+      ffmpegProc = spawnFfmpeg(rtmpUrl);
+      const record = { ffmpeg: ffmpegProc, platform, streamKey, rtmpUrl, startedAt, sessionId, roomName };
+      ffmpegStreams.set(roomName, record);
+      activeStreams.set(roomName, { egressId: sessionId, platform, roomName, startedAt, status: 'live', method: 'ffmpeg-ws' });
+
+      ffmpegProc.on('exit', (code, signal) => {
+        console.warn(`[ffmpeg-stream] FFmpeg process exited (code: ${code}, signal: ${signal})`);
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({ type: 'stopped', message: `FFmpeg process exited (code ${code})` }));
+          ws.close();
+        }
+        const current = ffmpegStreams.get(roomName);
+        if (current?.sessionId === sessionId) {
+          ffmpegStreams.delete(roomName);
+          activeStreams.delete(roomName);
+        }
+      });
+
+      ws.send(JSON.stringify({ type: 'started', sessionId, platform, message: 'ffmpeg stream started' }));
+    }
+
+    if (ffmpegProc && ffmpegProc.stdin && ffmpegProc.stdin.writable) {
+      try {
+        ffmpegProc.stdin.write(chunk);
+        totalBytes += chunk.length;
+      } catch (e) {
+        console.warn('[ffmpeg-stream] stdin write error:', e.message);
+      }
     }
   });
 
@@ -852,28 +873,18 @@ wss.on('connection', (ws, req) => {
   const cleanup = (reason) => {
     clearInterval(pingTimer);
     console.info(`[ffmpeg-stream] Closing stream sessionId=${sessionId} reason=${reason} bytes=${totalBytes}`);
-    try { ffmpegProc.stdin.end(); } catch (_) {}
-    setTimeout(() => {
-      try { if (!ffmpegProc.killed) ffmpegProc.kill('SIGTERM'); } catch (_) {}
-    }, 2000);
+    if (ffmpegProc) {
+      try { ffmpegProc.stdin.end(); } catch (_) {}
+      setTimeout(() => {
+        try { if (!ffmpegProc.killed) ffmpegProc.kill('SIGTERM'); } catch (_) {}
+      }, 2000);
+    }
     const current = ffmpegStreams.get(roomName);
     if (current?.sessionId === sessionId) {
       ffmpegStreams.delete(roomName);
       activeStreams.delete(roomName);
     }
   };
-
-  ffmpegProc.on('exit', () => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'stopped', message: 'ffmpeg process exited' }));
-      ws.close();
-    }
-    const current = ffmpegStreams.get(roomName);
-    if (current?.sessionId === sessionId) {
-      ffmpegStreams.delete(roomName);
-      activeStreams.delete(roomName);
-    }
-  });
 
   ws.on('close', () => cleanup('websocket closed'));
   ws.on('error', (err) => {
