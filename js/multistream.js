@@ -271,12 +271,13 @@ export class MultiStreamManager {
           resultBox.innerHTML = '✅ <b>Connected Successfully!</b> YouTube accepted this stream key and is ready for live broadcast.';
         }
       } else {
-        const errDetail = data.results?.[0]?.logTail?.slice(-3).join(' ') || data.error || 'Connection rejected by destination.';
+        const resultItem = data.results?.[0];
+        const errDetail = resultItem?.error || resultItem?.logTail?.slice(-3).join(' ') || data.error || 'Connection rejected by destination.';
         if (resultBox) {
           resultBox.style.background = 'rgba(255, 77, 77, 0.15)';
           resultBox.style.color = '#ff6b6b';
           resultBox.style.border = '1px solid rgba(255, 77, 77, 0.3)';
-          resultBox.innerHTML = `❌ <b>Connection failed:</b> ${errDetail}<br><span style="font-size:0.7rem; color:#aaa; margin-top:4px; display:block;">💡 Check in YouTube Studio that the stream is active (not ended) and you copied the secret Stream Key.</span>`;
+          resultBox.innerHTML = `❌ <b>Connection failed:</b> ${errDetail}<br><span style="font-size:0.75rem; color:#ffd166; margin-top:6px; display:block;">💡 <b>YouTube Studio Tip:</b> Ensure your YouTube Live Studio page is open. If you previously clicked "End Stream", that stream key is closed—click <b>Reset</b> next to the Stream Key in YouTube Studio to generate a fresh one.</span>`;
         }
       }
     } catch (netErr) {
@@ -607,7 +608,7 @@ export class MultiStreamManager {
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
-          if (msg.type === 'live') {
+          if (msg.type === 'live' || msg.type === 'streaming') {
             this.hasConfirmedLive = true;
             console.info('[MultiStream] Destination confirmed LIVE broadcast:', msg.stats);
             if (this.streamStatusBadge) {

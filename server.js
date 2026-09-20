@@ -880,24 +880,24 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
   for (const targetUrl of candidateUrls) {
     const safeUrl = maskStreamSecret(targetUrl, key);
 
-    console.info(`[test-ffmpeg] Testing 10-second live ingestion to: ${safeUrl}`);
+    console.info(`[test-ffmpeg] Testing fast live ingestion to: ${safeUrl}`);
 
     const result = await new Promise((resolve) => {
       const args = [
         '-hide_banner',
         '-loglevel', 'info',
 
-        // Generate real-time test content.
-        '-re', '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30',
-        '-re', '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=44100',
+        // Low CPU synthetic test pattern without -re (no artificial clock delays)
+        '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=30',
+        '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=44100',
 
-        // Explicit output mapping.
+        // Explicit output mapping
         '-map', '0:v:0',
         '-map', '1:a:0',
 
-        // YouTube-friendly H.264.
+        // Ultrafast container-friendly H.264
         '-c:v', 'libx264',
-        '-preset', 'veryfast',
+        '-preset', 'ultrafast',
         '-tune', 'zerolatency',
         '-profile:v', 'main',
         '-pix_fmt', 'yuv420p',
@@ -905,19 +905,18 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
         '-g', '60',
         '-keyint_min', '60',
         '-sc_threshold', '0',
-        '-b:v', '4000k',
-        '-minrate', '4000k',
-        '-maxrate', '4000k',
-        '-bufsize', '8000k',
+        '-b:v', '400k',
+        '-x264-params', 'subme=0:me=dia:no-mbtree=1:aq-mode=0:ref=1:partitions=none',
+        '-threads', '2',
 
-        // YouTube-friendly AAC stereo.
+        // AAC audio
         '-c:a', 'aac',
-        '-b:a', '128k',
+        '-b:a', '64k',
         '-ar', '44100',
         '-ac', '2',
 
-        // Run long enough for the ingest server to accept the publish.
-        '-t', '10',
+        // Quick 3-second test run (90 frames)
+        '-t', '3',
         '-flvflags', 'no_duration_filesize',
         '-f', 'flv',
         targetUrl
@@ -935,6 +934,7 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
       const finish = (value) => {
         if (settled) return;
         settled = true;
+        try { p.kill('SIGTERM'); } catch (_) {}
         resolve(value);
       };
 
@@ -949,30 +949,65 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
         if (/handshaking|connected|server version/i.test(line)) {
           sawRtmpConnect = true;
         }
-        if (/frame=\s*\d+/i.test(line)) {
+        if (/frame=\s*[1-9]\d*/i.test(line)) {
           sawOutputFrames = true;
+        }
+
+        // Early handshake success: If connected and frames are publishing without errors
+        const lower = line.toLowerCase();
+        const hasError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data|end of file/i.test(lower);
+        if (sawRtmpConnect && sawOutputFrames && !hasError) {
+          const match = line.match(/frame=\s*(\d+)/i);
+          if (match && parseInt(match[1], 10) >= 20) {
+            clearTimeout(timer);
+            finish({
+              url: safeUrl,
+              ok: true,
+              connected: true,
+              frames: true,
+              exitCode: 0,
+              error: null,
+              logTail: out.split('\n').filter(Boolean).slice(-15)
+            });
+          }
         }
       });
 
       const timer = setTimeout(() => {
         try { p.kill('SIGKILL'); } catch (_) {}
+        const lower = out.toLowerCase();
+        const publishError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data|end of file/i.test(lower);
+        const ok = !publishError && sawRtmpConnect && sawOutputFrames;
         finish({
           url: safeUrl,
-          ok: false,
+          ok,
           connected: sawRtmpConnect,
           frames: sawOutputFrames,
-          exitCode: -1,
-          error: 'FFmpeg test timed out after 15 seconds',
+          exitCode: ok ? 0 : -1,
+          error: ok ? null : 'FFmpeg test timed out after 10 seconds. Ingestion destination did not acknowledge in time.',
           logTail: out.split('\n').filter(Boolean).slice(-30)
         });
-      }, 15000);
+      }, 10000);
 
       p.on('exit', (code, signal) => {
         clearTimeout(timer);
 
         const lower = out.toLowerCase();
-        const publishError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data/i.test(lower);
+        const publishError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data|end of file/i.test(lower);
         const ok = code === 0 && !publishError && sawRtmpConnect && sawOutputFrames;
+
+        let errorMsg = null;
+        if (!ok) {
+          if (/end of file/i.test(lower)) {
+            errorMsg = 'YouTube closed the connection (End of file). This happens when the live broadcast was ended in YouTube Studio or this Stream Key is inactive. In YouTube Studio, click "Reset" next to your Stream Key or create a new live stream.';
+          } else if (/server error/i.test(lower)) {
+            errorMsg = 'YouTube rejected the stream key (Server error). Please check your Stream Key in YouTube Studio.';
+          } else if (/connection refused|timed out/i.test(lower)) {
+            errorMsg = 'Could not connect to YouTube ingest server. Check your network or firewall.';
+          } else if (publishError) {
+            errorMsg = 'FFmpeg/RTMP publish failed.';
+          }
+        }
 
         finish({
           url: safeUrl,
@@ -981,7 +1016,7 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
           frames: sawOutputFrames,
           exitCode: code,
           signal,
-          error: ok ? null : (publishError ? 'FFmpeg/RTMP(S) publish failed' : null),
+          error: errorMsg,
           logTail: out.split('\n').filter(Boolean).slice(-30)
         });
       });
@@ -1367,6 +1402,16 @@ wss.on('connection', (ws, req) => {
       setStreamState('streaming', {
         frames: event.frame || 0,
         rtmpConnected: true
+      });
+      send({
+        type: 'live',
+        sessionId,
+        platform,
+        url: maskStreamSecret(rtmpUrl, streamKey),
+        message: 'Media is being encoded and published to the RTMP/RTMPS destination',
+        stats: {
+          frame: event.frame || 0
+        }
       });
       send({
         type: 'streaming',
