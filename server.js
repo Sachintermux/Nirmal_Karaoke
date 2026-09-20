@@ -696,11 +696,22 @@ const ffmpegStreams = new Map();
  * Build the RTMP URL for a given platform + stream key.
  */
 function buildRtmpUrl(platform, streamKey, customUrl = '') {
-  const plat = String(platform || 'youtube').toLowerCase();
-  const key = String(streamKey || '').trim();
-  if (plat === 'youtube')  return `rtmp://a.rtmp.youtube.com/live2/${key}`;
-  if (plat === 'twitch')   return `rtmp://live.twitch.tv/app/${key}`;
-  if (plat === 'facebook') return `rtmps://live-api-s.facebook.com:443/rtmp/${key}`;
+  const plat = String(platform || 'youtube').toLowerCase().trim();
+  const key = String(streamKey || '').trim().replace(/^['"]+|['"]+$/g, '');
+
+  if (key.startsWith('rtmp://') || key.startsWith('rtmps://')) {
+    return key;
+  }
+
+  if (plat === 'youtube') {
+    return `rtmp://a.rtmp.youtube.com/live2/${key}`;
+  }
+  if (plat === 'twitch') {
+    return `rtmp://live.twitch.tv/app/${key}`;
+  }
+  if (plat === 'facebook') {
+    return `rtmps://live-api-s.facebook.com:443/rtmp/${key}`;
+  }
   // custom
   if (!customUrl) throw new Error('Custom RTMP URL is required for custom platform');
   return `${String(customUrl).replace(/\/$/, '')}/${key}`;
@@ -708,41 +719,42 @@ function buildRtmpUrl(platform, streamKey, customUrl = '') {
 
 /**
  * Start an ffmpeg child process that:
- *  - Reads WebM/Opus audio from stdin (pipe:0)
- *  - Generates a silent 1280×720 black video (lavfi)
- *  - Muxes to FLV and pushes to the RTMP URL
- *
- * Returns the spawned child process.
+ *  - Reads WebM live stream (Canvas Video + Mixed Audio) from stdin (pipe:0)
+ *  - Encodes H.264 video (Main profile, 2.5 Mbps, 30 fps, 2-sec GOP)
+ *  - Encodes AAC Stereo audio (128 kbps, 44.1 kHz)
+ *  - Muxes to FLV and pushes to the RTMP URL (YouTube, Twitch, FB, etc.)
  */
-function spawnFfmpeg(rtmpUrl) {
+function spawnFfmpeg(rtmpUrl, onLog) {
   const args = [
     // Error tolerance & timestamp recovery flags for live network pipe
     '-err_detect', 'ignore_err',
     '-fflags', '+nobuffer+flush_packets+genpts+discardcorrupt',
-    '-probesize', '128k',
-    '-analyzeduration', '500000',
+    '-probesize', '1M',
+    '-analyzeduration', '2000000',
     '-flags', '+low_delay',
-    // Input 0: Matroska/WebM live stream (Canvas Video + Mixed Audio) from browser via stdin
+    // Input 0: Matroska/WebM live stream from browser via stdin
     '-f', 'matroska,webm',
     '-i', 'pipe:0',
-    // Video Transcode: H.264 ultrafast, 1.5 Mbps, 30 fps, 2-second GOP (60 frames @ 30fps)
+    // Video Transcode: H.264 Main profile, 2500 kbps, 30 fps, 2-second GOP (60 frames @ 30fps)
     '-c:v', 'libx264',
-    '-preset', 'ultrafast',
+    '-preset', 'veryfast',
     '-tune', 'zerolatency',
-    '-b:v', '1500k',
-    '-maxrate', '1500k',
-    '-bufsize', '3000k',
+    '-profile:v', 'main',
     '-pix_fmt', 'yuv420p',
     '-r', '30',
     '-g', '60',
     '-keyint_min', '60',
     '-sc_threshold', '0',
+    '-b:v', '2500k',
+    '-maxrate', '2500k',
+    '-bufsize', '5000k',
     // Audio Transcode: AAC Stereo 44.1 kHz 128 Kbps with async resampler for clock sync
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
     '-ac', '2',
-    '-af', 'aresample=async=1000',
+    '-af', 'aresample=async=1000:first_pts=0',
+    '-max_muxing_queue_size', '2048',
     // FLV container for RTMP live streaming
     '-f', 'flv',
     '-flvflags', 'no_duration_filesize',
@@ -754,6 +766,7 @@ function spawnFfmpeg(rtmpUrl) {
 
   proc.stderr.on('data', (d) => {
     const line = d.toString();
+    if (onLog) onLog(line);
     if (/frame=|fps=|bitrate=|speed=/.test(line)) {
       process.stdout.write('[ffmpeg] ' + line.trim() + '\r');
     } else if (line.trim()) {
@@ -823,6 +836,12 @@ wss.on('connection', (ws, req) => {
   let ffmpegProc = null;
   let totalBytes = 0;
   let startedAt = 0;
+  const recentLogs = [];
+
+  const handleLog = (line) => {
+    recentLogs.push(line);
+    if (recentLogs.length > 30) recentLogs.shift();
+  };
 
   ws.send(JSON.stringify({ type: 'ready', sessionId, platform, message: 'Ready for media chunks' }));
   console.info(`[ffmpeg-stream] Client connected sessionId=${sessionId} platform=${platform} room=${roomName}`);
@@ -832,15 +851,19 @@ wss.on('connection', (ws, req) => {
     if (!ffmpegProc) {
       startedAt = Date.now();
       console.info(`[ffmpeg-stream] First media chunk received (${chunk.length} bytes), spawning FFmpeg for RTMP...`);
-      ffmpegProc = spawnFfmpeg(rtmpUrl);
+      ffmpegProc = spawnFfmpeg(rtmpUrl, handleLog);
       const record = { ffmpeg: ffmpegProc, platform, streamKey, rtmpUrl, startedAt, sessionId, roomName };
       ffmpegStreams.set(roomName, record);
       activeStreams.set(roomName, { egressId: sessionId, platform, roomName, startedAt, status: 'live', method: 'ffmpeg-ws' });
 
       ffmpegProc.on('exit', (code, signal) => {
         console.warn(`[ffmpeg-stream] FFmpeg process exited (code: ${code}, signal: ${signal})`);
+        const errorDetail = recentLogs.filter(l => /error|invalid|failed|refused|denied|timeout|unreachable/i.test(l)).slice(-3).join(' ') || `FFmpeg exited (code ${code})`;
         if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({ type: 'stopped', message: `FFmpeg process exited (code ${code})` }));
+          ws.send(JSON.stringify({
+            type: code === 0 ? 'stopped' : 'error',
+            message: code === 0 ? 'FFmpeg stream finished' : errorDetail
+          }));
           ws.close();
         }
         const current = ffmpegStreams.get(roomName);

@@ -250,10 +250,27 @@ export class MultiStreamManager {
                      || this.liveHost?.impl?.audioEngine?.engine?.dest?.stream
                      || this.liveHost?.audioEngine?.engine?.dest?.stream;
 
-    const audioTrack = mixedStream?.getAudioTracks?.()[0] || null;
+    let audioTrack = mixedStream?.getAudioTracks?.()[0] || null;
+
+    // Fallback: If no active audio track, create a continuous silent stereo track
+    // so YouTube never rejects the live stream due to missing audio.
+    if (!audioTrack && ae?.ctx) {
+      try {
+        const destNode = ae.ctx.createMediaStreamDestination();
+        const osc = ae.ctx.createConstantSource ? ae.ctx.createConstantSource() : ae.ctx.createOscillator();
+        const gain = ae.ctx.createGain();
+        gain.gain.value = 0.0001;
+        osc.connect(gain);
+        gain.connect(destNode);
+        osc.start();
+        audioTrack = destNode.stream.getAudioTracks()[0];
+      } catch (synthErr) {
+        console.warn('[MultiStream] Audio synthesis fallback notice:', synthErr);
+      }
+    }
 
     if (!audioTrack) {
-      this.showError('No audio track ready. Tap "Go Live" or play a song, then try starting the stream again.');
+      this.showError('Audio system not ready. Please tap "Go Live" or select a song, then try starting the stream again.');
       this.resetStartButton();
       return;
     }
@@ -460,8 +477,8 @@ export class MultiStreamManager {
   _startMediaRecorder(stream, ws) {
     let mimeType = '';
     const candidates = [
-      'video/webm;codecs=h264,opus',
       'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=h264,opus',
       'video/webm',
       'video/mp4;codecs=avc1,mp4a',
       'video/mp4'
@@ -475,7 +492,7 @@ export class MultiStreamManager {
 
     let recorder = null;
     const options = {
-      videoBitsPerSecond: 1500000,
+      videoBitsPerSecond: 2500000,
       audioBitsPerSecond: 128000
     };
     if (mimeType) options.mimeType = mimeType;
@@ -486,10 +503,15 @@ export class MultiStreamManager {
       recorder = new MediaRecorder(stream);
     }
 
-    recorder.ondataavailable = (ev) => {
+    recorder.ondataavailable = async (ev) => {
       if (!ev.data || ev.data.size === 0) return;
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(ev.data);
+        try {
+          const buf = await ev.data.arrayBuffer();
+          ws.send(buf);
+        } catch (_) {
+          ws.send(ev.data);
+        }
       } else {
         this._pendingChunks.push(ev.data);
         if (this._pendingChunks.length > 20) this._pendingChunks.shift();
@@ -508,7 +530,7 @@ export class MultiStreamManager {
     // 1000ms timeslice ensures clean 1-second keyframe clusters without sub-second cluster fragmentation
     recorder.start(1000);
     this._recorder = recorder;
-    console.info('[MultiStream] MediaRecorder active (1000ms clusters @ 128k AAC / 1.5M video)', { mimeType: recorder.mimeType || 'default' });
+    console.info('[MultiStream] MediaRecorder active (1000ms clusters @ 128k AAC / 2.5M video)', { mimeType: recorder.mimeType || 'default' });
   }
 
   _stopMediaRecorder() {

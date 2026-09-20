@@ -106,6 +106,7 @@ export class BroadcastCompositor {
    */
   getMediaStream(audioTrack) {
     this.start();
+    this.drawScene();
     const stream = this.canvas.captureStream(30);
     if (audioTrack) {
       stream.addTrack(audioTrack);
