@@ -341,8 +341,14 @@ export class MultiStreamManager {
         resolved = true;
         clearTimeout(connectTimer);
         console.info('[MultiStream] WebSocket connected to backend. Starting MediaRecorder.');
-        this._startMediaRecorder(mixedStream, ws);
-        resolve();
+        try {
+          this._startMediaRecorder(mixedStream, ws);
+          resolve();
+        } catch (recErr) {
+          console.error('[MultiStream] MediaRecorder start error:', recErr);
+          try { ws.close(); } catch (_) {}
+          reject(new Error('Audio capture error: ' + (recErr.message || recErr)));
+        }
       };
 
       ws.onmessage = (ev) => {
@@ -362,14 +368,14 @@ export class MultiStreamManager {
       ws.onerror = (e) => {
         if (!resolved) {
           clearTimeout(connectTimer);
-          reject(new Error(`WebSocket connection error to ${targetHost}. Verify server is running and CORS is enabled.`));
+          reject(new Error(`WebSocket connection error to ${targetHost}. Verify server is awake and accessible.`));
         }
       };
 
       ws.onclose = (ev) => {
         clearTimeout(connectTimer);
         if (this.isStreaming && this.streamMethod === 'websocket') {
-          console.warn('[MultiStream] WebSocket closed unexpectedly:', ev.code, ev.reason);
+          console.warn('[MultiStream] WebSocket closed:', ev.code, ev.reason);
           this._stopMediaRecorder();
           this.isStreaming = false;
           this.stopTimer();
@@ -410,21 +416,29 @@ export class MultiStreamManager {
   }
 
   _startMediaRecorder(mixedStream, ws) {
-    const mimeTypes = [
+    let mimeType = '';
+    const candidates = [
       'audio/webm;codecs=opus',
       'audio/webm',
       'audio/ogg;codecs=opus',
-      'audio/ogg'
+      'audio/ogg',
+      'audio/mp4'
     ];
-    const mimeType = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || '';
+    for (const c of candidates) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) {
+        mimeType = c;
+        break;
+      }
+    }
 
-    let recorder;
-    try {
-      recorder = new MediaRecorder(mixedStream, {
-        mimeType,
-        audioBitsPerSecond: 128000
-      });
-    } catch (e) {
+    let recorder = null;
+    if (mimeType) {
+      try {
+        recorder = new MediaRecorder(mixedStream, { mimeType, audioBitsPerSecond: 128000 });
+      } catch (_) {
+        recorder = new MediaRecorder(mixedStream);
+      }
+    } else {
       recorder = new MediaRecorder(mixedStream);
     }
 
@@ -449,7 +463,7 @@ export class MultiStreamManager {
 
     recorder.start(250);
     this._recorder = recorder;
-    console.info('[MultiStream] MediaRecorder started', { mimeType: recorder.mimeType });
+    console.info('[MultiStream] MediaRecorder active, chunking every 250ms', { mimeType: recorder.mimeType || 'default' });
   }
 
   _stopMediaRecorder() {
