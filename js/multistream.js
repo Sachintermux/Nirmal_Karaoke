@@ -685,11 +685,11 @@ export class MultiStreamManager {
   _startMediaRecorder(stream, ws) {
     let mimeType = '';
     const candidates = [
-      'video/webm;codecs=vp8,opus',
       'video/webm;codecs=h264,opus',
-      'video/webm',
       'video/mp4;codecs=avc1,mp4a',
-      'video/mp4'
+      'video/webm;codecs=h264',
+      'video/webm;codecs=vp8,opus',
+      'video/webm'
     ];
     for (const c of candidates) {
       if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) {
