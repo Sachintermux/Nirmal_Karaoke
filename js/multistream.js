@@ -13,7 +13,7 @@
  *             → RTMP → YouTube Live
  */
 
-import { BroadcastCompositor } from './broadcast-compositor.js';
+import { BroadcastCompositor } from './broadcast-compositor.js?v=27';
 
 const STORAGE_KEY_STREAM_KEYS = 'nirmal_karaoke_stream_keys';
 const STORAGE_KEY_RELAY_URL   = 'nirmal_stream_relay_url';
@@ -131,7 +131,7 @@ export class MultiStreamManager {
     this.selectQuality        = document.getElementById('selectStreamQuality');
     this.layoutPillsContainer = document.getElementById('broadcastLayoutPills');
 
-    this.selectedQuality = localStorage.getItem('nirmal_stream_quality') || '540p';
+    this.selectedQuality = localStorage.getItem('nirmal_stream_quality') || '480p';
 
     if (!this.modal) return;
 
@@ -776,12 +776,7 @@ export class MultiStreamManager {
           } else if (chunkCount % 10 === 0) {
             console.info(`[MultiStream UPLOAD] Transmitted ${chunkCount} media chunks to relay (10s continuous buffer active).`);
           }
-          if (item instanceof Blob) {
-            const buf = await item.arrayBuffer();
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(buf);
-            }
-          } else if (ws.readyState === WebSocket.OPEN) {
+          if (ws.readyState === WebSocket.OPEN) {
             ws.send(item);
           }
         } catch (err) {

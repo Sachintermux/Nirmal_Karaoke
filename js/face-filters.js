@@ -123,8 +123,17 @@ export class FaceFilterEngine {
   }
 
   setupMediaPipeInstance() {
-    if (!window.FaceDetection || this.mpFaceDetector) return;
+    if (!window.FaceDetection || this.mpFaceDetector || this.mpDisabled) return;
     try {
+      // Check if browser has working WebGL before creating MediaPipe pipeline
+      const testCanvas = document.createElement('canvas');
+      const hasWebGL = !!(window.WebGLRenderingContext && (testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl')));
+      if (!hasWebGL) {
+        console.info('[FaceFilter] WebGL not active; using zero-dependency canvas face tracker.');
+        this.mpDisabled = true;
+        return;
+      }
+
       const fd = new window.FaceDetection({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
       });
@@ -139,7 +148,8 @@ export class FaceFilterEngine {
       });
       this.mpFaceDetector = fd;
     } catch (err) {
-      console.warn('[FaceFilter] MediaPipe setup failed:', err);
+      console.warn('[FaceFilter] MediaPipe setup notice; using zero-dependency tracker:', err?.message || err);
+      this.mpDisabled = true;
     }
   }
 
@@ -390,8 +400,10 @@ export class FaceFilterEngine {
       // Draw unmirrored natural video on the proper side everywhere
       ctx.drawImage(this.video, drawX, drawY, drawW, drawH);
 
-      // Update real-time face tracking
-      this.updateFaceTracking();
+      // Only update real-time face tracking if an AR face filter is active
+      if (this.currentFilter !== 'none') {
+        this.updateFaceTracking();
+      }
     } else {
       ctx.fillStyle = '#0a0812';
       ctx.fillRect(0, 0, w, h);
@@ -563,15 +575,28 @@ export class FaceFilterEngine {
   }
 
   async updateFaceTracking() {
+    if (this.currentFilter === 'none') return;
+    if (!this.video || this.video.readyState < 2 || this.video.videoWidth <= 0 || this.video.paused) return;
+
     this.detectionCounter++;
 
-    // 1. Prioritize MediaPipe if initialized
-    if (this.mpFaceDetector && !this.detectorBusy && (this.detectionCounter % 3 === 0)) {
+    // 1. Prioritize MediaPipe if initialized and WebGL is functional
+    if (this.mpFaceDetector && !this.mpDisabled && !this.detectorBusy && (this.detectionCounter % 4 === 0)) {
       this.detectorBusy = true;
       try {
         await this.mpFaceDetector.send({ image: this.video });
-      } catch (_) {}
-      this.detectorBusy = false;
+        this._mpErrors = 0;
+      } catch (mpErr) {
+        this._mpErrors = (this._mpErrors || 0) + 1;
+        if (this._mpErrors >= 2) {
+          console.info('[FaceFilter] WebGL context unavailable on video frame; switching to zero-overhead tracker.');
+          this.mpDisabled = true;
+          try { this.mpFaceDetector.close?.(); } catch (_) {}
+          this.mpFaceDetector = null;
+        }
+      } finally {
+        this.detectorBusy = false;
+      }
       return;
     }
 

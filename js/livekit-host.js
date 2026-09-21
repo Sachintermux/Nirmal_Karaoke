@@ -1,4 +1,4 @@
-import { FaceFilterEngine, FACE_FILTERS } from './face-filters.js';
+import { FaceFilterEngine, FACE_FILTERS } from './face-filters.js?v=27';
 
 const LK = () => window.LivekitClient;
 

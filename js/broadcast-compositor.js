@@ -264,19 +264,38 @@ export class BroadcastCompositor {
     ctx.fillStyle = glow2;
     ctx.fillRect(0, 0, w, h);
 
-    // ─── 2. Camera Feeds (Host & Guest) ───────────────────────────────────────
+    // ─── 2. Camera Feeds & DOM Metadata Cache (Refreshed every 350ms) ────────
+    if (!this._lastDomScan || performance.now() - this._lastDomScan > 350) {
+      this._lastDomScan = performance.now();
+      this._cachedHostVideo = document.querySelector('#liveStageVideoGrid [data-is-admin="1"] video')
+                           || document.querySelector('.stage-video-grid [data-is-admin="1"] video');
+      this._cachedGuestVideo = document.querySelector('#liveStageVideoGrid [data-is-admin="0"] video')
+                            || document.querySelector('.stage-video-grid [data-is-admin="0"] video');
+
+      const activeEl = document.querySelector('.lyric-line.active');
+      if (activeEl) {
+        this._cachedCurrentLine = activeEl.textContent?.trim() || '';
+        const nextEl = activeEl.nextElementSibling;
+        this._cachedNextLine = (nextEl && nextEl.classList.contains('lyric-line')) ? (nextEl.textContent?.trim() || '') : '';
+      } else {
+        this._cachedCurrentLine = '♪ ♫ ♪ Nirmal Karaoke Live ♪ ♫ ♪';
+        this._cachedNextLine = 'Sing along with your favorite tracks';
+      }
+
+      const titleEl = document.getElementById('nowPlayingTitle') || document.querySelector('.now-playing .title');
+      this._cachedSongName = titleEl?.textContent?.trim() || 'Live Karaoke Session';
+    }
+
     let hasHostCam = false;
     let hasGuestCam = false;
 
-    // Find host and guest video elements in DOM
-    const hostVideoCard = document.querySelector('#liveStageVideoGrid [data-is-admin="1"] video')
-                       || document.querySelector('.stage-video-grid [data-is-admin="1"] video');
-    const guestVideoCards = Array.from(document.querySelectorAll('#liveStageVideoGrid [data-is-admin="0"] video, .stage-video-grid [data-is-admin="0"] video'));
+    const hostVideoCard = this._cachedHostVideo;
+    const guestVideoCard = this._cachedGuestVideo;
 
     if (this.layers.hostCamera && hostVideoCard && hostVideoCard.videoWidth > 0 && !hostVideoCard.paused) {
       hasHostCam = true;
     }
-    if (this.layers.guestCamera && guestVideoCards.length > 0 && guestVideoCards[0].videoWidth > 0 && !guestVideoCards[0].paused) {
+    if (this.layers.guestCamera && guestVideoCard && guestVideoCard.videoWidth > 0 && !guestVideoCard.paused) {
       hasGuestCam = true;
     }
 
@@ -288,7 +307,7 @@ export class BroadcastCompositor {
         if (hasHostCam) {
           this.drawVideoBox(ctx, hostVideoCard, w - 340, 90, 310, 185, '🎤 SINGER PIP', colors);
         } else if (hasGuestCam) {
-          this.drawVideoBox(ctx, guestVideoCards[0], w - 340, 90, 310, 185, '👥 GUEST PIP', colors);
+          this.drawVideoBox(ctx, guestVideoCard, w - 340, 90, 310, 185, '👥 GUEST PIP', colors);
         }
       } else if (mode === 'duet' || (hasHostCam && hasGuestCam)) {
         // Duet Split Screen: Host on left, Guest on right
@@ -296,13 +315,13 @@ export class BroadcastCompositor {
           this.drawVideoBox(ctx, hostVideoCard, 40, 95, 580, 360, '🎤 HOST SINGER', colors);
         }
         if (hasGuestCam) {
-          this.drawVideoBox(ctx, guestVideoCards[0], 660, 95, 580, 360, '👥 GUEST DUET', colors);
+          this.drawVideoBox(ctx, guestVideoCard, 660, 95, 580, 360, '👥 GUEST DUET', colors);
         }
       } else if (hasHostCam) {
         // Spotlight Layout: Center camera
         this.drawVideoBox(ctx, hostVideoCard, 340, 95, 600, 360, '🎤 HOST SINGER', colors);
       } else if (hasGuestCam) {
-        this.drawVideoBox(ctx, guestVideoCards[0], 340, 95, 600, 360, '👥 GUEST DUET', colors);
+        this.drawVideoBox(ctx, guestVideoCard, 340, 95, 600, 360, '👥 GUEST DUET', colors);
       }
     }
 
@@ -321,8 +340,8 @@ export class BroadcastCompositor {
       this.drawHeader(ctx, w, h, colors);
     }
 
-    // ─── 6. Live Modal Preview Monitor Mirroring ──────────────────────────────
-    if (this._previewCtx && this._previewCanvas) {
+    // ─── 6. Live Modal Preview Monitor Mirroring (Only when modal visible) ────
+    if (this._previewCtx && this._previewCanvas && this._previewCanvas.offsetParent !== null) {
       try {
         this._previewCtx.drawImage(this.canvas, 0, 0, this._previewCanvas.width, this._previewCanvas.height);
       } catch (_) {}
@@ -426,20 +445,8 @@ export class BroadcastCompositor {
   }
 
   drawLyrics(ctx, w, h, hasCameras, colors, mode) {
-    let currentLine = '';
-    let nextLine = '';
-
-    const activeEl = document.querySelector('.lyric-line.active');
-    if (activeEl) {
-      currentLine = activeEl.textContent?.trim() || '';
-      const nextEl = activeEl.nextElementSibling;
-      if (nextEl && nextEl.classList.contains('lyric-line')) {
-        nextLine = nextEl.textContent?.trim() || '';
-      }
-    } else {
-      currentLine = '♪ ♫ ♪ Nirmal Karaoke Live ♪ ♫ ♪';
-      nextLine = 'Sing along with your favorite tracks';
-    }
+    const currentLine = this._cachedCurrentLine || '♪ ♫ ♪ Nirmal Karaoke Live ♪ ♫ ♪';
+    const nextLine = this._cachedNextLine || 'Sing along with your favorite tracks';
 
     const isKaraokeMode = mode === 'karaoke';
     const isVisMode = mode === 'visualizer';
@@ -460,12 +467,12 @@ export class BroadcastCompositor {
     ctx.save();
     ctx.textAlign = 'center';
 
-    // Current Line Background Pill
+    // Highlight Pill Box for Active Lyric
     if (currentLine) {
       ctx.font = `bold ${mainFontSize}px sans-serif`;
-      const textWidth = ctx.measureText(currentLine).width;
-      const pillW = Math.min(w - 80, textWidth + 60);
-      const pillH = mainFontSize + 26;
+      const textMetrics = ctx.measureText(currentLine);
+      const pillW = Math.min(w - 60, Math.max(340, textMetrics.width + 48));
+      const pillH = mainFontSize + 32;
 
       ctx.fillStyle = 'rgba(8, 12, 24, 0.88)';
       ctx.strokeStyle = colors?.border || 'rgba(0, 229, 255, 0.5)';
@@ -475,16 +482,13 @@ export class BroadcastCompositor {
       ctx.fill();
       ctx.stroke();
 
-      // Current Line Typography
-      ctx.shadowColor = colors?.textGlow || '#00e5ff';
-      ctx.shadowBlur = 14;
+      // Current Line Typography (Clean high-contrast render without expensive Gaussian shadow blur)
       ctx.fillStyle = '#ffffff';
       ctx.fillText(currentLine, w / 2, y + mainFontSize + 8);
     }
 
     // Next Line Preview
     if (nextLine) {
-      ctx.shadowBlur = 0;
       ctx.font = `600 ${nextFontSize}px sans-serif`;
       ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
       ctx.fillText(nextLine, w / 2, y + mainFontSize + 45);
@@ -523,9 +527,8 @@ export class BroadcastCompositor {
     ctx.font = 'bold 13px sans-serif';
     ctx.fillText('LIVE BROADCAST', 294, 41);
 
-    // Song Title / Track Info on Right
-    const titleEl = document.getElementById('hudNote') || document.querySelector('.now-playing .title');
-    const songName = titleEl?.textContent?.trim() || 'Live Karaoke Session';
+    // Song Title / Track Info on Right (Cached)
+    const songName = this._cachedSongName || 'Live Karaoke Session';
 
     ctx.textAlign = 'right';
     ctx.fillStyle = colors?.accent1 || '#00e5ff';

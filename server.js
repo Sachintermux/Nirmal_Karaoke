@@ -1116,14 +1116,18 @@ function detectAudioInWebM(buf) {
  *   { state: 'starting' | 'connected' | 'streaming' | 'error' | 'stopped', ... }
  */
 function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p', hasAudio = true) {
-  let scaleFilter = 'scale=960:540:flags=fast_bilinear';
-  let videoBitrate = '1400k';
-  let bufSize = '2800k';
+  let scaleFilter = 'scale=854:480:flags=fast_bilinear';
+  let videoBitrate = '1200k';
+  let bufSize = '2400k';
 
   if (quality === '720p') {
     scaleFilter = 'scale=1280:720:flags=fast_bilinear';
-    videoBitrate = '2500k';
-    bufSize = '5000k';
+    videoBitrate = '2400k';
+    bufSize = '4800k';
+  } else if (quality === '540p') {
+    scaleFilter = 'scale=960:540:flags=fast_bilinear';
+    videoBitrate = '1400k';
+    bufSize = '2800k';
   } else if (quality === '480p') {
     scaleFilter = 'scale=854:480:flags=fast_bilinear';
     videoBitrate = '1200k';
@@ -1134,7 +1138,8 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p', hasAudio = true)
     '-hide_banner',
     '-loglevel', 'info',
 
-    // Input 0: continuous WebM/Matroska from browser MediaRecorder.
+    // Input 0: continuous WebM/Matroska from browser MediaRecorder with generous thread queue.
+    '-thread_queue_size', '1024',
     '-err_detect', 'ignore_err',
     '-fflags', '+nobuffer+genpts+discardcorrupt',
     '-probesize', '1M',
@@ -1175,7 +1180,7 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p', hasAudio = true)
     '-keyint_min', '60',
     '-sc_threshold', '0',
     '-flags', '+cgop',
-    '-x264-params', 'keyint=60:min-keyint=60:scenecut=0:force-cfr=1:subme=0:me=dia:no-mbtree=1:aq-mode=0:ref=1:partitions=none',
+    '-x264-params', 'keyint=60:min-keyint=60:scenecut=0:force-cfr=1:subme=0:me=dia:no-mbtree=1:aq-mode=0:ref=1:partitions=none:rc-lookahead=0',
     '-threads', '2',
 
     // YouTube CBR-style configuration.
@@ -1192,8 +1197,10 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p', hasAudio = true)
 
     '-max_muxing_queue_size', '4096',
 
-    // FLV/RTMP(S) output.
+    // FLV/RTMP(S) output with transmission buffer.
     '-flvflags', 'no_duration_filesize',
+    '-rtmp_buffer', '4000',
+    '-rtmp_live', 'live',
     '-f', 'flv',
     rtmpUrl
   );
