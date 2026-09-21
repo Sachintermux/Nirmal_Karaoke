@@ -1095,11 +1095,27 @@ function maskStreamSecret(url, streamKey) {
 }
 
 /**
+ * Detect whether the incoming WebM buffer has an audio track definition.
+ */
+function detectAudioInWebM(buf) {
+  if (!buf || buf.length < 16) return false;
+  if (buf.includes('A_OPUS') || buf.includes('A_VORBIS') || buf.includes('A_AAC')) {
+    return true;
+  }
+  for (let i = 0; i < Math.min(buf.length - 2, 8192); i++) {
+    if (buf[i] === 0x83 && (buf[i + 1] === 0x81 || buf[i + 1] === 0x01) && buf[i + 2] === 0x02) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Start FFmpeg for one live publisher.
  * onState receives:
  *   { state: 'starting' | 'connected' | 'streaming' | 'error' | 'stopped', ... }
  */
-function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
+function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p', hasAudio = true) {
   let scaleFilter = 'scale=960:540:flags=fast_bilinear';
   let videoBitrate = '1600k';
   let bufSize = '3200k';
@@ -1118,18 +1134,33 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
     '-hide_banner',
     '-loglevel', 'info',
 
-    // Input: continuous WebM/Matroska from browser MediaRecorder.
+    // Input 0: continuous WebM/Matroska from browser MediaRecorder.
     '-err_detect', 'ignore_err',
     '-fflags', '+nobuffer+genpts+discardcorrupt',
     '-probesize', '1M',
     '-analyzeduration', '1000000',
     '-f', 'matroska,webm',
-    '-i', 'pipe:0',
+    '-i', 'pipe:0'
+  ];
 
-    // Explicit maps make the browser's mixed A/V stream deterministic.
-    '-map', '0:v:0',
-    '-map', '0:a:0?',
+  if (!hasAudio) {
+    // If browser WebM has no audio track, attach synthetic silent stereo audio input.
+    // YouTube Live Ingestion REQUIRES an AAC audio stream and drops video-only streams.
+    args.push(
+      '-f', 'lavfi',
+      '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100'
+    );
+  }
 
+  // Explicit mapping
+  args.push('-map', '0:v:0');
+  if (hasAudio) {
+    args.push('-map', '0:a:0');
+  } else {
+    args.push('-map', '1:a:0');
+  }
+
+  args.push(
     // Video: CFR 30fps, standard SDR pixel format, no B-frame latency.
     '-vf', `${scaleFilter},setpts=PTS-STARTPTS,fps=30,format=yuv420p`,
     '-c:v', 'libx264',
@@ -1144,12 +1175,7 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
     '-keyint_min', '60',
     '-sc_threshold', '0',
     '-flags', '+cgop',
-
-    // High-performance container-optimized x264 parameters:
-    // Disables slow subpixel refinement (subme=0, me=dia) and macroblock tree (no-mbtree=1)
-    // Runs at >2.5x real-time even on restricted 0.1 vCPU cloud containers, preventing live stream stall
-        // Added: profile=baseline ensures YouTube compatibility, nal-hrd=cbr ensures constant bitrate signaling
-    '-x264-params', 'profile=baseline:level=3.1:keyint=60:min-keyint=60:no-scenecut=1:force-cfr=1:subme=1:me=hex:no-mbtree=1:aq-mode=0:ref=2:partitions=i8x8,i4x4:nal-hrd=cbr:vbv-bufsize=1600:vbv-maxrate=1600',
+    '-x264-params', 'keyint=60:min-keyint=60:scenecut=0:force-cfr=1:subme=0:me=dia:no-mbtree=1:aq-mode=0:ref=1:partitions=none',
     '-threads', '2',
 
     // YouTube CBR-style configuration.
@@ -1170,7 +1196,7 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
     '-flvflags', 'no_duration_filesize',
     '-f', 'flv',
     rtmpUrl
-  ];
+  );
 
   const safeUrl = maskStreamSecret(rtmpUrl, rtmpUrl.split('/').pop());
   console.info(`[ffmpeg-stream] Spawning FFmpeg [quality=${quality}, ${scaleFilter}] -> ${safeUrl}`);
@@ -1509,16 +1535,16 @@ wss.on('connection', (ws, req) => {
     }
   };
 
-  const startFfmpeg = () => {
+  const startFfmpeg = (hasAudio = true) => {
     startedAt = startedAt || Date.now();
 
     console.info(
       `[RELAY STEP 5/7] FFmpeg child process spawned for session=${sessionId} platform=${platform} ` +
-      `room=${roomName} target=${maskStreamSecret(rtmpUrl, streamKey)}`
+      `room=${roomName} hasAudio=${hasAudio} target=${maskStreamSecret(rtmpUrl, streamKey)}`
     );
 
     setStreamState('starting');
-    ffmpegProc = spawnFfmpeg(rtmpUrl, handleLog, handleState, quality);
+    ffmpegProc = spawnFfmpeg(rtmpUrl, handleLog, handleState, quality, hasAudio);
 
     ffmpegStreams.set(roomName, {
       ffmpeg: ffmpegProc,
@@ -1614,13 +1640,19 @@ wss.on('connection', (ws, req) => {
     if (!ffmpegProc) {
       startedAt = Date.now();
       firstChunk = Buffer.from(buffer);
-      console.info(`[RELAY STEP 4/7] First media chunk received (${buffer.length} bytes). Spawning FFmpeg child process...`);
-      ffmpegProc = startFfmpeg();
+      const hasAudio = detectAudioInWebM(firstChunk);
+      if (hasAudio) {
+        console.info(`[RELAY STEP 4/7] First media chunk received (${buffer.length} bytes). Audio track verified (A_OPUS/Audio). Spawning FFmpeg child process...`);
+      } else {
+        console.warn(`[RELAY STEP 4/7] ⚠️ First media chunk received (${buffer.length} bytes) with NO audio track. Attaching synthetic silent stereo AAC audio generator for YouTube compliance.`);
+      }
+      ffmpegProc = startFfmpeg(hasAudio);
 
       send({
         type: 'started',
         sessionId,
         platform,
+        hasAudio,
         message: 'First media chunk received; FFmpeg started'
       });
     }

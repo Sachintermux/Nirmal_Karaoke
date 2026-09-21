@@ -426,6 +426,28 @@ export class MultiStreamManager {
     console.info(`[MultiStream STEP 3/8] Live Stage room verified: ${roomName}`);
 
     // 3. Extract mixed stereo audio track from AudioEngine
+    // Ensure AudioEngine destination is actively producing audio frames so MediaRecorder
+    // always includes the Opus audio track in the WebM container even if no song is playing.
+    if (ae?.ctx && ae?.engine?.dest) {
+      try {
+        if (ae.ctx.state === 'suspended') {
+          await ae.ctx.resume();
+        }
+        if (!this._audioKeepAlive) {
+          const osc = ae.ctx.createOscillator();
+          const gain = ae.ctx.createGain();
+          osc.frequency.value = 440;
+          gain.gain.value = 0.00001; // completely inaudible (-100dB)
+          osc.connect(gain);
+          gain.connect(ae.engine.dest);
+          osc.start();
+          this._audioKeepAlive = osc;
+        }
+      } catch (carrierErr) {
+        console.warn('[MultiStream] Audio keep-alive notice:', carrierErr);
+      }
+    }
+
     const mixedStream = ae?.engine?.dest?.stream
                      || this.liveHost?.impl?.audioEngine?.engine?.dest?.stream
                      || this.liveHost?.audioEngine?.engine?.dest?.stream;
@@ -470,8 +492,8 @@ export class MultiStreamManager {
     // 4. Generate Unified Broadcast Stream (Canvas Video + Mixed Audio)
     const broadcastStream = this.compositor.getMediaStream(audioTrack);
     console.info('[MultiStream STEP 4/8] Unified broadcast stream initialized:', {
-      videoTracks: broadcastStream.getVideoTracks().length,
-      audioTracks: broadcastStream.getAudioTracks().length
+      videoTracks: broadcastStream.getVideoTracks().map(t => `${t.kind}:${t.readyState}:enabled=${t.enabled}`),
+      audioTracks: broadcastStream.getAudioTracks().map(t => `${t.kind}:${t.readyState}:enabled=${t.enabled}`)
     });
 
     this.setStatus('Connecting Server…');
