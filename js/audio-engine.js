@@ -520,7 +520,7 @@ export class AudioEngine {
       try {
         e.stereoOutputBus.channelCount = 2;
         e.stereoOutputBus.channelCountMode = 'explicit';
-        e.stereoOutputBus.channelInterpretation = 'discrete';
+        e.stereoOutputBus.channelInterpretation = 'speakers';
       } catch (_) {}
 
       e.stereoSplit = this.ctx.createChannelSplitter(2);

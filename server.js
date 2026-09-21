@@ -18,7 +18,31 @@ const activeStreams = new Map();
 app.disable('x-powered-by');
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
-app.use(express.static(path.join(__dirname)));
+
+// Security Guard: Deny direct access to sensitive configuration, source code, or unmetered media downloads
+const BLOCKED_PATTERNS = [
+  /^\/\.env/i,
+  /^\/server\.js$/i,
+  /^\/Dockerfile$/i,
+  /^\/\.dockerignore$/i,
+  /^\/render\.yaml$/i,
+  /^\/package.*\.json$/i,
+  /^\/scratch/i,
+  /\.mp4$/i
+];
+
+app.use((req, res, next) => {
+  const reqPath = decodeURIComponent(req.path || '');
+  if (BLOCKED_PATTERNS.some(pat => pat.test(reqPath))) {
+    return res.status(403).type('text/plain').send('Access Forbidden');
+  }
+  next();
+});
+
+app.use(express.static(path.join(__dirname), {
+  dotfiles: 'deny',
+  index: ['index.html']
+}));
 
 function livekitConfigured() {
   return !!(process.env.LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET);

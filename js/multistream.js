@@ -987,8 +987,17 @@ export class MultiStreamManager {
       chunkQueue.push(ev.data);
       // DO NOT delete oldest chunks with splice! That deletes EBML container headers and keyframes,
       // which corrupts FFmpeg's decoder and causes YouTube stream termination!
-      if (chunkQueue.length > 45) {
+      if (chunkQueue.length > 30) {
         console.warn(`[MultiStream] Backpressure warning: ${chunkQueue.length} chunks queued for upload.`);
+        const st = document.getElementById('externalStreamStatus');
+        if (st && this.isStreaming) {
+          st.textContent = `⚠️ Network congestion: buffering (${chunkQueue.length}s)...`;
+        }
+      } else if (chunkQueue.length === 0) {
+        const st = document.getElementById('externalStreamStatus');
+        if (st && this.isStreaming && st.textContent.includes('congestion')) {
+          st.textContent = '🟢 Broadcasting Live';
+        }
       }
       sendChunks();
     };

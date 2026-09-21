@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport">
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" name="viewport">
     <title>Live Singers & Duet Lobby — Nirmal Karaoke</title>
     <link href="./css/style.css?v=24" rel="stylesheet">
     <link href="./css/game-invite.css?v=24" rel="stylesheet">
@@ -10,6 +10,7 @@
         body {
             background: radial-gradient(circle at center, #10141e 0%, #06070a 100%);
             min-height: 100vh;
+            min-height: 100dvh;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -556,6 +557,28 @@
             transform: translateY(-1px);
             box-shadow: 0 6px 24px rgba(0, 229, 255, 0.55);
         }
+
+        @media (max-width: 480px) {
+            .singer-card {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .singer-right {
+                width: 100%;
+                display: flex;
+                justify-content: flex-end;
+            }
+            .stage-join-actions {
+                width: 100%;
+                justify-content: flex-end;
+                gap: 6px;
+            }
+            .stage-join-actions a {
+                flex: 1;
+                text-align: center;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -668,13 +691,48 @@
 
     updateMyProfileUI();
 
-    // Change avatar on click
-    const avatars = ['🎤', '🎧', '🎸', '🎹', '⚡', '👑', '🔥', '🌟', '🎶', '💎'];
-    myAvatar?.addEventListener('click', () => {
-        const curIdx = avatars.indexOf(presence.user.avatar);
-        const nextAvatar = avatars[(curIdx + 1) % avatars.length];
-        presence.updateProfile(presence.user.name, nextAvatar);
-        updateMyProfileUI();
+    // Interactive avatar picker grid popover
+    let usersAvatarPopover = null;
+    const avatars = ['🎤', '🎧', '🎸', '🎹', '⚡', '👑', '🔥', '🌟', '🎶', '💎', '🚀', '🐱'];
+    myAvatar?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (usersAvatarPopover) {
+            usersAvatarPopover.remove();
+            usersAvatarPopover = null;
+            return;
+        }
+        usersAvatarPopover = document.createElement('div');
+        usersAvatarPopover.style.cssText = 'position:absolute; top:45px; left:0; z-index:300; background:#1c162b; border:1px solid rgba(0,229,255,0.4); border-radius:12px; padding:8px; display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; box-shadow:0 8px 30px rgba(0,0,0,0.8);';
+        avatars.forEach((av) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = av;
+            btn.style.cssText = 'background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:8px; font-size:1.3rem; padding:6px; cursor:pointer; transition:all 0.15s;';
+            if (av === presence.user.avatar) {
+                btn.style.borderColor = '#00e5ff';
+                btn.style.background = 'rgba(0,229,255,0.2)';
+            }
+            btn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                presence.updateProfile(presence.user.name, av);
+                updateMyProfileUI();
+                usersAvatarPopover?.remove();
+                usersAvatarPopover = null;
+            });
+            usersAvatarPopover.appendChild(btn);
+        });
+        if (myAvatar.parentElement) {
+            myAvatar.parentElement.style.position = 'relative';
+            myAvatar.parentElement.appendChild(usersAvatarPopover);
+        }
+        const closeOnOutside = (ev) => {
+            if (usersAvatarPopover && !usersAvatarPopover.contains(ev.target)) {
+                usersAvatarPopover.remove();
+                usersAvatarPopover = null;
+                document.removeEventListener('click', closeOnOutside);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeOnOutside), 50);
     });
 
     // Edit Name
@@ -804,7 +862,11 @@
         if (res.accepted) {
             alert(`🎉 ${res.responder?.name || 'Singer'} accepted your Duet invite! Connecting...`);
             if (res.roomId) {
-                window.location.href = `./audience.html?room=${encodeURIComponent(res.roomId)}&role=duet&autoJoin=1`;
+                if (presence.isLive && presence.currentRole === 'host') {
+                    window.location.href = `./index.html#stage`;
+                } else {
+                    window.location.href = `./audience.html?room=${encodeURIComponent(res.roomId)}&role=duet&autoJoin=1`;
+                }
             }
         } else {
             pendingInvitedUsers.delete(res.responder?.id);

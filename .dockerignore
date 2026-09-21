@@ -11,8 +11,6 @@ npm-debug.log
 scratch/
 livekit/
 netlify/
-css/
-js/
 .dockerignore
 Dockerfile
 FIXES-*

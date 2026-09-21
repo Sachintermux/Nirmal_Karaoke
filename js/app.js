@@ -657,13 +657,48 @@ function setupLiveShareUI() {
   }
   updateDesktopMyProfileUI();
 
-  // Cycle avatar on click
-  const avatarList = ['🎤', '🎧', '🎸', '🎹', '⚡', '👑', '🔥', '🌟', '🎶', '💎'];
-  desktopMyAvatar?.addEventListener('click', () => {
-    const curIdx = avatarList.indexOf(presence.user.avatar);
-    const nextAvatar = avatarList[(curIdx + 1) % avatarList.length];
-    presence.updateProfile(presence.user.name, nextAvatar);
-    updateDesktopMyProfileUI();
+  // Interactive avatar picker grid popover
+  let avatarPickerPopover = null;
+  const avatarList = ['🎤', '🎧', '🎸', '🎹', '⚡', '👑', '🔥', '🌟', '🎶', '💎', '🚀', '🐱'];
+  desktopMyAvatar?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (avatarPickerPopover) {
+      avatarPickerPopover.remove();
+      avatarPickerPopover = null;
+      return;
+    }
+    avatarPickerPopover = document.createElement('div');
+    avatarPickerPopover.style.cssText = 'position:absolute; top:45px; left:0; z-index:300; background:#1c162b; border:1px solid rgba(0,229,255,0.4); border-radius:12px; padding:8px; display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; box-shadow:0 8px 30px rgba(0,0,0,0.8);';
+    avatarList.forEach((av) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = av;
+      btn.style.cssText = 'background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:8px; font-size:1.3rem; padding:6px; cursor:pointer; transition:all 0.15s;';
+      if (av === presence.user.avatar) {
+        btn.style.borderColor = '#00e5ff';
+        btn.style.background = 'rgba(0,229,255,0.2)';
+      }
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        presence.updateProfile(presence.user.name, av);
+        updateDesktopMyProfileUI();
+        avatarPickerPopover?.remove();
+        avatarPickerPopover = null;
+      });
+      avatarPickerPopover.appendChild(btn);
+    });
+    if (desktopMyAvatar.parentElement) {
+      desktopMyAvatar.parentElement.style.position = 'relative';
+      desktopMyAvatar.parentElement.appendChild(avatarPickerPopover);
+    }
+    const closeOnOutside = (ev) => {
+      if (avatarPickerPopover && !avatarPickerPopover.contains(ev.target)) {
+        avatarPickerPopover.remove();
+        avatarPickerPopover = null;
+        document.removeEventListener('click', closeOnOutside);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeOnOutside), 50);
   });
 
   btnDesktopEditName?.addEventListener('click', () => {

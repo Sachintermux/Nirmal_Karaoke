@@ -2,7 +2,7 @@ services:
   - type: web
     name: nirmal-karaoke-backend
     env: docker
-    plan: free
+    plan: starter
     region: oregon
     dockerfilePath: Dockerfile
     healthCheckPath: /api/health

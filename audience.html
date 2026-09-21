@@ -1460,13 +1460,30 @@
     duetNotice.style.display = 'none';
   }
 
-  // Auto-join handling when redirected from game-style invitation accept
+  // Single-tap gesture activation for mobile autoplay & mic permissions (replaces failing setTimeout)
   if (params.get('autoJoin') === '1' && roomId) {
-    setTimeout(() => {
+    const overlay = document.createElement('div');
+    overlay.id = 'autoJoinGestureModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(4,2,8,0.85);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;';
+    overlay.innerHTML = `
+      <div style="background:linear-gradient(145deg, #1c152b, #0f0b18); border:1px solid #ff007f; border-radius:20px; padding:28px 22px; max-width:380px; width:100%; box-shadow:0 0 35px rgba(255,0,127,0.35); text-align:center;">
+        <div style="font-size:3rem; margin-bottom:12px;">🎤</div>
+        <h2 style="color:#fff; font-size:1.25rem; font-weight:800; margin:0 0 8px;">Duet Invitation Accepted!</h2>
+        <p style="color:var(--text-dim, #a39cb5); font-size:0.85rem; line-height:1.4; margin:0 0 20px;">Tap below to connect your microphone and join the host on the live stage.</p>
+        <button id="btnTriggerGestureJoin" class="button button-live" style="width:100%; min-height:48px; font-size:1rem; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:#ff007f; border:none; border-radius:12px; color:#fff;">
+          ● Join Live Stage Now
+        </button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const btnTrigger = overlay.querySelector('#btnTriggerGestureJoin');
+    btnTrigger?.addEventListener('click', () => {
+      overlay.remove();
       if (btnTuneIn && !btnTuneIn.disabled && btnTuneIn.style.display !== 'none') {
         btnTuneIn.click();
       }
-    }, 600);
+    });
   }
 
   chatNickInput.addEventListener('change', sendPresenceUpdate);

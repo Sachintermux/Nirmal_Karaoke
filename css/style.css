@@ -930,19 +930,29 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}a{color:inherit}
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   cursor: nwse-resize;
   touch-action: none;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #00e5ff;
-  border-radius: 4px 0 4px 0;
+  border-radius: 6px 0 4px 0;
   color: #05070e;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
   line-height: 1;
+}
+
+/* WCAG 2.5.5 touch target size expansion for touchscreens & mobile */
+.obs-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  min-width: 46px;
+  min-height: 46px;
+  pointer-events: auto;
 }
 
 .obs-resize-handle:hover,
