@@ -189,9 +189,9 @@ export class FaceFilterEngine {
     const constraints = {
       audio: false,
       video: {
-        width: { ideal: this.width },
-        height: { ideal: this.height },
-        frameRate: { ideal: 30, max: 30 }
+        width: { ideal: 640, max: 854 },
+        height: { ideal: 360, max: 480 },
+        frameRate: { ideal: 25, max: 30 }
       }
     };
 
@@ -210,7 +210,7 @@ export class FaceFilterEngine {
       console.warn('[FaceFilter] primary camera request failed, attempting fallback:', err?.message || err);
       this.rawStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { width: { ideal: this.width }, height: { ideal: this.height } }
+        video: { width: { ideal: 640, max: 854 }, height: { ideal: 360, max: 480 } }
       });
     }
 
@@ -229,17 +229,34 @@ export class FaceFilterEngine {
     });
     try { await this.video.play(); } catch (_) {}
 
-    // Adjust canvas aspect ratio to match actual video stream
-    const vw = this.video.videoWidth || this.width;
-    const vh = this.video.videoHeight || this.height;
-    this.canvas.width = vw;
-    this.canvas.height = vh;
-    this.width = vw;
-    this.height = vh;
+    // Constrain canvas dimensions to max 640px for smooth performance on low-end mobile & PC
+    const rawW = this.video.videoWidth || this.width || 640;
+    const rawH = this.video.videoHeight || this.height || 360;
+    const MAX_DIM = 640;
 
-    // Capture canvas stream
+    let cw = rawW;
+    let ch = rawH;
+    if (cw > MAX_DIM || ch > MAX_DIM) {
+      if (cw >= ch) {
+        ch = Math.round((rawH * MAX_DIM) / rawW);
+        cw = MAX_DIM;
+      } else {
+        cw = Math.round((rawW * MAX_DIM) / rawH);
+        ch = MAX_DIM;
+      }
+    }
+    // Ensure dimensions are even for hardware video decoders
+    cw = cw - (cw % 2);
+    ch = ch - (ch % 2);
+
+    this.canvas.width = cw;
+    this.canvas.height = ch;
+    this.width = cw;
+    this.height = ch;
+
+    // Capture canvas stream at efficient 25 FPS
     if (!this.canvasStream) {
-      this.canvasStream = this.canvas.captureStream ? this.canvas.captureStream(30) : this.rawStream;
+      this.canvasStream = this.canvas.captureStream ? this.canvas.captureStream(25) : this.rawStream;
       this.outputTrack = this.canvasStream.getVideoTracks()[0];
     }
 

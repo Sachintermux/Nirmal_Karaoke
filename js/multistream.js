@@ -13,7 +13,7 @@
  *             → RTMP → YouTube Live
  */
 
-import { BroadcastCompositor } from './broadcast-compositor.js?v=27';
+import { BroadcastCompositor } from './broadcast-compositor.js?v=28';
 
 const STORAGE_KEY_STREAM_KEYS = 'nirmal_karaoke_stream_keys';
 const STORAGE_KEY_RELAY_URL   = 'nirmal_stream_relay_url';
@@ -168,8 +168,10 @@ export class MultiStreamManager {
     // Bind Stream Quality Dropdown
     if (this.selectQuality) {
       this.selectQuality.value = this.selectedQuality;
+      this.compositor.setQuality(this.selectedQuality);
       this.selectQuality.addEventListener('change', () => {
         this.selectedQuality = this.selectQuality.value;
+        this.compositor.setQuality(this.selectedQuality);
         try { localStorage.setItem('nirmal_stream_quality', this.selectedQuality); } catch (_) {}
       });
     }
@@ -485,6 +487,7 @@ export class MultiStreamManager {
     console.info(`[MultiStream STEP 4/8] Dedicated broadcast audio track ready: level=${programLevel.toFixed(4)}, state=${audioTrack.readyState}`);
 
     // 4. Generate Unified Broadcast Stream (Canvas Video + Mixed Audio)
+    this.compositor.setQuality(this.selectedQuality);
     const broadcastStream = this.compositor.getMediaStream(audioTrack);
     console.info('[MultiStream STEP 4.1/8] Unified broadcast stream initialized:', {
       videoTracks: broadcastStream.getVideoTracks().map(t => `${t.kind}:${t.readyState}:enabled=${t.enabled}`),
@@ -656,7 +659,7 @@ export class MultiStreamManager {
               const platLabel = (this.activePlatform || 'YOUTUBE').toUpperCase().replace('_RTMPS', '').replace('_RTMP_STANDARD', '');
               const rate = msg.stats?.bitrate ? ` (${msg.stats.bitrate})` : '';
               this.streamStatusBadge.className = 'status-badge-live';
-              this.streamStatusBadge.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}${rate} (10s Buffer Active)`;
+              this.streamStatusBadge.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}${rate}`;
             }
             this.updateStateUI();
           } else if (msg.type === 'error') {
@@ -742,8 +745,14 @@ export class MultiStreamManager {
     }
 
     let recorder = null;
+    let vBitrate = 1200000;
+    if (this.selectedQuality === '360p') vBitrate = 800000;
+    else if (this.selectedQuality === '480p') vBitrate = 1200000;
+    else if (this.selectedQuality === '540p') vBitrate = 1600000;
+    else if (this.selectedQuality === '720p') vBitrate = 2400000;
+
     const options = {
-      videoBitsPerSecond: 2500000,
+      videoBitsPerSecond: vBitrate,
       audioBitsPerSecond: 128000
     };
     if (mimeType) options.mimeType = mimeType;
@@ -757,61 +766,38 @@ export class MultiStreamManager {
     this._stopMediaRecorder();
     this._pendingChunks = [];
 
-    const BUFFER_TARGET_CHUNKS = 10; // 10 seconds delay buffer to prevent YouTube buffering
-    let isBufferingInitial = true;
-    const chunkQueue = [];
-    let isProcessingQueue = false;
     let chunkCount = 0;
+    const chunkQueue = [];
+    let isSending = false;
 
-    const flushQueue = async () => {
-      if (isProcessingQueue) return;
-      if (isBufferingInitial) return; // Wait until 10-second pre-roll buffer is gathered
-      isProcessingQueue = true;
+    const sendChunks = () => {
+      if (isSending || ws.readyState !== WebSocket.OPEN) return;
+      isSending = true;
       while (chunkQueue.length > 0 && ws.readyState === WebSocket.OPEN) {
-        const item = chunkQueue.shift();
+        const chunk = chunkQueue.shift();
         try {
           chunkCount++;
           if (chunkCount === 1) {
-            console.info(`[MultiStream STEP 7/8] Chunk #1 transmitted to relay via WebSocket (${item.size || item.byteLength || 'binary'} bytes, 10s pre-roll buffer releasing). Awaiting FFmpeg initialization.`);
-          } else if (chunkCount % 10 === 0) {
-            console.info(`[MultiStream UPLOAD] Transmitted ${chunkCount} media chunks to relay (10s continuous buffer active).`);
+            console.info(`[MultiStream STEP 7/8] Chunk #1 transmitted to relay via WebSocket (${chunk.size || chunk.byteLength || 'binary'} bytes). Awaiting FFmpeg initialization.`);
+          } else if (chunkCount % 15 === 0) {
+            console.info(`[MultiStream UPLOAD] Continuous smooth broadcast active: ${chunkCount} chunks transmitted.`);
           }
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(item);
-          }
+          ws.send(chunk);
         } catch (err) {
-          console.warn('[MultiStream] Chunk transmit warning:', err);
+          console.warn('[MultiStream] Chunk transmit notice:', err);
         }
       }
-      isProcessingQueue = false;
+      isSending = false;
     };
 
     recorder.ondataavailable = (ev) => {
       if (!ev.data || ev.data.size === 0) return;
       chunkQueue.push(ev.data);
-
-      if (isBufferingInitial) {
-        const currentSeconds = chunkQueue.length;
-        console.info(`[MultiStream STEP 7.0/8] Buffering 10s smooth playback delay: ${currentSeconds}/${BUFFER_TARGET_CHUNKS}s...`);
-        if (this.streamStatusBadge && !this.hasConfirmedLive) {
-          this.streamStatusBadge.className = 'status-badge-connecting';
-          this.streamStatusBadge.innerHTML = `<span class="badge-dot" style="background:#ffd166;"></span> BUFFERING (${currentSeconds}/${BUFFER_TARGET_CHUNKS}s DELAY)`;
-        }
-        if (this.btnStartStream && !this.hasConfirmedLive) {
-          this.btnStartStream.textContent = `Buffering (${currentSeconds}/${BUFFER_TARGET_CHUNKS}s)…`;
-        }
-
-        if (currentSeconds >= BUFFER_TARGET_CHUNKS) {
-          isBufferingInitial = false;
-          console.info(`[MultiStream STEP 7.1/8] 10-second smooth buffer primed! Releasing pre-buffered media pipeline to cloud relay.`);
-          if (this.streamStatusBadge && !this.hasConfirmedLive) {
-            this.streamStatusBadge.innerHTML = '<span class="badge-dot" style="background:#ffd166;"></span> CONNECTING TO YOUTUBE…';
-          }
-          flushQueue();
-        }
-      } else {
-        flushQueue();
+      if (chunkQueue.length > 20) {
+        // Prevent unbounded memory growth if socket stalls
+        chunkQueue.splice(0, chunkQueue.length - 20);
       }
+      sendChunks();
     };
 
     recorder.onerror = (e) => {
@@ -826,7 +812,7 @@ export class MultiStreamManager {
     // 1000ms timeslice ensures clean 1-second keyframe clusters without sub-second cluster fragmentation
     recorder.start(1000);
     this._recorder = recorder;
-    console.info(`[MultiStream STEP 6.1/8] MediaRecorder active (1000ms clusters @ 128k AAC / 2.5M video, mimeType: ${recorder.mimeType || 'default'})`);
+    console.info(`[MultiStream STEP 6.1/8] MediaRecorder active (1000ms clusters @ 128k AAC / ${(vBitrate/1000).toFixed(0)}k video, mimeType: ${recorder.mimeType || 'default'})`);
   }
 
   _stopMediaRecorder() {

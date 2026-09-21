@@ -797,3 +797,52 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}a{color:inherit}
   }
 }
 
+/* Mobile & Low-End Hardware Compatibility Optimizations */
+@media (max-width: 580px) {
+  #modalExternalStream .modal-card {
+    padding: 16px 12px !important;
+    border-radius: 18px !important;
+    width: 96vw !important;
+    max-height: calc(100dvh - 24px) !important;
+  }
+  #broadcastLayoutPills {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+  .stage-video-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+    gap: 8px !important;
+  }
+  .topbar {
+    padding: 0 8px !important;
+  }
+  #btnOpenMultistream, #btnOpenUsersLobby {
+    padding: 6px 7px !important;
+    font-size: 11px !important;
+  }
+  .topbar .button-live {
+    padding: 6px 8px !important;
+    font-size: 10px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .status-deck {
+    display: none !important;
+  }
+  .brand {
+    font-size: 11px !important;
+  }
+  #btnOpenMultistream, #btnOpenUsersLobby {
+    padding: 5px 5px !important;
+    font-size: 10px !important;
+  }
+}
+
+/* Hardware performance acceleration */
+.stage-video-card video, #broadcastScenePreview {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  touch-action: manipulation;
+}
+

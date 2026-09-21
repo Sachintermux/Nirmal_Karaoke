@@ -16,12 +16,14 @@ export class BroadcastCompositor {
     this.liveHost = liveHost;
     this.lyricsManager = lyricsManager;
 
-    // Output Canvas (1280x720 16:9 HD standard)
-    this.width = 1280;
-    this.height = 720;
+    // Output Quality & Canvas (Defaults to 480p 25fps for rock-solid performance on mobile & PC)
+    this.quality = localStorage.getItem('nirmal_stream_quality') || '480p';
+    this.width = 854;
+    this.height = 480;
+    this.targetFps = 25;
+
     this.canvas = document.createElement('canvas');
-    this.canvas.width = this.width;
-    this.canvas.height = this.height;
+    this.setQuality(this.quality);
     this.ctx = this.canvas.getContext('2d', { alpha: false });
 
     this._rafId = null;
@@ -46,6 +48,25 @@ export class BroadcastCompositor {
     this._previewCtx = null;
 
     this.loadSavedLayers();
+  }
+
+  setQuality(quality) {
+    const configs = {
+      '360p': { width: 640, height: 360, fps: 25 },
+      '480p': { width: 854, height: 480, fps: 25 },
+      '540p': { width: 960, height: 540, fps: 30 },
+      '720p': { width: 1280, height: 720, fps: 30 }
+    };
+    const cfg = configs[quality] || configs['480p'];
+    this.quality = quality;
+    this.width = cfg.width;
+    this.height = cfg.height;
+    this.targetFps = cfg.fps;
+    if (this.canvas) {
+      this.canvas.width = this.width;
+      this.canvas.height = this.height;
+    }
+    console.info(`[BroadcastCompositor] Resolution configured: ${this.width}x${this.height} @ ${this.targetFps}fps (${quality})`);
   }
 
   loadSavedLayers() {
@@ -105,8 +126,8 @@ export class BroadcastCompositor {
   }
 
   /**
-   * Start rendering the 30 FPS broadcast stage loop
-   * Uses an unthrottled Web Worker clock ticker so background tabs never drop below 30 FPS.
+   * Start rendering the broadcast stage loop
+   * Uses an unthrottled Web Worker clock ticker so background tabs maintain consistent frame rate.
    */
   start() {
     if (this._isRunning) return;
@@ -121,16 +142,20 @@ export class BroadcastCompositor {
     // Draw initial frame immediately
     this.drawScene();
 
-    // Create an unthrottled Web Worker 33.3ms (30 FPS) clock ticker
+    const tickMs = Math.round(1000 / (this.targetFps || 25));
+
+    // Create an unthrottled Web Worker clock ticker
     try {
       const workerBlob = new Blob([
         `let intervalId = null;
          self.onmessage = function(e) {
-           if (e.data === 'start') {
+           const data = e.data;
+           if (data && (data === 'start' || data.type === 'start')) {
+             const ms = (data && data.ms) ? data.ms : 40;
              if (!intervalId) {
-               intervalId = setInterval(function() { self.postMessage('tick'); }, 33);
+               intervalId = setInterval(function() { self.postMessage('tick'); }, ms);
              }
-           } else if (e.data === 'stop') {
+           } else if (data === 'stop' || (data && data.type === 'stop')) {
              if (intervalId) { clearInterval(intervalId); intervalId = null; }
            }
          };`
@@ -142,14 +167,14 @@ export class BroadcastCompositor {
           this.drawScene();
         }
       };
-      this._worker.postMessage('start');
+      this._worker.postMessage({ type: 'start', ms: tickMs });
     } catch (workerErr) {
       console.warn('[BroadcastCompositor] Web Worker clock fallback to setInterval:', workerErr);
       this._timer = setInterval(() => {
         if (this._isRunning) {
           this.drawScene();
         }
-      }, 33);
+      }, tickMs);
     }
   }
 
@@ -187,14 +212,15 @@ export class BroadcastCompositor {
   getMediaStream(audioTrack) {
     this.start();
     this.drawScene();
-    const canvasStream = this.canvas.captureStream(30);
+    const fps = this.targetFps || 25;
+    const canvasStream = this.canvas.captureStream(fps);
     this._videoTrack = canvasStream.getVideoTracks()[0] || null;
 
     const tracks = [];
     if (this._videoTrack) tracks.push(this._videoTrack);
     if (audioTrack) tracks.push(audioTrack);
 
-    console.info(`[BroadcastCompositor] Combined stream created with ${tracks.length} tracks:`,
+    console.info(`[BroadcastCompositor] Combined stream created (${this.width}x${this.height} @ ${fps}fps) with ${tracks.length} tracks:`,
       tracks.map(t => `${t.kind}:${t.label || 'track'}`));
 
     return new MediaStream(tracks);
@@ -249,20 +275,30 @@ export class BroadcastCompositor {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // Dynamic ambient glow lights
-    const pulse1 = Math.sin(time * 1.5) * 25;
-    const pulse2 = Math.cos(time * 1.2) * 25;
-    const glow1 = ctx.createRadialGradient(w * 0.2 + pulse1, h * 0.3 + pulse2, 20, w * 0.2 + pulse1, h * 0.3 + pulse2, 420);
+    // Dynamic ambient glow lights (Restricted to circle paths for massive CPU speedup on mobile)
+    const pulse1 = Math.sin(time * 1.5) * (w * 0.02);
+    const pulse2 = Math.cos(time * 1.2) * (h * 0.03);
+    const r1 = Math.min(w, h) * 0.38;
+    const cx1 = w * 0.2 + pulse1;
+    const cy1 = h * 0.3 + pulse2;
+    const glow1 = ctx.createRadialGradient(cx1, cy1, 10, cx1, cy1, r1);
     glow1.addColorStop(0, colors.glow1);
     glow1.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow1;
-    ctx.fillRect(0, 0, w, h);
+    ctx.beginPath();
+    ctx.arc(cx1, cy1, r1, 0, Math.PI * 2);
+    ctx.fill();
 
-    const glow2 = ctx.createRadialGradient(w * 0.8 - pulse2, h * 0.4 + pulse1, 20, w * 0.8 - pulse2, h * 0.4 + pulse1, 460);
+    const r2 = Math.min(w, h) * 0.42;
+    const cx2 = w * 0.8 - pulse2;
+    const cy2 = h * 0.4 + pulse1;
+    const glow2 = ctx.createRadialGradient(cx2, cy2, 10, cx2, cy2, r2);
     glow2.addColorStop(0, colors.glow2);
     glow2.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow2;
-    ctx.fillRect(0, 0, w, h);
+    ctx.beginPath();
+    ctx.arc(cx2, cy2, r2, 0, Math.PI * 2);
+    ctx.fill();
 
     // ─── 2. Camera Feeds & DOM Metadata Cache (Refreshed every 350ms) ────────
     if (!this._lastDomScan || performance.now() - this._lastDomScan > 350) {
@@ -302,26 +338,40 @@ export class BroadcastCompositor {
     const mode = this.layout || 'spotlight';
 
     if (mode !== 'visualizer') {
+      const topY = Math.round(h * 0.13);
       if (mode === 'karaoke') {
         // Karaoke Focus Layout: Big central lyrics, camera in top-right Picture-in-Picture
+        const pipW = Math.round(w * 0.25);
+        const pipH = Math.round(pipW * 0.58);
+        const pipX = w - pipW - Math.round(w * 0.03);
         if (hasHostCam) {
-          this.drawVideoBox(ctx, hostVideoCard, w - 340, 90, 310, 185, '🎤 SINGER PIP', colors);
+          this.drawVideoBox(ctx, hostVideoCard, pipX, topY, pipW, pipH, '🎤 SINGER PIP', colors);
         } else if (hasGuestCam) {
-          this.drawVideoBox(ctx, guestVideoCard, w - 340, 90, 310, 185, '👥 GUEST PIP', colors);
+          this.drawVideoBox(ctx, guestVideoCard, pipX, topY, pipW, pipH, '👥 GUEST PIP', colors);
         }
       } else if (mode === 'duet' || (hasHostCam && hasGuestCam)) {
         // Duet Split Screen: Host on left, Guest on right
+        const boxMargin = Math.round(w * 0.03);
+        const gap = Math.round(w * 0.02);
+        const boxW = Math.round((w - (boxMargin * 2) - gap) / 2);
+        const boxH = Math.round(boxW * 0.6);
         if (hasHostCam) {
-          this.drawVideoBox(ctx, hostVideoCard, 40, 95, 580, 360, '🎤 HOST SINGER', colors);
+          this.drawVideoBox(ctx, hostVideoCard, boxMargin, topY, boxW, boxH, '🎤 HOST SINGER', colors);
         }
         if (hasGuestCam) {
-          this.drawVideoBox(ctx, guestVideoCard, 660, 95, 580, 360, '👥 GUEST DUET', colors);
+          this.drawVideoBox(ctx, guestVideoCard, boxMargin + boxW + gap, topY, boxW, boxH, '👥 GUEST DUET', colors);
         }
       } else if (hasHostCam) {
         // Spotlight Layout: Center camera
-        this.drawVideoBox(ctx, hostVideoCard, 340, 95, 600, 360, '🎤 HOST SINGER', colors);
+        const boxW = Math.round(w * 0.48);
+        const boxH = Math.round(boxW * 0.6);
+        const boxX = Math.round((w - boxW) / 2);
+        this.drawVideoBox(ctx, hostVideoCard, boxX, topY, boxW, boxH, '🎤 HOST SINGER', colors);
       } else if (hasGuestCam) {
-        this.drawVideoBox(ctx, guestVideoCard, 340, 95, 600, 360, '👥 GUEST DUET', colors);
+        const boxW = Math.round(w * 0.48);
+        const boxH = Math.round(boxW * 0.6);
+        const boxX = Math.round((w - boxW) / 2);
+        this.drawVideoBox(ctx, guestVideoCard, boxX, topY, boxW, boxH, '👥 GUEST DUET', colors);
       }
     }
 
@@ -349,9 +399,10 @@ export class BroadcastCompositor {
   }
 
   drawVideoBox(ctx, videoEl, x, y, width, height, label, colors) {
+    const radius = Math.min(16, Math.max(8, Math.round(height * 0.05)));
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(x, y, width, height, 16);
+    ctx.roundRect(x, y, width, height, radius);
     ctx.clip();
 
     try {
@@ -359,30 +410,37 @@ export class BroadcastCompositor {
     } catch (_) {}
 
     // Dark gradient vignette at bottom of video
-    const vig = ctx.createLinearGradient(x, y + height - 60, x, y + height);
+    const vigHeight = Math.round(height * 0.25);
+    const vig = ctx.createLinearGradient(x, y + height - vigHeight, x, y + height);
     vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
     vig.addColorStop(1, 'rgba(0, 0, 0, 0.85)');
     ctx.fillStyle = vig;
-    ctx.fillRect(x, y + height - 60, width, 60);
+    ctx.fillRect(x, y + height - vigHeight, width, vigHeight);
 
     ctx.restore();
 
     // Border Glow
     ctx.save();
     ctx.strokeStyle = colors?.border || 'rgba(0, 229, 255, 0.45)';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = Math.max(2, Math.round(width * 0.005));
     ctx.beginPath();
-    ctx.roundRect(x, y, width, height, 16);
+    ctx.roundRect(x, y, width, height, radius);
     ctx.stroke();
 
     // Label Badge
+    const badgeW = Math.round(Math.min(140, width * 0.4));
+    const badgeH = Math.round(Math.min(26, height * 0.12));
+    const badgeX = x + Math.round(width * 0.03);
+    const badgeY = y + height - badgeH - Math.round(height * 0.03);
+    const badgeFont = Math.max(9, Math.round(badgeH * 0.46));
+
     ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
     ctx.beginPath();
-    ctx.roundRect(x + 14, y + height - 38, 140, 26, 6);
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
     ctx.fill();
     ctx.fillStyle = colors?.accent1 || '#00e5ff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillText(label, x + 24, y + height - 21);
+    ctx.font = `bold ${badgeFont}px sans-serif`;
+    ctx.fillText(label, badgeX + 8, badgeY + badgeH * 0.7);
     ctx.restore();
   }
 
@@ -402,22 +460,22 @@ export class BroadcastCompositor {
 
     const isVisMode = mode === 'visualizer';
     const isKaraokeMode = mode === 'karaoke';
-    const numBars = isVisMode ? 96 : 64;
+    const numBars = isVisMode ? 64 : 48;
     const step = this._visDataArray ? Math.max(1, Math.floor(this._visDataArray.length / (numBars * 2))) : 1;
     
-    let baseY = hasCameras ? 490 : 430;
-    let maxBarHeight = 110;
+    let baseY = hasCameras ? Math.round(h * 0.68) : Math.round(h * 0.60);
+    let maxBarHeight = Math.round(h * 0.17);
 
     if (isVisMode) {
-      baseY = 460;
-      maxBarHeight = 220;
+      baseY = Math.round(h * 0.64);
+      maxBarHeight = Math.round(h * 0.30);
     } else if (isKaraokeMode) {
-      baseY = 520;
-      maxBarHeight = 90;
+      baseY = Math.round(h * 0.72);
+      maxBarHeight = Math.round(h * 0.13);
     }
 
-    const barSpacing = w / (numBars + 8);
-    const barWidth = Math.max(4, barSpacing * 0.72);
+    const barSpacing = w / (numBars + 6);
+    const barWidth = Math.max(3, barSpacing * 0.72);
     const startX = (w - (numBars * barSpacing)) / 2;
     const time = performance.now() * 0.001;
 
@@ -428,19 +486,20 @@ export class BroadcastCompositor {
     grad.addColorStop(1, colors?.accent2 || '#ff007f');
     ctx.fillStyle = grad;
 
+    // Single-pass batched rectangle drawing (massively faster than 64 separate fills)
+    ctx.beginPath();
     for (let i = 0; i < numBars; i++) {
       let val = (this._visDataArray && hasSignal) ? (this._visDataArray[i * step] || 0) : 0;
       if (!hasSignal) {
         val = Math.floor((Math.sin(i * 0.22 + time * 2.8) * 0.5 + 0.5) * 55 + 12);
       }
-      const barHeight = Math.max(4, (val / 255) * maxBarHeight);
+      const barHeight = Math.max(3, (val / 255) * maxBarHeight);
       const x = startX + (i * barSpacing);
       const y = baseY - barHeight;
 
-      ctx.beginPath();
-      ctx.roundRect(x, y, barWidth, barHeight, 3);
-      ctx.fill();
+      ctx.roundRect(x, y, barWidth, barHeight, 2);
     }
+    ctx.fill();
     ctx.restore();
   }
 
@@ -450,18 +509,18 @@ export class BroadcastCompositor {
 
     const isKaraokeMode = mode === 'karaoke';
     const isVisMode = mode === 'visualizer';
-    let y = hasCameras ? 560 : 540;
-    let mainFontSize = 32;
-    let nextFontSize = 20;
+    let y = hasCameras ? Math.round(h * 0.76) : Math.round(h * 0.72);
+    let mainFontSize = Math.round(Math.max(16, h * 0.048));
+    let nextFontSize = Math.round(Math.max(12, h * 0.030));
 
     if (isKaraokeMode) {
-      y = 310;
-      mainFontSize = 42;
-      nextFontSize = 24;
+      y = Math.round(h * 0.44);
+      mainFontSize = Math.round(Math.max(20, h * 0.065));
+      nextFontSize = Math.round(Math.max(14, h * 0.038));
     } else if (isVisMode) {
-      y = 530;
-      mainFontSize = 36;
-      nextFontSize = 22;
+      y = Math.round(h * 0.74);
+      mainFontSize = Math.round(Math.max(18, h * 0.052));
+      nextFontSize = Math.round(Math.max(13, h * 0.032));
     }
 
     ctx.save();
@@ -471,27 +530,27 @@ export class BroadcastCompositor {
     if (currentLine) {
       ctx.font = `bold ${mainFontSize}px sans-serif`;
       const textMetrics = ctx.measureText(currentLine);
-      const pillW = Math.min(w - 60, Math.max(340, textMetrics.width + 48));
-      const pillH = mainFontSize + 32;
+      const pillW = Math.min(w - 40, Math.max(Math.round(w * 0.4), textMetrics.width + Math.round(w * 0.05)));
+      const pillH = mainFontSize + Math.round(h * 0.045);
 
       ctx.fillStyle = 'rgba(8, 12, 24, 0.88)';
       ctx.strokeStyle = colors?.border || 'rgba(0, 229, 255, 0.5)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.roundRect((w - pillW) / 2, y, pillW, pillH, 14);
+      ctx.roundRect((w - pillW) / 2, y, pillW, pillH, 12);
       ctx.fill();
       ctx.stroke();
 
-      // Current Line Typography (Clean high-contrast render without expensive Gaussian shadow blur)
+      // Current Line Typography
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(currentLine, w / 2, y + mainFontSize + 8);
+      ctx.fillText(currentLine, w / 2, y + mainFontSize + Math.round(pillH * 0.12));
     }
 
     // Next Line Preview
     if (nextLine) {
       ctx.font = `600 ${nextFontSize}px sans-serif`;
       ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-      ctx.fillText(nextLine, w / 2, y + mainFontSize + 45);
+      ctx.fillText(nextLine, w / 2, y + mainFontSize + Math.round(h * 0.06));
     }
 
     ctx.restore();
@@ -499,41 +558,49 @@ export class BroadcastCompositor {
 
   drawHeader(ctx, w, h, colors) {
     const time = performance.now() * 0.001;
+    const headerH = Math.round(Math.max(42, h * 0.095));
     ctx.save();
 
     // Top Header Bar
-    ctx.fillStyle = 'rgba(5, 5, 15, 0.82)';
-    ctx.fillRect(0, 0, w, 68);
+    ctx.fillStyle = 'rgba(5, 5, 15, 0.85)';
+    ctx.fillRect(0, 0, w, headerH);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, 68);
-    ctx.lineTo(w, 68);
+    ctx.moveTo(0, headerH);
+    ctx.lineTo(w, headerH);
     ctx.stroke();
+
+    const titleSize = Math.round(Math.max(14, h * 0.032));
+    const tagSize = Math.round(Math.max(10, h * 0.020));
+    const songSize = Math.round(Math.max(11, h * 0.024));
 
     // Brand Logo & Live Badge
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.fillText('🎤 NIRMAL KARAOKE', 30, 42);
+    ctx.font = `bold ${titleSize}px sans-serif`;
+    ctx.fillText('🎤 NIRMAL KARAOKE', 20, headerH * 0.62);
+
+    const brandMetrics = ctx.measureText('🎤 NIRMAL KARAOKE');
+    const badgeX = 20 + brandMetrics.width + 16;
 
     // Live Dot & Tag with pulsating brightness
     const dotAlpha = 0.65 + 0.35 * Math.sin(time * 5);
     ctx.fillStyle = `rgba(255, 0, 85, ${dotAlpha})`;
     ctx.beginPath();
-    ctx.arc(280, 36, 6, 0, Math.PI * 2);
+    ctx.arc(badgeX, headerH * 0.54, 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#ff0055';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.fillText('LIVE BROADCAST', 294, 41);
+    ctx.font = `bold ${tagSize}px sans-serif`;
+    ctx.fillText('LIVE BROADCAST', badgeX + 10, headerH * 0.62);
 
     // Song Title / Track Info on Right (Cached)
     const songName = this._cachedSongName || 'Live Karaoke Session';
 
     ctx.textAlign = 'right';
     ctx.fillStyle = colors?.accent1 || '#00e5ff';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText('♫ ' + songName.slice(0, 45), w - 30, 42);
+    ctx.font = `bold ${songSize}px sans-serif`;
+    ctx.fillText('♫ ' + songName.slice(0, 38), w - 20, headerH * 0.62);
 
     ctx.restore();
 

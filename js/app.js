@@ -1,12 +1,12 @@
-import { AudioEngine } from './audio-engine.js?v=27';
-import { LyricsManager } from './lyrics.js?v=27';
-import { MusicSearchManager } from './music-search.js?v=27';
-import { VisualizerRenderer } from './visualizer.js?v=27';
-import { playSFX } from './sfx.js?v=27';
-import { LiveStreamHost } from './live-stream.js?v=27';
-import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=27';
-import { PresenceManager } from './presence-manager.js?v=27';
-import { MultiStreamManager } from './multistream.js?v=27';
+import { AudioEngine } from './audio-engine.js?v=28';
+import { LyricsManager } from './lyrics.js?v=28';
+import { MusicSearchManager } from './music-search.js?v=28';
+import { VisualizerRenderer } from './visualizer.js?v=28';
+import { playSFX } from './sfx.js?v=28';
+import { LiveStreamHost } from './live-stream.js?v=28';
+import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=28';
+import { PresenceManager } from './presence-manager.js?v=28';
+import { MultiStreamManager } from './multistream.js?v=28';
 
 const audioEngine = new AudioEngine();
 const lyricsManager = new LyricsManager();

@@ -13,7 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.min.js"></script>
 
 
-    <link href="./css/style.css" rel="stylesheet">
+    <link href="./css/style.css?v=28" rel="stylesheet">
     <link href="./css/game-invite.css?v=24" rel="stylesheet">
     <script>
       (function() {
@@ -666,6 +666,7 @@
                 <div>
                     <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px;">STREAM RESOLUTION</label>
                     <select id="selectStreamQuality" style="width:100%; padding:8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:0.78rem; font-weight:700;">
+                        <option value="360p">360p Ultra-Light (Low-End Mobile & Zero Lag)</option>
                         <option value="480p" selected>480p Smooth (Recommended - Zero Buffering)</option>
                         <option value="540p">540p Balanced</option>
                         <option value="720p">720p HD (High Bandwidth)</option>
@@ -700,6 +701,9 @@
                     <button class="button button-quiet" id="btnTestStreamKey" type="button" style="padding:4px 10px; font-size:0.72rem; border-radius:6px; background:rgba(0,229,255,0.12); color:#00e5ff; border:1px solid rgba(0,229,255,0.3); font-weight:700; white-space:nowrap; cursor:pointer;">🧪 Test Connection</button>
                 </div>
                 <div id="testStreamResult" style="display:none; font-size:0.75rem; padding:8px 10px; border-radius:6px; margin-top:6px;"></div>
+                <div style="margin-top:6px; padding:6px 10px; background:rgba(0,229,255,0.06); border:1px solid rgba(0,229,255,0.2); border-radius:6px; font-size:0.68rem; color:var(--text-dim); line-height:1.4;">
+                    ⚡ <b>Zero-Buffering Tips:</b> In YouTube Studio, set <b>Stream latency</b> to <i>Low-latency</i> or <i>Normal latency</i>. For mobile/budget devices, <b>480p Smooth</b> or <b>360p Ultra-Light</b> keeps live streams completely lag-free.
+                </div>
             </div>
 
             <!-- Broadcast Scene Content Selector -->
@@ -750,6 +754,6 @@
     </div>
 </div>
 
-<script src="./js/app.js?v=27" type="module"></script>
+<script src="./js/app.js?v=28" type="module"></script>
 </body>
 </html>
