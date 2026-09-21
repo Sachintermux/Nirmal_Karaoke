@@ -1178,8 +1178,8 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '480p', hasAudio = true)
     gop = 60;
   } else if (quality === '480p') {
     scaleFilter = 'scale=854:480:flags=fast_bilinear';
-    videoBitrate = '1200k';
-    bufSize = '2400k';
+    videoBitrate = '1100k';
+    bufSize = '2200k';
     fps = 25;
     gop = 50;
   } else if (quality === '360p') {
@@ -1244,10 +1244,10 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '480p', hasAudio = true)
     '-maxrate', videoBitrate,
     '-bufsize', bufSize,
 
-    // Audio: stereo AAC at 48 kHz with synchronized presentation timestamps.
+    // Audio: stereo AAC at 96 kbps calibrated for low CPU limits.
     '-c:a', 'aac',
-    '-b:a', '128k',
-    '-ar', '48000',
+    '-b:a', '96k',
+    '-ar', '44100',
     '-ac', '2',
     '-af', 'asetpts=PTS-STARTPTS,aresample=async=1000:first_pts=0',
 

@@ -534,8 +534,9 @@ export class AudioEngine {
 
       e.programOut.connect(e.stereoOutputBus);
 
-      // Multi-Guest Live Stage Audio Mixing Bus:
-      // Combines remote audience duet singers directly into stereoOutputBus -> stereoMerge -> dest & _broadcastDest
+      // Dedicated YouTube Broadcast Audio Bus:
+      // Combines remote audience duet singers strictly into YouTube Live broadcast destination (_broadcastDest)
+      // Isolated from LiveKit room destination (e.dest) to eliminate echo and audio doubling for singers!
       e.guestMixBus = this.ctx.createGain();
       e.guestMixBus.gain.value = 1.0;
       try {
@@ -543,7 +544,6 @@ export class AudioEngine {
         e.guestMixBus.channelCountMode = 'max';
         e.guestMixBus.channelInterpretation = 'speakers';
       } catch (_) {}
-      e.guestMixBus.connect(e.stereoOutputBus);
 
       e.stereoOutputBus.connect(e.stereoSplit);
       e.stereoMerge.connect(e.analyser);
@@ -1040,7 +1040,11 @@ export class AudioEngine {
           } catch (_) {}
         }
         this.engine.stereoMerge.connect(this._broadcastDest);
-        console.info('[AudioEngine] Dedicated broadcast destination created and linked to stereoMerge.');
+        if (this.engine.guestMixBus) {
+          try { this.engine.guestMixBus.disconnect(this._broadcastDest); } catch (_) {}
+          this.engine.guestMixBus.connect(this._broadcastDest);
+        }
+        console.info('[AudioEngine] Dedicated YouTube broadcast destination created: stereoMerge (Host+Track) + guestMixBus (Duet Guests).');
       }
 
       const track = this._broadcastDest.stream.getAudioTracks()[0];
@@ -1116,6 +1120,11 @@ export class AudioEngine {
 
       sourceNode.connect(gainNode);
       gainNode.connect(this.engine.guestMixBus);
+
+      // Route strictly to YouTube broadcast pipeline
+      if (this._broadcastDest && this.engine.guestMixBus) {
+        try { this.engine.guestMixBus.connect(this._broadcastDest); } catch (_) {}
+      }
 
       this._guestAudioNodes.set(identity, { sourceNode, gainNode, track: msTrack });
       console.info(`[AudioEngine] 🎙️ Successfully bridged guest microphone for "${identity}" into live broadcast mix.`);

@@ -932,15 +932,17 @@ export class MultiStreamManager {
     }
 
     let recorder = null;
-    let vBitrate = 1200000;
+    let vBitrate = 1100000;
     if (this.selectedQuality === '360p') vBitrate = 800000;
-    else if (this.selectedQuality === '480p') vBitrate = 1200000;
-    else if (this.selectedQuality === '540p') vBitrate = 1600000;
+    else if (this.selectedQuality === '480p') vBitrate = 1100000;
+    else if (this.selectedQuality === '540p') vBitrate = 1500000;
     else if (this.selectedQuality === '720p') vBitrate = 2400000;
+
+    const aBitrate = (this.selectedQuality === '360p' || this.selectedQuality === '480p') ? 96000 : 128000;
 
     const options = {
       videoBitsPerSecond: vBitrate,
-      audioBitsPerSecond: 128000
+      audioBitsPerSecond: aBitrate
     };
     if (mimeType) options.mimeType = mimeType;
 
