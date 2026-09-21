@@ -15,8 +15,12 @@
           align-items: center;
           justify-content: flex-start;
           min-height: 100vh;
+          min-height: 100dvh;
           background: radial-gradient(circle at center, #101216 0%, #07080b 100%);
           overscroll-behavior-y: contain;
+        }
+        @media (max-width: 768px) {
+          input:not([type="range"]), select, textarea { font-size: 16px !important; }
         }
         .broadcast-card {
           background: var(--bg-panel);
@@ -392,11 +396,11 @@
 
 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin: 6px 0; font-size:0.68rem; color:var(--text-dim); background:rgba(0,0,0,0.25); border-radius:6px; padding:4px 8px;">
   <span>⚡ Sync Nudge:</span>
-  <div style="display:flex; align-items:center; gap:4px;">
-    <button id="btnAudSyncMinus" class="btn" style="width:auto; padding:2px 7px; font-size:0.65rem; margin:0;" title="Nudge lyrics back">-0.2s</button>
-    <span id="lblAudSyncOffset" style="font-weight:700; color:var(--accent-purple); min-width:32px; text-align:center;">0.0s</span>
-    <button id="btnAudSyncPlus" class="btn" style="width:auto; padding:2px 7px; font-size:0.65rem; margin:0;" title="Nudge lyrics forward">+0.2s</button>
-    <button id="btnAudSyncReset" class="btn" style="width:auto; padding:2px 6px; font-size:0.62rem; margin:0; opacity:0.6;" title="Reset sync to host">Reset</button>
+  <div style="display:flex; align-items:center; gap:6px;">
+    <button id="btnAudSyncMinus" class="btn" style="width:auto; min-height:36px; min-width:44px; padding:4px 10px; font-size:0.75rem; margin:0;" title="Nudge lyrics back">-0.2s</button>
+    <span id="lblAudSyncOffset" style="font-weight:700; color:var(--accent-purple); min-width:36px; text-align:center;">0.0s</span>
+    <button id="btnAudSyncPlus" class="btn" style="width:auto; min-height:36px; min-width:44px; padding:4px 10px; font-size:0.75rem; margin:0;" title="Nudge lyrics forward">+0.2s</button>
+    <button id="btnAudSyncReset" class="btn" style="width:auto; min-height:36px; padding:4px 8px; font-size:0.7rem; margin:0; opacity:0.8;" title="Reset sync to host">Reset</button>
   </div>
 </div>
 <div class="audience-volume-row" id="audienceVolControl" style="margin: 6px 0 10px; background: rgba(0,0,0,0.35); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; text-align: left;">
@@ -450,13 +454,13 @@
 <div style="color:var(--text-dim); text-align:center; padding:10px 0;">Welcome! Chat or find &amp; request a song below.</div>
 </div>
 <div style="display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
-  <input id="chatNickInput" placeholder="Your Name" style="flex:1 1 90px; min-width:0; box-sizing:border-box; margin:0; padding:6px 8px; font-size:0.75rem;" type="text"/>
-  <input id="chatTextInput" placeholder="Type message..." style="flex:2 1 140px; min-width:0; box-sizing:border-box; margin:0; padding:6px 8px; font-size:0.75rem;" type="text"/>
-  <button class="btn" id="btnSendChat" style="width:auto; min-width:60px; margin:0; padding:0 12px; font-size:0.75rem; border-color:var(--accent-blue); color:var(--accent-blue);">Send</button>
+  <input id="chatNickInput" placeholder="Your Name" style="flex:1 1 90px; min-width:0; box-sizing:border-box; margin:0; padding:8px; min-height:38px;" type="text"/>
+  <input id="chatTextInput" placeholder="Type message..." style="flex:2 1 140px; min-width:0; box-sizing:border-box; margin:0; padding:8px; min-height:38px;" type="text"/>
+  <button class="btn" id="btnSendChat" style="width:auto; min-width:60px; min-height:38px; margin:0; padding:0 14px; font-size:0.8rem; border-color:var(--accent-blue); color:var(--accent-blue);">Send</button>
 </div>
 <div style="display:flex; gap:6px; position:relative; flex-wrap:wrap;">
-  <input id="songSearchRequestInput" placeholder="Search song to request..." style="flex:1 1 180px; min-width:0; box-sizing:border-box; margin:0; padding:6px 8px; font-size:0.75rem; border-color:var(--accent-purple);" type="text"/>
-  <button class="btn" id="btnSearchSongRequest" style="width:auto; margin:0; padding:0 10px; font-size:0.72rem; border-color:var(--accent-purple); color:var(--accent-purple); background:rgba(168,85,247,0.1);">🔍 Find &amp; Request</button>
+  <input id="songSearchRequestInput" placeholder="Search song to request..." style="flex:1 1 180px; min-width:0; box-sizing:border-box; margin:0; padding:8px; min-height:38px; border-color:var(--accent-purple);" type="text"/>
+  <button class="btn" id="btnSearchSongRequest" style="width:auto; min-height:38px; margin:0; padding:0 12px; font-size:0.75rem; border-color:var(--accent-purple); color:var(--accent-purple); background:rgba(168,85,247,0.1);">🔍 Find &amp; Request</button>
 </div>
 <div id="songSearchSuggestions" style="max-height:100px; overflow-y:auto; display:none; margin-top:4px; background:var(--bg-dark); border:1px solid var(--border); border-radius:4px; padding:4px;"></div>
 </div>
@@ -472,6 +476,8 @@
   import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=29';
   import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=29';
   import { PresenceManager } from './js/presence-manager.js?v=29';
+  import { acquireWakeLock, releaseWakeLock } from './js/wake-lock.js?v=29';
+  import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './js/media-session.js?v=29';
 
   const params = new URLSearchParams(location.search);
   const roomId = params.get('room');
@@ -599,6 +605,8 @@
     if (btnEnableMic) btnEnableMic.disabled = true;
     if (btnToggleCamera) btnToggleCamera.disabled = true;
     reconnectAttempts = 0;
+    releaseWakeLock();
+    stopBackgroundAudioKeepAlive();
     if (!roomDiscontinued) {
       setStatus('Disconnected from live stage.', 'var(--text-dim)');
     }
@@ -1426,6 +1434,13 @@
     try {
       await ensurePlaybackAudio();
       await connectLiveKit();
+      acquireWakeLock();
+      startBackgroundAudioKeepAlive();
+      updateMediaSession({
+        title: isDuetGuest ? 'Live Stage Duet' : 'Live Stage Broadcast',
+        artist: 'Nirmal Live Stage',
+        album: 'Nirmal Karaoke Live'
+      });
       btnTuneIn.style.display = 'none';
       liveIndicator.style.display = 'flex';
       if (isDuetGuest) duetNotice.style.display = 'block';

@@ -21,6 +21,7 @@ export class VisualizerRenderer {
       }
     };
     window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', () => setTimeout(resize, 200));
     resize();
 
     this.drawLoop();

@@ -47,6 +47,13 @@ export class FaceFilterEngine {
     this.animId = null;
     this.startTime = performance.now();
     this.lastFrameTime = performance.now();
+    this._lastVideoW = 0;
+    this._lastVideoH = 0;
+
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => { this._lastVideoW = 0; }, 250);
+    });
+    window.addEventListener('resize', () => { this._lastVideoW = 0; });
 
     // Particle states for animated filters (halo, crown, fire, rainbow)
     this.particles = [];
@@ -382,14 +389,45 @@ export class FaceFilterEngine {
 
   renderFrame(now) {
     const ctx = this.ctx;
-    const w = this.width;
-    const h = this.height;
+    let w = this.width;
+    let h = this.height;
     const time = (now - this.startTime) / 1000;
 
     if (this.video.readyState >= 2) {
+      const rawW = this.video.videoWidth || w || 640;
+      const rawH = this.video.videoHeight || h || 360;
+
+      // Auto-adapt canvas dimensions on camera orientation change
+      if (this._lastVideoW !== rawW || this._lastVideoH !== rawH) {
+        this._lastVideoW = rawW;
+        this._lastVideoH = rawH;
+        const MAX_DIM = 640;
+        let cw = rawW;
+        let ch = rawH;
+        if (cw > MAX_DIM || ch > MAX_DIM) {
+          if (cw >= ch) {
+            ch = Math.round((rawH * MAX_DIM) / rawW);
+            cw = MAX_DIM;
+          } else {
+            cw = Math.round((rawW * MAX_DIM) / rawH);
+            ch = MAX_DIM;
+          }
+        }
+        cw = cw - (cw % 2);
+        ch = ch - (ch % 2);
+        if (this.canvas.width !== cw || this.canvas.height !== ch) {
+          this.canvas.width = cw;
+          this.canvas.height = ch;
+          this.width = cw;
+          this.height = ch;
+          w = cw;
+          h = ch;
+        }
+      }
+
       // Fit-contain calculation so video is never stretched, zoomed, or cut up/down
-      const vw = this.video.videoWidth || w;
-      const vh = this.video.videoHeight || h;
+      const vw = rawW;
+      const vh = rawH;
       const canvasAspect = w / h;
       const videoAspect = vw / vh;
       let drawW = w;

@@ -7,6 +7,8 @@ import { LiveStreamHost } from './live-stream.js?v=29';
 import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=29';
 import { PresenceManager } from './presence-manager.js?v=29';
 import { MultiStreamManager } from './multistream.js?v=29';
+import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=29';
+import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=29';
 
 const audioEngine = new AudioEngine();
 const lyricsManager = new LyricsManager();
@@ -15,6 +17,24 @@ const visualizer = new VisualizerRenderer(audioEngine);
 const liveHost = new LiveStreamHost(audioEngine);
 const presence = new PresenceManager();
 const multistream = new MultiStreamManager(liveHost, audioEngine, lyricsManager);
+
+export function shouldKeepAlive() {
+  const isPlayerPlaying = filePlayerGlobal && !filePlayerGlobal.paused && !filePlayerGlobal.ended;
+  const isMicActive = Boolean(audioEngine?.activeMicStream || audioEngine?.activeTabStream);
+  const isLiveActive = liveHost?.room?.state === 'connected';
+  const isMultiStreaming = Boolean(multistream?.isStreaming);
+  return Boolean(isPlayerPlaying || isMicActive || isLiveActive || isMultiStreaming);
+}
+
+export function syncBackgroundKeepAlive() {
+  if (shouldKeepAlive()) {
+    acquireWakeLock().catch(() => {});
+    startBackgroundAudioKeepAlive();
+  } else {
+    releaseWakeLock().catch(() => {});
+    stopBackgroundAudioKeepAlive();
+  }
+}
 
 let stopClockSync = () => {};
 let pushPlaybackClock = () => {};
@@ -36,6 +56,24 @@ filePlayerGlobal?.addEventListener('play', () => {
   if (liveHost?.room?.state === 'connected') {
     liveHost.ensureProgramAudioPublished?.().catch(() => {});
   }
+  syncBackgroundKeepAlive();
+  const title = document.getElementById('nowPlayingTitle')?.textContent || 'Karaoke Track';
+  const artist = document.getElementById('nowPlayingArtist')?.textContent || 'Nirmal Karaoke';
+  updateMediaSession({
+    title,
+    artist,
+    album: 'Nirmal Karaoke Live Studio',
+    onPlay: () => filePlayerGlobal?.play?.().catch(() => {}),
+    onPause: () => filePlayerGlobal?.pause?.()
+  });
+});
+
+filePlayerGlobal?.addEventListener('pause', () => {
+  syncBackgroundKeepAlive();
+});
+
+filePlayerGlobal?.addEventListener('ended', () => {
+  syncBackgroundKeepAlive();
 });
 
 async function scanHardware() {
@@ -92,6 +130,7 @@ function killMedia() {
   document.getElementById('btnFile')?.classList.remove('active-file');
   document.getElementById('btnOpenMusicSearch')?.classList.remove('active-file');
   document.getElementById('led-in')?.classList.remove('active-blue');
+  syncBackgroundKeepAlive();
 }
 
 function killMic() {
@@ -113,6 +152,7 @@ function killMic() {
   document.getElementById('led-mic')?.classList.remove('active-green');
   const hudNote = document.getElementById('hudNote');
   if (hudNote) hudNote.textContent = '🎤 PITCH: --';
+  syncBackgroundKeepAlive();
 }
 
 function setupLiveShareUI() {
@@ -323,6 +363,7 @@ function setupLiveShareUI() {
     updateAudienceMonitorButton(false);
     const transport = document.getElementById('liveTransportStatus');
     if (transport) transport.textContent = reason || 'Broadcast ended. Ready to go live.';
+    syncBackgroundKeepAlive();
   }
 
   liveHost.init(
@@ -384,6 +425,7 @@ function setupLiveShareUI() {
 
       const roomId = await liveHost.createRoom(allowDuetToggle?.checked ?? true);
       presence.updateLiveStatus({ role: 'host', roomId, roomName: 'My Live Stage', isLive: true });
+      syncBackgroundKeepAlive();
       renderShareLinks(roomId);
       const btnStopLive = document.getElementById('btnStopLive');
       if (btnStopLive) btnStopLive.style.display = 'block';
@@ -497,6 +539,7 @@ function setupLiveShareUI() {
       if (btnModalSwitchCamera) btnModalSwitchCamera.style.display = 'none';
       updateAudienceMonitorButton(false);
       if (modal) modal.style.display = 'none';
+      syncBackgroundKeepAlive();
     } catch (err) {
       console.warn('[Nirmal] end broadcast error:', err);
     } finally {
@@ -1858,6 +1901,7 @@ function setupEventListeners() {
       const btnStopMedia = document.getElementById('btnStopMedia');
       if (btnStopMedia) btnStopMedia.style.display = 'flex';
       document.getElementById('led-in')?.classList.add('active-blue');
+      syncBackgroundKeepAlive();
       stream.getVideoTracks()[0].onended = killMedia;
     } catch (e) {
       alert(e.message);
@@ -1959,6 +2003,7 @@ function setupEventListeners() {
       const stopBtn = document.getElementById('btnStopMic');
       if (stopBtn) stopBtn.style.display = 'flex';
       document.getElementById('led-mic')?.classList.add('active-green');
+      syncBackgroundKeepAlive();
     } catch (e) {
       alert('Microphone Error: ' + (e.message || 'Permission denied or mic unavailable.'));
     }

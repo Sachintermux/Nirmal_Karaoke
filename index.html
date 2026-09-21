@@ -32,11 +32,11 @@
             class="desktop-only"><i class="led" id="led-dsp"></i>DSP</span><span class="desktop-only"><i class="led"
                                                                                                          id="led-out"></i>Out</span><span
             class="desktop-only"><i class="led" id="led-rec"></i>Rec</span></div>
-    <div style="display:flex;gap:8px;align-items:center;">
-        <span class="badge" id="badgeExternalStreamLive" style="display:none;background:#ff0055;color:#fff;font-size:0.7rem;font-weight:800;padding:4px 8px;border-radius:6px;animation:pulseDot 1.5s infinite;">🔴 Streaming</span>
-        <button class="button button-quiet" id="btnOpenMultistream" title="Broadcast live to YouTube, Twitch, Facebook or RTMP">📡 Multistream</button>
-        <button class="button button-quiet" id="btnOpenUsersLobby" title="View live online singers & send duet invites">👥 Live Users <span class="badge" id="topbarUsersBadge">0</span></button>
-        <button class="button button-live" id="btnOpenShareModal">● Go live</button>
+    <div class="topbar-actions">
+        <span class="badge" id="badgeExternalStreamLive" style="display:none;background:#ff0055;color:#fff;font-size:0.7rem;font-weight:800;padding:4px 8px;border-radius:6px;animation:pulseDot 1.5s infinite;">🔴 <span class="btn-text">Streaming</span></span>
+        <button class="button button-quiet" id="btnOpenMultistream" title="Broadcast live to YouTube, Twitch, Facebook or RTMP">📡 <span class="btn-text">Multistream</span></button>
+        <button class="button button-quiet" id="btnOpenUsersLobby" title="View live online singers & send duet invites">👥 <span class="btn-text">Live Users</span> <span class="badge" id="topbarUsersBadge">0</span></button>
+        <button class="button button-live" id="btnOpenShareModal">● <span class="btn-text">Go live</span></button>
     </div>
 </header>
 <div class="app-shell">

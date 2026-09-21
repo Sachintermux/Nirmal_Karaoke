@@ -409,8 +409,22 @@ export class BroadcastCompositor {
     ctx.clip();
 
     try {
-      ctx.drawImage(videoEl, x, y, width, height);
-    } catch (_) {}
+      const vw = videoEl.videoWidth || width;
+      const vh = videoEl.videoHeight || height;
+      const videoAspect = vw / vh;
+      const boxAspect = width / height;
+      let sx = 0, sy = 0, sw = vw, sh = vh;
+      if (videoAspect > boxAspect) {
+        sw = Math.round(vh * boxAspect);
+        sx = Math.round((vw - sw) / 2);
+      } else {
+        sh = Math.round(vw / boxAspect);
+        sy = Math.round((vh - sh) / 2);
+      }
+      ctx.drawImage(videoEl, sx, sy, sw, sh, x, y, width, height);
+    } catch (_) {
+      try { ctx.drawImage(videoEl, x, y, width, height); } catch (_) {}
+    }
 
     // Dark gradient vignette at bottom of video
     const vigHeight = Math.round(height * 0.25);

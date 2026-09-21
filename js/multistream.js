@@ -14,6 +14,8 @@
  */
 
 import { BroadcastCompositor } from './broadcast-compositor.js?v=29';
+import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=29';
+import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=29';
 
 const STORAGE_KEY_STREAM_KEYS = 'nirmal_karaoke_stream_keys';
 const STORAGE_KEY_RELAY_URL   = 'nirmal_stream_relay_url';
@@ -629,6 +631,13 @@ export class MultiStreamManager {
           this._stopMediaRecorder();
           this._pendingChunks = [];
           this._startMediaRecorder(stream, ws);
+          acquireWakeLock();
+          startBackgroundAudioKeepAlive();
+          updateMediaSession({
+            title: `Live Broadcast: ${platform.toUpperCase()}`,
+            artist: 'Nirmal Live Stream Studio',
+            album: 'Nirmal Karaoke Live'
+          });
           resolve();
         } catch (recErr) {
           console.error('[MultiStream ERROR at STEP 6] MediaRecorder start error:', recErr);
@@ -774,13 +783,18 @@ export class MultiStreamManager {
       if (isSending || ws.readyState !== WebSocket.OPEN) return;
       isSending = true;
       while (chunkQueue.length > 0 && ws.readyState === WebSocket.OPEN) {
+        // Pacing & backpressure: if browser's internal WebSocket buffer has > 3MB, let TCP drain
+        if (ws.bufferedAmount > 3 * 1024 * 1024) {
+          setTimeout(sendChunks, 80);
+          break;
+        }
         const chunk = chunkQueue.shift();
         try {
           chunkCount++;
           if (chunkCount === 1) {
             console.info(`[MultiStream STEP 7/8] Chunk #1 transmitted to relay via WebSocket (${chunk.size || chunk.byteLength || 'binary'} bytes). Awaiting FFmpeg initialization.`);
           } else if (chunkCount % 15 === 0) {
-            console.info(`[MultiStream UPLOAD] Continuous smooth broadcast active: ${chunkCount} chunks transmitted.`);
+            console.info(`[MultiStream UPLOAD] Continuous smooth broadcast active: ${chunkCount} chunks transmitted (queued: ${chunkQueue.length}, wsBuffer: ${Math.round((ws.bufferedAmount || 0) / 1024)}KB).`);
           }
           ws.send(chunk);
         } catch (err) {
@@ -793,9 +807,10 @@ export class MultiStreamManager {
     recorder.ondataavailable = (ev) => {
       if (!ev.data || ev.data.size === 0) return;
       chunkQueue.push(ev.data);
-      if (chunkQueue.length > 20) {
-        // Prevent unbounded memory growth if socket stalls
-        chunkQueue.splice(0, chunkQueue.length - 20);
+      // DO NOT delete oldest chunks with splice! That deletes EBML container headers and keyframes,
+      // which corrupts FFmpeg's decoder and causes YouTube stream termination!
+      if (chunkQueue.length > 45) {
+        console.warn(`[MultiStream] Backpressure warning: ${chunkQueue.length} chunks queued for upload.`);
       }
       sendChunks();
     };
@@ -830,6 +845,8 @@ export class MultiStreamManager {
 
     this._stopMediaRecorder();
     this.compositor.stop();
+    releaseWakeLock();
+    stopBackgroundAudioKeepAlive();
 
     const roomName  = this.liveHost?.roomId;
     const sessionId = this.sessionId;
