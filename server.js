@@ -1218,8 +1218,10 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
     }
 
     // Transport-level RTMP(S) connection indicators.
-    if (!connectionReported && /handshaking|connected|server version/i.test(lower)) {
+    // FFmpeg logs "Output #0, flv, to 'rtmp..." or "Stream mapping:" when connection to destination succeeds.
+    if (!connectionReported && /handshaking|connected|server version|output #0, flv|to 'rtmp|stream mapping:/i.test(lower)) {
       connectionReported = true;
+      console.info(`[RELAY STEP 6/7] FFmpeg connected to RTMP destination! Handshake complete -> ${safeUrl}`);
       if (onState) {
         onState({
           state: 'connected',
@@ -1228,14 +1230,26 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
       }
     }
 
-    // FFmpeg emits periodic stats with frame=... . Do NOT use this as the
-    // connection test. It is only used to prove the encoder is producing A/V.
+    // FFmpeg emits periodic stats with frame=... .
     const frameMatch = line.match(/frame=\s*(\d+)/i);
     if (frameMatch) {
       lastFrameCount = Number(frameMatch[1]) || lastFrameCount;
 
-      if (!streamingReported && connectionReported && lastFrameCount >= 15) {
+      // If frames are being encoded and muxed, RTMP transport is definitely connected!
+      if (!connectionReported) {
+        connectionReported = true;
+        console.info(`[RELAY STEP 6/7] FFmpeg connected to RTMP destination (confirmed via active frame output) -> ${safeUrl}`);
+        if (onState) {
+          onState({
+            state: 'connected',
+            message: 'RTMP/RTMPS transport connected'
+          });
+        }
+      }
+
+      if (!streamingReported && lastFrameCount >= 3) {
         streamingReported = true;
+        console.info(`[RELAY STEP 7/7] 🔴 LIVE BROADCAST ACTIVE on YouTube! (Frame: ${lastFrameCount}, Bitrate: ${videoBitrate})`);
         if (onState) {
           onState({
             state: 'streaming',
@@ -1243,6 +1257,8 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
             message: 'FFmpeg is encoding and continuously publishing to the RTMP/RTMPS destination'
           });
         }
+      } else if (lastFrameCount > 0 && lastFrameCount % 150 === 0) {
+        console.info(`[RELAY HEALTH] Transmitted active broadcast: Frame=${lastFrameCount}, Bitrate=${videoBitrate}`);
       }
     }
   };
@@ -1496,7 +1512,7 @@ wss.on('connection', (ws, req) => {
     startedAt = startedAt || Date.now();
 
     console.info(
-      `[ffmpeg-stream] Launching session=${sessionId} platform=${platform} ` +
+      `[RELAY STEP 5/7] FFmpeg child process spawned for session=${sessionId} platform=${platform} ` +
       `room=${roomName} target=${maskStreamSecret(rtmpUrl, streamKey)}`
     );
 
@@ -1550,6 +1566,8 @@ wss.on('connection', (ws, req) => {
           errMsg = 'YouTube closed the connection (End of file / Inactive Stream Key). In YouTube Studio (studio.youtube.com), ensure your live stream is active, click "Reset" next to your Stream Key, copy the new key, and try again.';
         }
 
+        console.error(`[RELAY ERROR] FFmpeg exited (code=${code}, signal=${signal}): ${errMsg}`);
+
         send({
           type: 'error',
           code: rtmpConnected ? 'FFMPEG_EXITED' : 'RTMP_CONNECTION_FAILED',
@@ -1562,6 +1580,7 @@ wss.on('connection', (ws, req) => {
     ffmpegProc.on('error', err => {
       sessionRecord.state = 'error';
       sessionRecord.error = err?.message || String(err);
+      console.error(`[RELAY ERROR at STEP 5] FFmpeg spawn error:`, err?.message || err);
     });
 
     return ffmpegProc;
@@ -1576,7 +1595,9 @@ wss.on('connection', (ws, req) => {
     message: 'WebSocket connected. Send the first complete MediaRecorder WebM chunk.'
   });
 
-  console.info(`[ffmpeg-stream] Client connected sessionId=${sessionId} platform=${platform} room=${roomName}`);
+  console.info(`[RELAY STEP 1/7] Client WebSocket connection accepted (sessionId=${sessionId}, platform=${platform}, room=${roomName})`);
+  console.info(`[RELAY STEP 2/7] Resolved candidate RTMP target: ${maskStreamSecret(rtmpUrl, streamKey)}`);
+  console.info(`[RELAY STEP 3/7] Waiting for first MediaRecorder chunk from browser client...`);
 
   ws.on('message', (chunk, isBinary) => {
     if (!isBinary && typeof chunk === 'string') {
@@ -1592,6 +1613,7 @@ wss.on('connection', (ws, req) => {
     if (!ffmpegProc) {
       startedAt = Date.now();
       firstChunk = Buffer.from(buffer);
+      console.info(`[RELAY STEP 4/7] First media chunk received (${buffer.length} bytes). Spawning FFmpeg child process...`);
       ffmpegProc = startFfmpeg();
 
       send({

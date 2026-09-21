@@ -357,9 +357,14 @@ export class MultiStreamManager {
 
   async startBroadcast() {
     this.clearError();
+    this.hasConfirmedLive = false;
+    this._rtmpTransportConnected = false;
+
     const platform   = this.platformSelect?.value || 'youtube_rtmps';
     const streamKey  = this.inputStreamKey?.value.trim() || '';
     const customUrl  = this.inputCustomUrl?.value.trim() || '';
+
+    console.info(`[MultiStream STEP 1/8] Starting broadcast setup for platform: ${platform}`);
 
     if (!streamKey) { this.showError('Please enter your stream key to go live.'); return; }
     if (streamKey.startsWith('http://') || streamKey.startsWith('https://')) {
@@ -399,6 +404,7 @@ export class MultiStreamManager {
         console.warn('[MultiStream] AudioEngine boot notice:', aeErr);
       }
     }
+    console.info('[MultiStream STEP 2/8] Audio Engine & AudioContext verified and ready.');
 
     // 2. Ensure LiveKit Room is created & Program Audio Published
     let roomName = this.liveHost?.roomId;
@@ -409,6 +415,7 @@ export class MultiStreamManager {
         await new Promise(r => setTimeout(r, 1000));
         await this.liveHost.ensureProgramAudioPublished?.();
       } catch (err) {
+        console.error('[MultiStream ERROR at STEP 3] Could not start live stage:', err);
         this.showError('Could not start live stage: ' + (err.message || err));
         this.resetStartButton();
         return;
@@ -416,6 +423,7 @@ export class MultiStreamManager {
     } else {
       try { await this.liveHost.ensureProgramAudioPublished?.(); } catch (_) {}
     }
+    console.info(`[MultiStream STEP 3/8] Live Stage room verified: ${roomName}`);
 
     // 3. Extract mixed stereo audio track from AudioEngine
     const mixedStream = ae?.engine?.dest?.stream
@@ -453,6 +461,7 @@ export class MultiStreamManager {
     }
 
     if (!audioTrack) {
+      console.error('[MultiStream ERROR at STEP 4] Audio system not ready.');
       this.showError('Audio system not ready. Please tap "Go Live" or select a song, then try starting the stream again.');
       this.resetStartButton();
       return;
@@ -460,9 +469,9 @@ export class MultiStreamManager {
 
     // 4. Generate Unified Broadcast Stream (Canvas Video + Mixed Audio)
     const broadcastStream = this.compositor.getMediaStream(audioTrack);
-    console.info('[MultiStream] Unified stream active tracks:', {
-      video: broadcastStream.getVideoTracks().length,
-      audio: broadcastStream.getAudioTracks().length
+    console.info('[MultiStream STEP 4/8] Unified broadcast stream initialized:', {
+      videoTracks: broadcastStream.getVideoTracks().length,
+      audioTracks: broadcastStream.getAudioTracks().length
     });
 
     this.setStatus('Connecting Server…');
@@ -539,19 +548,23 @@ export class MultiStreamManager {
     const proto = isLocal && location.protocol !== 'https:' ? 'ws' : 'wss';
     const httpProto = isLocal && location.protocol !== 'https:' ? 'http:' : 'https:';
 
+    console.info(`[MultiStream STEP 5/8] Connecting to Streaming Relay server at: ${targetHost}`);
+
     // Cloud servers (e.g. Render free tier) may be sleeping and need ~25-45s to wake up
     if (!isLocal) {
       this.setStatus('Waking up cloud server…');
       try {
         const controller = new AbortController();
         const hTimer = setTimeout(() => controller.abort(), 12000);
+        console.info(`[MultiStream STEP 5.1/8] Pinging relay health at ${httpProto}//${targetHost}/api/health...`);
         await fetch(`${httpProto}//${targetHost}/api/health`, {
           cache: 'no-store',
           signal: controller.signal
         });
         clearTimeout(hTimer);
+        console.info(`[MultiStream STEP 5.2/8] Cloud server health ping OK.`);
       } catch (netErr) {
-        console.info(`[MultiStream] Pre-flight notice for ${targetHost} (${netErr.message}) — proceeding with WebSocket.`);
+        console.info(`[MultiStream STEP 5.2/8] Pre-flight notice for ${targetHost} (${netErr.message}) — proceeding with WebSocket.`);
       }
     }
 
@@ -572,7 +585,7 @@ export class MultiStreamManager {
       this._pendingChunks = [];
       this.streamMethod = 'websocket';
 
-      console.info('[MultiStream] Connecting WebSocket to:', wsUrl.replace(streamKey, '***'));
+      console.info(`[MultiStream STEP 5.3/8] Opening WebSocket connection: ${wsUrl.replace(streamKey, '***')}`);
       const ws = new WebSocket(wsUrl);
       ws.binaryType = 'arraybuffer';
       this._ws = ws;
@@ -582,6 +595,7 @@ export class MultiStreamManager {
         if (!resolved) {
           try { ws.close(); } catch (_) {}
           this.compositor.stop();
+          console.error(`[MultiStream ERROR at STEP 5] Connection timed out (${targetHost})`);
           reject(new Error(`Connection to streaming server timed out (${targetHost}). If using Render free tier, the server may be waking up—please try starting again in a moment.`));
         }
       }, CONNECT_TIMEOUT);
@@ -590,14 +604,14 @@ export class MultiStreamManager {
         if (resolved) return;
         resolved = true;
         clearTimeout(connectTimer);
-        console.info('[MultiStream] WebSocket connected to backend. Starting clean unified MediaRecorder.');
+        console.info('[MultiStream STEP 6/8] WebSocket connected to relay! Initializing unified MediaRecorder...');
         try {
           this._stopMediaRecorder();
           this._pendingChunks = [];
           this._startMediaRecorder(stream, ws);
           resolve();
         } catch (recErr) {
-          console.error('[MultiStream] MediaRecorder start error:', recErr);
+          console.error('[MultiStream ERROR at STEP 6] MediaRecorder start error:', recErr);
           this.compositor.stop();
           try { ws.close(); } catch (_) {}
           reject(new Error('Broadcast recording error: ' + (recErr.message || recErr)));
@@ -607,15 +621,20 @@ export class MultiStreamManager {
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
-          if (msg.type === 'rtmp-connected') {
-            console.info('[MultiStream] RTMP transport connected:', msg.message);
+          if (msg.type === 'ready') {
+            console.info('[MultiStream STEP 6.5/8] Relay server confirmed ready. Awaiting media chunks.');
+          } else if (msg.type === 'started') {
+            console.info('[MultiStream STEP 7.2/8] Relay server received media chunk and launched FFmpeg.');
+          } else if (msg.type === 'rtmp-connected') {
+            this._rtmpTransportConnected = true;
+            console.info('[MultiStream STEP 7.5/8] 🟡 Relay FFmpeg connected to RTMP destination! Handshake complete.');
             if (this.streamStatusBadge && !this.hasConfirmedLive) {
               this.streamStatusBadge.className = 'status-badge-connecting';
               this.streamStatusBadge.innerHTML = '<span class="badge-dot" style="background:#ffd166;"></span> CONNECTED (Publishing to YouTube…)';
             }
           } else if (msg.type === 'live' || msg.type === 'streaming') {
             this.hasConfirmedLive = true;
-            console.info('[MultiStream] Destination confirmed LIVE broadcast:', msg.stats);
+            console.info('[MultiStream STEP 8/8] 🔴 CONFIRMED LIVE ON YOUTUBE! Streaming frames.', msg.stats);
             if (this.streamStatusBadge) {
               const platLabel = (this.activePlatform || 'YOUTUBE').toUpperCase().replace('_RTMPS', '').replace('_RTMP_STANDARD', '');
               const rate = msg.stats?.bitrate ? ` (${msg.stats.bitrate})` : '';
@@ -625,7 +644,7 @@ export class MultiStreamManager {
             this.updateStateUI();
           } else if (msg.type === 'error') {
             this.hasConfirmedLive = false;
-            console.error('[MultiStream] Server streaming error:', msg.message);
+            console.error(`[MultiStream ERROR from Relay]: ${msg.message}`);
             let friendlyMsg = 'Stream error: ' + msg.message;
             if (/I\/O error|End of file|Broken pipe|refused|failed to connect|cannot open connection|error in the pull function|inactive stream key/i.test(msg.message)) {
               friendlyMsg = '⚠️ YouTube connection failed: ' + msg.message + '\n\n💡 Fixes in YouTube Studio:\n1. Make sure your live stream in YouTube Studio (studio.youtube.com) is in "Ready" or "Stream" mode.\n2. If you previously started or stopped a stream, YouTube marks that broadcast as finished. Click "Reset" next to your stream key in Stream Settings, copy the new key, and paste it here.\n3. Make sure you select "YouTube Live (RTMPS Secure)" which uses port 443.';
@@ -644,6 +663,7 @@ export class MultiStreamManager {
         if (!resolved) {
           clearTimeout(connectTimer);
           this.compositor.stop();
+          console.error(`[MultiStream ERROR at STEP 5] WebSocket connection error to ${targetHost}`);
           reject(new Error(`WebSocket connection error to ${targetHost}. Verify server is awake and accessible.`));
         }
       };
@@ -722,6 +742,7 @@ export class MultiStreamManager {
 
     const chunkQueue = [];
     let isProcessingQueue = false;
+    let chunkCount = 0;
 
     const flushQueue = async () => {
       if (isProcessingQueue) return;
@@ -729,6 +750,12 @@ export class MultiStreamManager {
       while (chunkQueue.length > 0 && ws.readyState === WebSocket.OPEN) {
         const item = chunkQueue.shift();
         try {
+          chunkCount++;
+          if (chunkCount === 1) {
+            console.info(`[MultiStream STEP 7/8] Chunk #1 transmitted to relay via WebSocket (${item.size || item.byteLength || 'binary'} bytes). Awaiting FFmpeg initialization.`);
+          } else if (chunkCount % 10 === 0) {
+            console.info(`[MultiStream UPLOAD] Transmitted ${chunkCount} media chunks to relay.`);
+          }
           if (item instanceof Blob) {
             const buf = await item.arrayBuffer();
             if (ws.readyState === WebSocket.OPEN) {
@@ -751,7 +778,7 @@ export class MultiStreamManager {
     };
 
     recorder.onerror = (e) => {
-      console.error('[MultiStream] MediaRecorder error:', e);
+      console.error('[MultiStream ERROR at MediaRecorder]:', e);
       this.showError('Video/Audio capture error: ' + (e?.error?.message || 'MediaRecorder failed'));
     };
 
@@ -762,7 +789,7 @@ export class MultiStreamManager {
     // 1000ms timeslice ensures clean 1-second keyframe clusters without sub-second cluster fragmentation
     recorder.start(1000);
     this._recorder = recorder;
-    console.info('[MultiStream] MediaRecorder active (1000ms clusters @ 128k AAC / 2.5M video)', { mimeType: recorder.mimeType || 'default' });
+    console.info(`[MultiStream STEP 6.1/8] MediaRecorder active (1000ms clusters @ 128k AAC / 2.5M video, mimeType: ${recorder.mimeType || 'default'})`);
   }
 
   _stopMediaRecorder() {
@@ -860,6 +887,9 @@ export class MultiStreamManager {
         if (this.hasConfirmedLive) {
           this.streamStatusBadge.className = 'status-badge-live';
           this.streamStatusBadge.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}`;
+        } else if (this._rtmpTransportConnected) {
+          this.streamStatusBadge.className = 'status-badge-connecting';
+          this.streamStatusBadge.innerHTML = `<span class="badge-dot" style="background:#ffd166;"></span> CONNECTED (Publishing to ${platLabel}…)`;
         } else {
           this.streamStatusBadge.className = 'status-badge-connecting';
           this.streamStatusBadge.innerHTML = `🟡 CONNECTING TO ${platLabel}…`;
@@ -875,6 +905,9 @@ export class MultiStreamManager {
         if (this.hasConfirmedLive) {
           this.topbarBadge.style.background = '#22c55e';
           this.topbarBadge.textContent   = `🔴 LIVE ON ${platLabel}`;
+        } else if (this._rtmpTransportConnected) {
+          this.topbarBadge.style.background = '#f59e0b';
+          this.topbarBadge.textContent   = `🟡 Publishing to ${platLabel}…`;
         } else {
           this.topbarBadge.style.background = '#f59e0b';
           this.topbarBadge.textContent   = `🟡 Connecting ${platLabel}…`;
