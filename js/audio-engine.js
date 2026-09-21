@@ -54,6 +54,17 @@ export class AudioEngine {
       clearInterval(this._gateTimer);
       this._gateTimer = null;
     }
+    if (this._dspAssistTimer) {
+      clearInterval(this._dspAssistTimer);
+      this._dspAssistTimer = null;
+    }
+    if (this._clockKeepAlive) {
+      try {
+        this._clockKeepAlive.stop();
+        this._clockKeepAlive.disconnect();
+      } catch (_) {}
+      this._clockKeepAlive = null;
+    }
     this._autoTuneTelemetryListeners = [];
 
     const e = this.engine;
@@ -928,7 +939,26 @@ export class AudioEngine {
     if (!mediaEl || !this.ctx || !this.engine?.mediaGain) return;
     try {
       if (!this.mediaElementSource) {
-        this.mediaElementSource = this.ctx.createMediaElementSource(mediaEl);
+        if (mediaEl.__audioSourceNode && mediaEl.__audioContext === this.ctx) {
+          this.mediaElementSource = mediaEl.__audioSourceNode;
+        } else {
+          try {
+            this.mediaElementSource = this.ctx.createMediaElementSource(mediaEl);
+            mediaEl.__audioSourceNode = this.mediaElementSource;
+            mediaEl.__audioContext = this.ctx;
+          } catch (createErr) {
+            if (mediaEl.__audioSourceNode) {
+              this.mediaElementSource = mediaEl.__audioSourceNode;
+            } else if (typeof mediaEl.captureStream === 'function' || typeof mediaEl.mozCaptureStream === 'function') {
+              const stream = (mediaEl.captureStream || mediaEl.mozCaptureStream).call(mediaEl);
+              this.mediaElementSource = this.ctx.createMediaStreamSource(stream);
+              mediaEl.__audioSourceNode = this.mediaElementSource;
+              mediaEl.__audioContext = this.ctx;
+            } else {
+              throw createErr;
+            }
+          }
+        }
         try { this.mediaElementSource.channelCount = 2; } catch (_) {}
         try { this.mediaElementSource.channelCountMode = 'explicit'; } catch (_) {}
         try { this.mediaElementSource.channelInterpretation = 'discrete'; } catch (_) {}

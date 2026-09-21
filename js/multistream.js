@@ -13,7 +13,7 @@
  *             → RTMP → YouTube Live
  */
 
-import { BroadcastCompositor } from './broadcast-compositor.js?v=28';
+import { BroadcastCompositor } from './broadcast-compositor.js?v=29';
 
 const STORAGE_KEY_STREAM_KEYS = 'nirmal_karaoke_stream_keys';
 const STORAGE_KEY_RELAY_URL   = 'nirmal_stream_relay_url';
@@ -57,7 +57,7 @@ export class MultiStreamManager {
         if (parsed.youtube || parsed.youtube_rtmps) return parsed;
       }
     } catch (_) {}
-    return { youtube: '2k5t-7stf-gt2v-cbm1-22b6', youtube_rtmps: '2k5t-7stf-gt2v-cbm1-22b6', twitch: '', facebook: '', custom_url: '', custom_key: '' };
+    return { youtube: '', youtube_rtmps: '', twitch: '', facebook: '', custom_url: '', custom_key: '' };
   }
 
   saveKey(platform, key, customUrl = '') {

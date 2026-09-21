@@ -1,12 +1,12 @@
-import { AudioEngine } from './audio-engine.js?v=28';
-import { LyricsManager } from './lyrics.js?v=28';
-import { MusicSearchManager } from './music-search.js?v=28';
-import { VisualizerRenderer } from './visualizer.js?v=28';
-import { playSFX } from './sfx.js?v=28';
-import { LiveStreamHost } from './live-stream.js?v=28';
-import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=28';
-import { PresenceManager } from './presence-manager.js?v=28';
-import { MultiStreamManager } from './multistream.js?v=28';
+import { AudioEngine } from './audio-engine.js?v=29';
+import { LyricsManager } from './lyrics.js?v=29';
+import { MusicSearchManager } from './music-search.js?v=29';
+import { VisualizerRenderer } from './visualizer.js?v=29';
+import { playSFX } from './sfx.js?v=29';
+import { LiveStreamHost } from './live-stream.js?v=29';
+import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=29';
+import { PresenceManager } from './presence-manager.js?v=29';
+import { MultiStreamManager } from './multistream.js?v=29';
 
 const audioEngine = new AudioEngine();
 const lyricsManager = new LyricsManager();
@@ -249,14 +249,22 @@ function setupLiveShareUI() {
     }
   });
 
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
   // Handle incoming audience chat & song request
   function handleAudienceChatMessage(sender, text, isSpecial) {
     if (!adminChatLog) return;
+    const safeSender = escapeHtml(sender);
+    const safeText = escapeHtml(text);
     const msg = document.createElement('div');
     if (isSpecial) {
       msg.innerHTML = `
         <div style="background:rgba(168,85,247,0.15); border:1px solid var(--accent-purple); padding:4px 6px; border-radius:4px; margin-bottom:2px;">
-          🎵 <strong>${sender}</strong> requested: <em>${text}</em>
+          🎵 <strong>${safeSender}</strong> requested: <em>${safeText}</em>
           <button class="btn-accept-req" style="background:var(--accent-purple); color:#fff; border:none; border-radius:3px; padding:2px 6px; font-size:0.65rem; margin-left:6px; cursor:pointer;">Accept & Queue</button>
         </div>
       `;
@@ -279,7 +287,7 @@ function setupLiveShareUI() {
         }
       });
     } else {
-      msg.innerHTML = `<strong>${sender}</strong>: ${text}`;
+      msg.innerHTML = `<strong>${safeSender}</strong>: ${safeText}`;
     }
     adminChatLog.appendChild(msg);
     adminChatLog.scrollTop = adminChatLog.scrollHeight;

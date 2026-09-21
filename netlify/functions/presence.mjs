@@ -5,15 +5,17 @@ const activeUsers = new Map();
 const activeInvites = new Map();
 const inviteResponses = new Map(); // toUserId -> array of responses
 
-const apiKey = process.env.LIVEKIT_API_KEY || 'API62Z9tokYcyQ6';
-const apiSecret = process.env.LIVEKIT_API_SECRET || 'qvWZaoZ7zOyfzFy3BwiTv0w3srZlHwzfGg5S2KJ9lGZ';
-const livekitUrl = process.env.LIVEKIT_URL || 'wss://nirmal-karaoke-5a7cz32b.livekit.cloud';
+const apiKey = process.env.LIVEKIT_API_KEY;
+const apiSecret = process.env.LIVEKIT_API_SECRET;
+const livekitUrl = process.env.LIVEKIT_URL;
 
-const apiHost = livekitUrl.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://').replace(/\/$/, '');
 let svc = null;
-try {
-  svc = new RoomServiceClient(apiHost, apiKey, apiSecret);
-} catch (_) {}
+if (apiKey && apiSecret && livekitUrl) {
+  const apiHost = livekitUrl.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://').replace(/\/$/, '');
+  try {
+    svc = new RoomServiceClient(apiHost, apiKey, apiSecret);
+  } catch (_) {}
+}
 
 function cleanupStale() {
   const now = Date.now();

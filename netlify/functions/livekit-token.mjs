@@ -35,9 +35,13 @@ export default async (req) => {
     const identity = String(body.identity || body.participant_identity || url.searchParams.get('identity') || '').trim();
     const role = String(body.role || url.searchParams.get('role') || 'audience').trim();
 
-    const apiKey = process.env.LIVEKIT_API_KEY || 'API62Z9tokYcyQ6';
-    const apiSecret = process.env.LIVEKIT_API_SECRET || 'qvWZaoZ7zOyfzFy3BwiTv0w3srZlHwzfGg5S2KJ9lGZ';
-    const livekitUrl = process.env.LIVEKIT_URL || 'wss://nirmal-karaoke-5a7cz32b.livekit.cloud';
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+    const livekitUrl = process.env.LIVEKIT_URL;
+
+    if (!apiKey || !apiSecret || !livekitUrl) {
+      return json({ error: 'Server configuration error: LiveKit credentials missing.' }, 500);
+    }
 
     const apiHost = livekitUrl.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://').replace(/\/$/, '');
     let svc = null;
@@ -205,13 +209,26 @@ export default async (req) => {
     // B. Stop External Stream
     if (action === 'stop-egress' || action === 'stop_egress' || pathname.endsWith('/stop-egress')) {
       const activeEgress = activeEgressStreams.get(roomName);
-      const egressId = String(body.egressId || activeEgress?.egressId || '').trim();
+      let egressId = String(body.egressId || activeEgress?.egressId || '').trim();
 
-      if (egressId && egressClient) {
-        try {
-          await egressClient.stopEgress(egressId);
-        } catch (stopErr) {
-          console.warn('[Multistream stopEgress notice]:', stopErr?.message || stopErr);
+      if (egressClient) {
+        if (!egressId && roomName) {
+          try {
+            const list = await egressClient.listEgress({ roomName });
+            if (Array.isArray(list)) {
+              const active = list.find(e => e.status === 0 || e.status === 1 || e.status === 'EGRESS_STARTING' || e.status === 'EGRESS_ACTIVE');
+              if (active) egressId = active.egressId;
+            }
+          } catch (listErr) {
+            console.warn('[Multistream listEgress fallback notice]:', listErr?.message || listErr);
+          }
+        }
+        if (egressId) {
+          try {
+            await egressClient.stopEgress(egressId);
+          } catch (stopErr) {
+            console.warn('[Multistream stopEgress notice]:', stopErr?.message || stopErr);
+          }
         }
       }
 

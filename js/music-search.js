@@ -1,5 +1,11 @@
 import { SAAVN_API_URLS } from './config.js';
 
+function escapeHtml(str) {
+  return String(str || '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
 export class MusicSearchManager {
   constructor(audioEngine, lyricsManager) {
     this.audioEngine = audioEngine;
@@ -165,7 +171,7 @@ export class MusicSearchManager {
       item.innerHTML = `
         <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;">
           <span style="color:${isCurrent ? 'var(--accent-blue)' : 'var(--accent-purple)'}; font-weight:bold;">${idx + 1}.</span>
-          <strong>${track.title}</strong> <span style="color:var(--text-dim)">- ${track.artist}</span>
+          <strong>${escapeHtml(track.title)}</strong> <span style="color:var(--text-dim)">- ${escapeHtml(track.artist)}</span>
         </div>
         <div style="display:flex; gap:6px;">
           <button data-idx="${idx}" class="btn-play-item" style="background:none; border:none; color:var(--accent-blue); cursor:pointer; font-weight:bold;">▶</button>
@@ -284,8 +290,8 @@ export class MusicSearchManager {
 
       div.innerHTML = `
         <div style="flex: 1; cursor: pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:8px;">
-          🎵 <strong>${trackObj.title}</strong><br>
-          <span style="color:var(--text-dim); font-size:0.7rem;">${trackObj.artist}</span>
+          🎵 <strong>${escapeHtml(trackObj.title)}</strong><br>
+          <span style="color:var(--text-dim); font-size:0.7rem;">${escapeHtml(trackObj.artist)}</span>
         </div>
         <div style="display: flex; gap: 4px;">
           <button class="btn-play-now" style="background: none; border: 1px solid var(--accent-blue); color: var(--accent-blue); padding: 4px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer;">▶ Play</button>

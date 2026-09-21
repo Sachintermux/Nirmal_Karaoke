@@ -260,8 +260,13 @@ export class LyricsManager {
 
   generateOffsetLrcText() {
     let out = '';
+    let lastTime = -1;
     this.parsedLyrics.forEach((l) => {
-      const nt = Math.max(0, l.time + this.lyricSyncOffset);
+      let nt = Math.max(0, l.time + this.lyricSyncOffset);
+      if (nt <= lastTime) {
+        nt = lastTime + 0.1;
+      }
+      lastTime = nt;
       const m = Math.floor(nt / 60).toString().padStart(2, '0');
       const s = (nt % 60).toFixed(2).padStart(5, '0');
       out += `[${m}:${s}]${l.text}\n`;

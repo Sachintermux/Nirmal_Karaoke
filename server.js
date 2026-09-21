@@ -277,6 +277,10 @@ app.all('/.netlify/functions/livekit-token', async (req, res) => {
     req.body = body;
     return app._router.handle(Object.assign(req, { url: '/api/stream/stop-egress', method: 'POST' }), res, () => {});
   }
+  if (action === 'stop-ffmpeg' || action === 'stop_ffmpeg') {
+    req.body = body;
+    return app._router.handle(Object.assign(req, { url: '/api/stream/stop-ffmpeg', method: 'POST' }), res, () => {});
+  }
   if (action === 'stream-status' || action === 'stream_status') {
     req.query = { ...req.query, roomName: body.roomName || req.query?.roomName || '' };
     return app._router.handle(Object.assign(req, { url: '/api/stream/status', method: 'GET' }), res, () => {});
@@ -337,11 +341,18 @@ setInterval(() => {
   for (const [invId, inv] of activeInvites.entries()) {
     if (now > inv.expiresAt && inv.status === 'pending') {
       inv.status = 'expired';
+      const senderId = inv.fromUser?.id;
+      const expiredData = { inviteId: invId, status: 'expired', accepted: false };
+      if (senderId) {
+        const resList = pollInviteResponses.get(senderId) || [];
+        resList.push(expiredData);
+        pollInviteResponses.set(senderId, resList);
+      }
       // Notify sender that invite timed out
-      const sender = activeUsers.get(inv.fromUser?.id);
+      const sender = senderId ? activeUsers.get(senderId) : null;
       if (sender?.sseRes && !sender.sseRes.writableEnded) {
         try {
-          sender.sseRes.write(`event: invite_response\ndata: ${JSON.stringify({ inviteId: invId, status: 'expired', accepted: false })}\n\n`);
+          sender.sseRes.write(`event: invite_response\ndata: ${JSON.stringify(expiredData)}\n\n`);
         } catch (_) {}
       }
       activeInvites.delete(invId);
@@ -1691,9 +1702,13 @@ wss.on('connection', (ws, req) => {
 
       const accepted = ffmpegProc.stdin.write(buffer);
       if (!accepted) {
-        // This is only a warning. We intentionally do not buffer unbounded WebM
-        // chunks here because queueing them would add seconds of karaoke latency.
-        handleLog(`[backpressure] FFmpeg stdin high-water mark reached at ${totalBytes} bytes\n`);
+        handleLog(`[backpressure] FFmpeg stdin high-water mark reached at ${totalBytes} bytes; pausing incoming socket\n`);
+        if (ws._socket && typeof ws._socket.pause === 'function') {
+          try { ws._socket.pause(); } catch (_) {}
+          ffmpegProc.stdin.once('drain', () => {
+            try { ws._socket?.resume?.(); } catch (_) {}
+          });
+        }
       }
     } catch (err) {
       handleLog(`[stdin error] ${err?.message || String(err)}\n`);
@@ -1720,6 +1735,7 @@ wss.on('connection', (ws, req) => {
     cleaned = true;
     stopping = true;
     clearInterval(pingTimer);
+    try { ws._socket?.resume?.(); } catch (_) {}
 
     console.info(
       `[ffmpeg-stream] Closing sessionId=${sessionId} reason=${reason} bytes=${totalBytes} ` +

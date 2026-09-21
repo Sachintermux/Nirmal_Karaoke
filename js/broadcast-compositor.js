@@ -180,7 +180,10 @@ export class BroadcastCompositor {
 
   stop() {
     this._isRunning = false;
-    this._videoTrack = null;
+    if (this._videoTrack) {
+      try { this._videoTrack.stop(); } catch (_) {}
+      this._videoTrack = null;
+    }
     if (this._worker) {
       try {
         this._worker.postMessage('stop');

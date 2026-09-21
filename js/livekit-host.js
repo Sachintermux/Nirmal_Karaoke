@@ -1,4 +1,4 @@
-import { FaceFilterEngine, FACE_FILTERS } from './face-filters.js?v=28';
+import { FaceFilterEngine, FACE_FILTERS } from './face-filters.js?v=29';
 
 const LK = () => window.LivekitClient;
 
@@ -140,7 +140,7 @@ export class LiveKitLiveStreamHost {
         publishDefaults: {
           audioPreset: KARAOKE_STEREO_AUDIO_PRESET,
           dtx: false,
-          red: false,
+          red: true,
           simulcast: false,
           forceStereo: true,
           // Do not generate extra codec variants for the music track.
@@ -412,7 +412,7 @@ export class LiveKitLiveStreamHost {
       source: L.Track.Source.Microphone,
       audioPreset: KARAOKE_STEREO_AUDIO_PRESET,
       dtx: false,
-      red: false,
+      red: true,
       forceStereo: true,
       name: 'nirmal-program-audio',
       stream: 'nirmal-program'
@@ -761,7 +761,7 @@ export class LiveKitLiveStreamHost {
     state.stalls = (state.stalls || 0) + 1;
     state.healthy = 0;
     const currentMs = this.getAudienceMonitorJitterTarget(item.track) || NIRMAL_LOW_LATENCY_AUDIO.initialMs;
-    const nextMs = Math.min(NIRMAL_LOW_LATENCY_AUDIO.criticalMs, Math.max(currentMs, NIRMAL_LOW_LATENCY_AUDIO.badMs) + 60);
+    const nextMs = Math.min(NIRMAL_LOW_LATENCY_AUDIO.criticalMs, Math.max(currentMs + 15, NIRMAL_LOW_LATENCY_AUDIO.moderateMs));
     state.lastDelay = nextMs / 1000;
     this.setAudienceMonitorJitterTarget(item.track, nextMs);
     if (this.duetMonitorEnabled) {

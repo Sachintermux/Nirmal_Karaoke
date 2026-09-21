@@ -36,6 +36,11 @@ function playGamingInviteChime() {
     playTone(659.25, t + 0.08, 0.25, 0.28); // E5
     playTone(783.99, t + 0.16, 0.28, 0.32); // G5
     playTone(1046.50, t + 0.24, 0.45, 0.35);// C6 triumph finish
+
+    // Cleanly close audio context to prevent hardware AudioContext ceiling exhaustion
+    setTimeout(() => {
+      try { ctx.close(); } catch (_) {}
+    }, 1200);
   } catch (err) {
     console.warn('[GameInvite] audio chime skipped:', err);
   }

@@ -5,8 +5,8 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
 <title>Live Karaoke Broadcast, Chat &amp; Duet</title>
-<link href="./css/style.css?v=28" rel="stylesheet"/>
-<link href="./css/game-invite.css?v=24" rel="stylesheet"/>
+<link href="./css/style.css?v=29" rel="stylesheet"/>
+<link href="./css/game-invite.css?v=29" rel="stylesheet"/>
 <style>
         body {
           padding: 14px;
@@ -468,10 +468,10 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.min.js?v=24"></script>
 <script type="module">
-  import { dspWorkletCode } from './js/dsp-code.js?v=24';
-  import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=24';
-  import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=28';
-  import { PresenceManager } from './js/presence-manager.js?v=24';
+  import { dspWorkletCode } from './js/dsp-code.js?v=29';
+  import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=29';
+  import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=29';
+  import { PresenceManager } from './js/presence-manager.js?v=29';
 
   const params = new URLSearchParams(location.search);
   const roomId = params.get('room');
@@ -605,11 +605,17 @@
   }
   if (btnLeaveStage) btnLeaveStage.addEventListener('click', leaveLiveStage);
 
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
   function addChatMessage(sender, text, isSpecial = false, isHost = false) {
     const msg = document.createElement('div');
     msg.className = isSpecial ? 'chat-msg-req' : isHost ? 'chat-msg-host' : 'chat-msg-user';
-    const safeSender = String(sender).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const safeText = String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const safeSender = escapeHtml(sender);
+    const safeText = escapeHtml(text);
     msg.innerHTML = isSpecial ? `🎵 <strong>${safeSender}</strong> requested: <em>${safeText}</em>` : isHost ? `⭐ <strong>${safeSender}</strong>: ${safeText}` : `<strong>${safeSender}</strong>: ${safeText}`;
     chatMessages.appendChild(msg);
     chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -907,7 +913,7 @@
       source: L.Track.Source.Microphone,
       audioPreset: { maxBitrate: 64_000, priority: 'high' },
       dtx: false,
-      red: false,
+      red: true,
       forceStereo: true,
       name: 'nirmal-audience-mic',
       stream: 'nirmal-audience-mic'
@@ -978,7 +984,7 @@
       // low-latency path and also handles browser audio unlock more reliably than
       // a hand-built MediaStreamAudioSource graph.
       webAudioMix: { audioContext: playbackCtx },
-      publishDefaults: { audioPreset: { maxBitrate: 64_000, priority: 'high' }, dtx: false, red: false, simulcast: false, forceStereo: true }
+      publishDefaults: { audioPreset: { maxBitrate: 64_000, priority: 'high' }, dtx: false, red: true, simulcast: false, forceStereo: true }
     });
 
     const handlePublishedTrack = async (publication, participant) => {
@@ -1163,7 +1169,7 @@
           livekitMicPublication = await room.localParticipant.publishTrack(livekitMicTrack, {
             source: L.Track.Source.Microphone,
             dtx: false,
-            red: false,
+            red: true,
             forceStereo: true,
             audioPreset: { maxBitrate: 64_000, priority: 'high' },
             name: 'nirmal-audience-mic',
@@ -1562,7 +1568,7 @@
         source: L.Track.Source.Microphone,
         ...(preset ? { audioPreset: preset } : {}),
         dtx: false,
-        red: false,
+        red: true,
         forceStereo: true,
         name: 'nirmal-audience-mic',
         stream: 'nirmal-audience-mic'
@@ -1588,16 +1594,31 @@
   }
 
   async function disableGuestMic() {
-    if (!livekitMicPublication) {
+    if (!livekitMicPublication && !rawMicStream && !micSource) {
       isMicEnabled = false;
       updateMicButtons();
       return;
     }
-    try { await livekitMicPublication.mute(); } catch (_) {}
-    try { await room.localParticipant.unpublishTrack(livekitMicTrack || livekitMicPublication?.track); } catch (_) {}
+    try { await livekitMicPublication?.mute?.(); } catch (_) {}
+    try { await room?.localParticipant?.unpublishTrack(livekitMicTrack || livekitMicPublication?.track); } catch (_) {}
     try { livekitMicTrack?.stop?.(); } catch (_) {}
     rawMicStream?.getAudioTracks().forEach(t => { t.enabled = false; });
     rawMicStream?.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
+    rawMicStream = null;
+
+    try { micSource?.disconnect?.(); } catch (_) {}
+    micSource = null;
+    try { micGain?.disconnect?.(); } catch (_) {}
+    micGain = null;
+    if (dspNodes) {
+      Object.keys(dspNodes).forEach(k => {
+        if (k !== 'loaded') {
+          try { dspNodes[k]?.disconnect?.(); } catch (_) {}
+          delete dspNodes[k];
+        }
+      });
+    }
+
     livekitMicPublication = null;
     livekitMicTrack = null;
     isMicEnabled = false;
@@ -1891,7 +1912,7 @@
     found.forEach(t => {
       const title=t.name||t.song||t.title||'Song'; const artist=t.primaryArtists||t.primary_artists||t.artist||'Artist';
       const item=document.createElement('div'); item.className='search-pick-item';
-      item.innerHTML=`<span><strong>${String(title).replace(/[<>]/g,'')}</strong> (${String(artist).replace(/[<>]/g,'')})</span><button class="btn" style="width:auto;margin:0;padding:2px 6px;font-size:.65rem;border-color:var(--accent-purple);color:var(--accent-purple)">Send</button>`;
+      item.innerHTML=`<span><strong>${escapeHtml(title)}</strong> (${escapeHtml(artist)})</span><button class="btn" style="width:auto;margin:0;padding:2px 6px;font-size:.65rem;border-color:var(--accent-purple);color:var(--accent-purple)">Send</button>`;
       item.querySelector('button').onclick=()=>{
         if (!room?.localParticipant) {
           alert('Please tap "Tune In" above to connect before requesting a song.');
