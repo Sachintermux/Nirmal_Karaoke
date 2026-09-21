@@ -7,6 +7,7 @@ import { LiveStreamHost } from './live-stream.js?v=29';
 import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=29';
 import { PresenceManager } from './presence-manager.js?v=29';
 import { MultiStreamManager } from './multistream.js?v=29';
+import { ArtistToolsManager } from './artist-tools.js?v=29';
 import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=29';
 import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=29';
 
@@ -17,6 +18,7 @@ const visualizer = new VisualizerRenderer(audioEngine);
 const liveHost = new LiveStreamHost(audioEngine);
 const presence = new PresenceManager();
 const multistream = new MultiStreamManager(liveHost, audioEngine, lyricsManager);
+const artistTools = new ArtistToolsManager(audioEngine);
 
 export function shouldKeepAlive() {
   const isPlayerPlaying = filePlayerGlobal && !filePlayerGlobal.paused && !filePlayerGlobal.ended;
@@ -1111,9 +1113,155 @@ function setupEventListeners() {
     }
   });
 
+  // ─── Live Stage Performance 8-Pad Soundboard ─────────────────────────────
   document.getElementById('sfxCheer')?.addEventListener('click', () => playSFX('cheer', audioEngine));
   document.getElementById('sfxAirhorn')?.addEventListener('click', () => playSFX('airhorn', audioEngine));
+  document.getElementById('sfxDrumroll')?.addEventListener('click', () => playSFX('drumroll', audioEngine));
+  document.getElementById('sfxBeatdrop')?.addEventListener('click', () => playSFX('beatdrop', audioEngine));
+  document.getElementById('sfxGuitar')?.addEventListener('click', () => playSFX('guitar', audioEngine));
   document.getElementById('sfxSparkle')?.addEventListener('click', () => playSFX('sparkle', audioEngine));
+  document.getElementById('sfxScratch')?.addEventListener('click', () => playSFX('scratch', audioEngine));
+  document.getElementById('sfxBleep')?.addEventListener('click', () => playSFX('bleep', audioEngine));
+
+  // ─── Pro Artist Live Suite: Metronome ────────────────────────────────────
+  const sliderMetro = document.getElementById('sliderMetronomeBpm');
+  const lblMetroBpm = document.getElementById('lblMetronomeBpm');
+  const btnToggleMetro = document.getElementById('btnToggleMetronome');
+  const chkMetroBrd = document.getElementById('chkMetroBroadcast');
+  const lblMetroRoute = document.getElementById('lblMetroRouteDesc');
+  const metroDots = document.querySelectorAll('#metronomeBeatBar .beat-dot');
+
+  const updateMetroBpmUi = (bpm) => {
+    if (lblMetroBpm) lblMetroBpm.textContent = `${bpm} BPM`;
+    if (sliderMetro) sliderMetro.value = bpm;
+  };
+
+  sliderMetro?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value, 10);
+    artistTools.setBpm(val);
+    updateMetroBpmUi(val);
+  });
+
+  document.getElementById('btnMetroMinus')?.addEventListener('click', () => {
+    const nextBpm = Math.max(40, artistTools.bpm - 1);
+    artistTools.setBpm(nextBpm);
+    updateMetroBpmUi(nextBpm);
+  });
+
+  document.getElementById('btnMetroPlus')?.addEventListener('click', () => {
+    const nextBpm = Math.min(240, artistTools.bpm + 1);
+    artistTools.setBpm(nextBpm);
+    updateMetroBpmUi(nextBpm);
+  });
+
+  document.getElementById('btnMetroTap')?.addEventListener('click', () => {
+    const tappedBpm = artistTools.tapTempo();
+    updateMetroBpmUi(tappedBpm);
+  });
+
+  chkMetroBrd?.addEventListener('change', (e) => {
+    artistTools.setMetronomeBroadcast(e.target.checked);
+    if (lblMetroRoute) {
+      lblMetroRoute.textContent = e.target.checked ? '(On = Live on Stream)' : '(Off = In-Ear Only)';
+    }
+  });
+
+  btnToggleMetro?.addEventListener('click', () => {
+    if (artistTools.isMetronomeRunning) {
+      artistTools.stopMetronome();
+      btnToggleMetro.textContent = '▶ Start Metronome';
+      btnToggleMetro.style.background = '';
+    } else {
+      artistTools.startMetronome();
+      btnToggleMetro.textContent = '⏹ Stop Metronome';
+      btnToggleMetro.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+    }
+  });
+
+  // Visual beat LED flasher
+  artistTools.onMetronomeTick = (beatNumber, isAccent) => {
+    metroDots.forEach((dot, idx) => {
+      if (idx === beatNumber) {
+        dot.classList.add('flash');
+        setTimeout(() => dot.classList.remove('flash'), 110);
+      } else {
+        dot.classList.remove('flash');
+      }
+    });
+  };
+
+  // ─── Pro Artist Live Suite: Chromatic Vocal Pitch Pipe ────────────────────
+  const btnRef440 = document.getElementById('btnRef440');
+  const btnRef432 = document.getElementById('btnRef432');
+  btnRef440?.addEventListener('click', () => {
+    artistTools.setConcertReference(440);
+    btnRef440.classList.add('active');
+    btnRef432?.classList.remove('active');
+  });
+  btnRef432?.addEventListener('click', () => {
+    artistTools.setConcertReference(432);
+    btnRef432.classList.add('active');
+    btnRef440?.classList.remove('active');
+  });
+
+  const pitchButtons = document.querySelectorAll('.pitch-key-btn[data-note]');
+  pitchButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const note = btn.getAttribute('data-note');
+      pitchButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      artistTools.playPitchTone(note);
+    });
+  });
+
+  document.getElementById('btnStopPitchPipe')?.addEventListener('click', () => {
+    artistTools.stopPitchTone();
+    pitchButtons.forEach(b => b.classList.remove('active'));
+  });
+
+  // ─── Pro Artist Live Suite: 1-Tap Quick Transpose Key Bar ────────────────
+  const transposePills = document.querySelectorAll('.transpose-pill');
+  transposePills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      const st = parseInt(pill.getAttribute('data-semitone'), 10);
+      transposePills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      audioEngine.updateKey(st);
+      artistTools.setQuickKeyShift(st);
+      const lbl = document.getElementById('lblQuickKeyShift');
+      if (lbl) {
+        lbl.textContent = st === 0 ? 'Original (0)' : (st > 0 ? `+${st} Semitones` : `${st} Semitones`);
+      }
+      const keyLbl = document.getElementById('lblKey');
+      if (keyLbl) keyLbl.textContent = st > 0 ? `+${st}` : `${st}`;
+    });
+  });
+
+  // ─── Pro Artist Live Suite: Auto-Ducking / DJ Talkover ────────────────────
+  document.getElementById('chkAutoDucking')?.addEventListener('change', (e) => {
+    artistTools.enableAutoDucking(e.target.checked);
+    const statusEl = document.getElementById('lblDuckingStatus');
+    if (statusEl) statusEl.style.display = e.target.checked ? 'block' : 'none';
+  });
+
+  // ─── Pro Artist Live Suite: Broadcast Safety Peak VU Meter ────────────────
+  const vuBar = document.getElementById('vuMeterBar');
+  const lblPeak = document.getElementById('lblVuPeakDb');
+  const lblClip = document.getElementById('lblVuClipWarning');
+
+  artistTools.onPeakUpdate = ({ peak, peakDb, isClipping }) => {
+    if (vuBar) {
+      const pct = Math.min(100, Math.max(0, ((peakDb + 60) / 60) * 100));
+      vuBar.style.width = `${pct.toFixed(1)}%`;
+    }
+    if (lblPeak) {
+      lblPeak.textContent = `${peakDb.toFixed(1)} dB`;
+      lblPeak.style.color = isClipping ? '#ef4444' : (peakDb > -6 ? '#eab308' : '#00e5ff');
+    }
+    if (lblClip) {
+      lblClip.style.opacity = isClipping ? '1' : '0';
+    }
+  };
 
   // Audio Sliders
   // Backing track slider

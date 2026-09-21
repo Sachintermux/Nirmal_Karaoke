@@ -180,9 +180,129 @@
                 <button class="preset-btn" data-preset="alien">👽<span>Alien</span></button>
             </div>
             <div class="soundboard">
-                <button class="sfx-btn" id="sfxCheer">👏 Applause</button>
-                <button class="sfx-btn" id="sfxAirhorn">🎺 Horn</button>
-                <button class="sfx-btn" id="sfxSparkle">✨ Chime</button>
+                <button class="sfx-btn" id="sfxCheer">👏 Cheer</button>
+                <button class="sfx-btn" id="sfxAirhorn">🎺 Airhorn</button>
+                <button class="sfx-btn" id="sfxDrumroll">🥁 Drumroll</button>
+                <button class="sfx-btn" id="sfxBeatdrop">💥 808 Drop</button>
+                <button class="sfx-btn" id="sfxGuitar">🎸 Chime</button>
+                <button class="sfx-btn" id="sfxSparkle">✨ Sparkle</button>
+                <button class="sfx-btn" id="sfxScratch">🎚️ Scratch</button>
+                <button class="sfx-btn" id="sfxBleep">🔇 Bleep</button>
+            </div>
+        </section>
+
+        <!-- PRO ARTIST LIVE SUITE CARD -->
+        <section class="card artist-suite-card mobile-screen" id="artistSuiteCard" data-screen-group="effects">
+            <div class="card-heading">
+                <div>
+                    <p class="eyebrow">LIVE PERFORMING ARTIST SUITE</p>
+                    <h2>Stage Master & Tools</h2>
+                </div>
+                <span class="pro-tag" style="background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;font-size:0.65rem;font-weight:900;padding:3px 8px;border-radius:12px;">PRO STAGE</span>
+            </div>
+
+            <!-- Precision Digital Metronome & Beat Clock -->
+            <div class="artist-section">
+                <div class="artist-section-header">
+                    <span class="artist-section-title">⏱️ PRECISION METRONOME & BEAT CLOCK</span>
+                    <span class="metronome-bpm-badge" id="lblMetronomeBpm">120 BPM</span>
+                </div>
+                <!-- 4-Beat Flashing Visual Indicator Bar -->
+                <div class="metronome-beat-display" id="metronomeBeatBar">
+                    <div class="beat-dot accent" data-beat="0">1</div>
+                    <div class="beat-dot" data-beat="1">2</div>
+                    <div class="beat-dot" data-beat="2">3</div>
+                    <div class="beat-dot" data-beat="3">4</div>
+                </div>
+                <div class="metronome-controls-row">
+                    <button class="button button-quiet metro-btn-nudge" id="btnMetroMinus" type="button" title="Decrease 1 BPM">-1</button>
+                    <input class="metro-slider" id="sliderMetronomeBpm" max="240" min="40" step="1" type="range" value="120">
+                    <button class="button button-quiet metro-btn-nudge" id="btnMetroPlus" type="button" title="Increase 1 BPM">+1</button>
+                    <button class="button button-quiet" id="btnMetroTap" type="button" style="font-size:0.75rem; font-weight:800; color:#00e5ff; border-color:rgba(0,229,255,0.4); white-space:nowrap;">⚡ Tap Tempo</button>
+                </div>
+                <div class="metronome-action-row">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <label class="switch-label" style="margin:0; font-size:0.72rem; color:var(--text-dim);">
+                            Route to stream
+                            <input id="chkMetroBroadcast" type="checkbox"><span class="switch"></span>
+                        </label>
+                        <span style="font-size:0.68rem; color:var(--text-dim);" id="lblMetroRouteDesc">(Off = In-Ear Only)</span>
+                    </div>
+                    <button class="button button-primary" id="btnToggleMetronome" type="button" style="padding:6px 14px; font-size:0.75rem; font-weight:800;">▶ Start Metronome</button>
+                </div>
+            </div>
+
+            <!-- Chromatic Vocal Pitch Pipe & Concert Reference -->
+            <div class="artist-section">
+                <div class="artist-section-header">
+                    <span class="artist-section-title">🎵 CHROMATIC VOCAL PITCH PIPE & REFERENCE</span>
+                    <div class="pitch-ref-pills" id="pitchRefPills">
+                        <button class="ref-pill active" id="btnRef440" type="button">440 Hz</button>
+                        <button class="ref-pill" id="btnRef432" type="button">432 Hz</button>
+                    </div>
+                </div>
+                <div class="pitch-pipe-grid">
+                    <button class="pitch-key-btn" data-note="C4" type="button">C4</button>
+                    <button class="pitch-key-btn" data-note="D4" type="button">D4</button>
+                    <button class="pitch-key-btn" data-note="E4" type="button">E4</button>
+                    <button class="pitch-key-btn" data-note="F4" type="button">F4</button>
+                    <button class="pitch-key-btn" data-note="G4" type="button">G4</button>
+                    <button class="pitch-key-btn" data-note="A4" type="button">A4</button>
+                    <button class="pitch-key-btn" data-note="B4" type="button">B4</button>
+                    <button class="pitch-key-btn stop-key" id="btnStopPitchPipe" type="button">⏹ Stop</button>
+                </div>
+            </div>
+
+            <!-- 1-Tap Quick Transpose Key Bar -->
+            <div class="artist-section">
+                <div class="artist-section-header">
+                    <span class="artist-section-title">🎹 1-TAP QUICK TRANSPOSE KEY BAR</span>
+                    <span id="lblQuickKeyShift" style="font-size:0.72rem; font-weight:800; color:#00e5ff;">Original (0)</span>
+                </div>
+                <div class="quick-transpose-row" id="quickTransposeRow">
+                    <button class="transpose-pill" data-semitone="-3" type="button">-3</button>
+                    <button class="transpose-pill" data-semitone="-2" type="button">-2</button>
+                    <button class="transpose-pill" data-semitone="-1" type="button">-1</button>
+                    <button class="transpose-pill active" data-semitone="0" type="button">♮ 0</button>
+                    <button class="transpose-pill" data-semitone="1" type="button">+1</button>
+                    <button class="transpose-pill" data-semitone="2" type="button">+2</button>
+                    <button class="transpose-pill" data-semitone="3" type="button">+3</button>
+                </div>
+            </div>
+
+            <!-- Auto-Ducking / DJ Talkover Mode -->
+            <div class="artist-section">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <span class="artist-section-title" style="display:block;">🎙️ AUTO-DUCKING / DJ TALKOVER</span>
+                        <span style="font-size:0.68rem; color:var(--text-dim);">Dips backing track volume by -10dB when you speak or sing into mic</span>
+                    </div>
+                    <label class="switch-label" style="margin:0;">
+                        <input id="chkAutoDucking" type="checkbox"><span class="switch"></span>
+                    </label>
+                </div>
+                <div id="lblDuckingStatus" style="font-size:0.68rem; color:#00e5ff; font-weight:600; margin-top:4px; display:none;">
+                    ⚡ Auto-Ducking Active: Music ducks dynamically with vocals
+                </div>
+            </div>
+
+            <!-- Broadcast Safety VU Peak & Clip Guard -->
+            <div class="artist-section" style="margin-bottom:0;">
+                <div class="artist-section-header">
+                    <span class="artist-section-title">🛡️ BROADCAST SAFETY VU PEAK & CLIP GUARD</span>
+                    <span id="lblVuPeakDb" style="font-size:0.72rem; font-family:monospace; font-weight:800; color:#00e5ff;">-48.0 dB</span>
+                </div>
+                <div class="vu-meter-track" style="height:10px; background:rgba(0,0,0,0.5); border-radius:5px; overflow:hidden; border:1px solid var(--border); position:relative;">
+                    <div id="vuMeterBar" style="width:0%; height:100%; background:linear-gradient(90deg, #10b981 0%, #eab308 75%, #ef4444 100%); transition:width 60ms ease-out; border-radius:4px;"></div>
+                    <div style="position:absolute; right:10%; top:0; bottom:0; width:1px; background:rgba(255,255,255,0.4);" title="-3dB Safety Threshold"></div>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                    <span style="font-size:0.65rem; color:var(--text-dim);">-60 dB</span>
+                    <span style="font-size:0.65rem; color:var(--text-dim);">-12 dB</span>
+                    <span style="font-size:0.65rem; color:var(--text-dim);">-3 dB (Safe)</span>
+                    <span id="lblVuClipWarning" style="font-size:0.65rem; font-weight:900; color:#ef4444; opacity:0; transition:opacity 0.2s;">⚠️ CLIP GUARD</span>
+                    <span style="font-size:0.65rem; color:var(--text-dim);">0 dB</span>
+                </div>
             </div>
         </section>
     </main>
@@ -634,13 +754,36 @@
         </p>
 
         <!-- Live Broadcast Scene Monitor (Interactive Preview Screen) -->
-        <div style="position:relative; width:100%; aspect-ratio:16/9; background:#05070e; border-radius:10px; overflow:hidden; border:1px solid rgba(0,229,255,0.35); margin-bottom:12px; box-shadow:0 8px 24px rgba(0,0,0,0.6);">
-            <canvas id="broadcastScenePreview" width="640" height="360" style="width:100%; height:100%; display:block; object-fit:cover;"></canvas>
-            <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; font-weight:800; color:#00e5ff; display:flex; align-items:center; gap:5px;">
+        <div style="position:relative; width:100%; aspect-ratio:16/9; background:#05070e; border-radius:10px; overflow:hidden; border:1px solid rgba(0,229,255,0.35); margin-bottom:8px; box-shadow:0 8px 24px rgba(0,0,0,0.6); user-select:none; touch-action:none;">
+            <canvas id="broadcastScenePreview" width="640" height="360" style="width:100%; height:100%; display:block; object-fit:cover; pointer-events:none;"></canvas>
+            <!-- OBS Studio Interactive Draggable & Resizable Overlay -->
+            <div id="obsCanvasOverlay" class="obs-canvas-overlay"></div>
+            <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; font-weight:800; color:#00e5ff; display:flex; align-items:center; gap:5px; pointer-events:none; z-index:12;">
                 <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#00e5ff;"></span> LIVE MONITOR (VIEWER FEED)
             </div>
-            <div id="previewActiveLayoutBadge" style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; color:#00e5ff; font-weight:700;">
+            <div id="previewActiveLayoutBadge" style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; color:#00e5ff; font-weight:700; pointer-events:none; z-index:12;">
                 Spotlight Layout
+            </div>
+        </div>
+
+        <!-- OBS Studio Custom Canvas Toolbar (Visible when OBS Custom layout is active) -->
+        <div id="obsStudioToolbar" style="display:none; margin-bottom:12px; background:rgba(0,229,255,0.06); border:1px solid rgba(0,229,255,0.25); border-radius:8px; padding:10px 12px; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                <span style="font-size:0.75rem; font-weight:800; color:#00e5ff; display:flex; align-items:center; gap:5px;">
+                    🎨 OBS CUSTOM CANVAS STUDIO
+                </span>
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="button button-quiet" id="btnSnapObsCanvas" style="padding:3px 8px; font-size:0.68rem; border-radius:4px;">🎯 Snap Center</button>
+                    <button type="button" class="button button-quiet" id="btnResetObsCanvas" style="padding:3px 8px; font-size:0.68rem; color:#ff6b6b; border-color:rgba(255,107,107,0.3); border-radius:4px;">↺ Reset</button>
+                </div>
+            </div>
+            <div style="font-size:0.68rem; color:var(--text-dim); line-height:1.4;">
+                💡 <b>OBS Drag & Resize:</b> Drag any element inside the monitor to reposition. Drag the handle (⤡) to resize. Position updates stream live to YouTube!
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <span style="font-size:0.7rem; font-weight:700; color:var(--text-dim); white-space:nowrap;">📣 Live Ticker:</span>
+                <input id="inputObsTickerText" placeholder="Artist announcements, social handles or UPI/tips…" style="flex:1; padding:6px 8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:6px; color:#fff; font-size:0.74rem;">
+                <button type="button" class="button button-quiet" id="btnApplyObsTicker" style="padding:6px 10px; font-size:0.7rem; color:#00e5ff; border-color:rgba(0,229,255,0.3); font-weight:700;">Set</button>
             </div>
         </div>
 
@@ -648,11 +791,12 @@
             <!-- Real-Time Layout Switcher -->
             <div>
                 <label style="font-size:0.72rem; font-weight:800; color:#00e5ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">LAYOUT PRESET</label>
-                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;" id="broadcastLayoutPills">
+                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;" id="broadcastLayoutPills">
                     <button type="button" class="button button-quiet" data-layout="spotlight" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px; background:rgba(0,229,255,0.15); border:1px solid #00e5ff; color:#00e5ff;">🎤 Spotlight</button>
                     <button type="button" class="button button-quiet" data-layout="karaoke" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">🎼 Karaoke</button>
                     <button type="button" class="button button-quiet" data-layout="duet" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">👥 Duet</button>
                     <button type="button" class="button button-quiet" data-layout="visualizer" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">📊 Visualizer</button>
+                    <button type="button" class="button button-quiet" data-layout="custom" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px; color:#ff007f;">🎨 OBS Custom</button>
                 </div>
             </div>
 

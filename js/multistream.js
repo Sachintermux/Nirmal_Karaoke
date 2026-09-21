@@ -133,6 +133,14 @@ export class MultiStreamManager {
     this.selectQuality        = document.getElementById('selectStreamQuality');
     this.layoutPillsContainer = document.getElementById('broadcastLayoutPills');
 
+    // OBS Studio Interactive Canvas Overlay Elements
+    this.obsOverlay           = document.getElementById('obsCanvasOverlay');
+    this.obsToolbar           = document.getElementById('obsStudioToolbar');
+    this.btnResetObs          = document.getElementById('btnResetObsCanvas');
+    this.btnSnapObs           = document.getElementById('btnSnapObsCanvas');
+    this.inputObsTicker       = document.getElementById('inputObsTickerText');
+    this.btnApplyObsTicker    = document.getElementById('btnApplyObsTicker');
+
     this.selectedQuality = localStorage.getItem('nirmal_stream_quality') || '480p';
 
     if (!this.modal) return;
@@ -185,9 +193,9 @@ export class MultiStreamManager {
         pills.forEach(btn => {
           const isMatch = btn.getAttribute('data-layout') === activeLayout;
           if (isMatch) {
-            btn.style.background = 'rgba(0,229,255,0.15)';
-            btn.style.border = '1px solid #00e5ff';
-            btn.style.color = '#00e5ff';
+            btn.style.background = isMatch && activeLayout === 'custom' ? 'rgba(255,0,127,0.18)' : 'rgba(0,229,255,0.15)';
+            btn.style.border = isMatch && activeLayout === 'custom' ? '1px solid #ff007f' : '1px solid #00e5ff';
+            btn.style.color = isMatch && activeLayout === 'custom' ? '#ff007f' : '#00e5ff';
           } else {
             btn.style.background = 'transparent';
             btn.style.border = '1px solid var(--border)';
@@ -199,9 +207,20 @@ export class MultiStreamManager {
             spotlight: '🎤 Spotlight Layout',
             karaoke: '🎼 Karaoke Stage',
             duet: '👥 Side-by-Side Duet',
-            visualizer: '📊 Full Visualizer'
+            visualizer: '📊 Full Visualizer',
+            custom: '🎨 OBS Custom Layout'
           };
           this.previewLayoutBadge.textContent = labels[activeLayout] || activeLayout;
+        }
+
+        // Toggle OBS Interactive Overlay & Studio Toolbar
+        if (activeLayout === 'custom') {
+          if (this.obsToolbar) this.obsToolbar.style.display = 'flex';
+          if (this.obsOverlay) this.obsOverlay.style.display = 'block';
+          this.renderObsOverlay();
+        } else {
+          if (this.obsToolbar) this.obsToolbar.style.display = 'none';
+          if (this.obsOverlay) this.obsOverlay.style.display = 'none';
         }
       };
       this._updatePillsUi = updatePillsUi;
@@ -214,6 +233,24 @@ export class MultiStreamManager {
       });
       updatePillsUi(this.compositor.layout);
     }
+
+    // Bind OBS Studio Toolbar Buttons
+    this.btnResetObs?.addEventListener('click', () => {
+      this.compositor.resetObsSources();
+      this.renderObsOverlay();
+    });
+
+    this.btnSnapObs?.addEventListener('click', () => {
+      this.snapObsCenter();
+    });
+
+    const applyTicker = () => {
+      const txt = this.inputObsTicker?.value.trim() || '';
+      this.compositor.setTickerText(txt);
+    };
+    this.btnApplyObsTicker?.addEventListener('click', applyTicker);
+    this.inputObsTicker?.addEventListener('change', applyTicker);
+    this.inputObsTicker?.addEventListener('input', applyTicker);
 
     // Bind Scene Layer Checkboxes
     if (this.chkVisualizer) {
@@ -316,6 +353,10 @@ export class MultiStreamManager {
     if (this._updatePillsUi) this._updatePillsUi(this.compositor.layout);
     if (this.selectQuality) this.selectQuality.value = this.selectedQuality;
 
+    if (this.compositor.layout === 'custom') {
+      this.renderObsOverlay();
+    }
+
     // Attach live stage preview monitor
     if (this.previewCanvas) {
       this.compositor.attachPreview(this.previewCanvas);
@@ -330,6 +371,127 @@ export class MultiStreamManager {
     if (!this.isStreaming) {
       this.compositor.stop();
     }
+  }
+
+  renderObsOverlay() {
+    if (!this.obsOverlay || !this.compositor?.obsSources) return;
+    this.obsOverlay.innerHTML = '';
+
+    const sources = this.compositor.obsSources;
+    for (const [id, s] of Object.entries(sources)) {
+      if (s.visible === false) continue;
+
+      const box = document.createElement('div');
+      box.className = 'obs-source-box';
+      box.dataset.sourceId = id;
+      box.style.left = `${(s.x * 100).toFixed(2)}%`;
+      box.style.top = `${(s.y * 100).toFixed(2)}%`;
+      box.style.width = `${(s.w * 100).toFixed(2)}%`;
+      box.style.height = `${(s.h * 100).toFixed(2)}%`;
+      box.style.zIndex = s.zIndex || 1;
+
+      const label = document.createElement('div');
+      label.className = 'obs-source-label';
+      label.textContent = s.name || id;
+      box.appendChild(label);
+
+      const handle = document.createElement('div');
+      handle.className = 'obs-resize-handle';
+      handle.innerHTML = '⤡';
+      handle.title = 'Drag to resize';
+      box.appendChild(handle);
+
+      this.attachObsDragHandlers(box, id, handle);
+      this.obsOverlay.appendChild(box);
+    }
+
+    if (this.inputObsTicker && sources.socialTicker?.text) {
+      this.inputObsTicker.value = sources.socialTicker.text;
+    }
+  }
+
+  attachObsDragHandlers(box, id, handle) {
+    const container = this.obsOverlay;
+
+    const onPointerDown = (e, isResize) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      const rect = container.getBoundingClientRect();
+      const source = this.compositor.obsSources[id];
+      if (!source || rect.width === 0 || rect.height === 0) return;
+
+      box.classList.add(isResize ? 'resizing' : 'dragging');
+
+      const startX = source.x;
+      const startY = source.y;
+      const startW = source.w;
+      const startH = source.h;
+
+      const startClientX = clientX;
+      const startClientY = clientY;
+
+      const onPointerMove = (moveEv) => {
+        moveEv.preventDefault();
+        const curClientX = moveEv.touches ? moveEv.touches[0].clientX : moveEv.clientX;
+        const curClientY = moveEv.touches ? moveEv.touches[0].clientY : moveEv.clientY;
+
+        const deltaNormX = (curClientX - startClientX) / rect.width;
+        const deltaNormY = (curClientY - startClientY) / rect.height;
+
+        if (isResize) {
+          let newW = Math.max(0.08, Math.min(1.0 - startX, startW + deltaNormX));
+          let newH = Math.max(0.04, Math.min(1.0 - startY, startH + deltaNormY));
+          this.compositor.updateObsSource(id, { w: newW, h: newH });
+          box.style.width = `${(newW * 100).toFixed(2)}%`;
+          box.style.height = `${(newH * 100).toFixed(2)}%`;
+        } else {
+          let newX = Math.max(0, Math.min(1.0 - startW, startX + deltaNormX));
+          let newY = Math.max(0, Math.min(1.0 - startH, startY + deltaNormY));
+          this.compositor.updateObsSource(id, { x: newX, y: newY });
+          box.style.left = `${(newX * 100).toFixed(2)}%`;
+          box.style.top = `${(newY * 100).toFixed(2)}%`;
+        }
+      };
+
+      const onPointerUp = () => {
+        box.classList.remove('dragging', 'resizing');
+        window.removeEventListener('mousemove', onPointerMove);
+        window.removeEventListener('mouseup', onPointerUp);
+        window.removeEventListener('touchmove', onPointerMove);
+        window.removeEventListener('touchend', onPointerUp);
+        window.removeEventListener('touchcancel', onPointerUp);
+      };
+
+      window.addEventListener('mousemove', onPointerMove, { passive: false });
+      window.addEventListener('mouseup', onPointerUp);
+      window.addEventListener('touchmove', onPointerMove, { passive: false });
+      window.addEventListener('touchend', onPointerUp);
+      window.addEventListener('touchcancel', onPointerUp);
+    };
+
+    // Dragging
+    box.addEventListener('mousedown', (e) => onPointerDown(e, false));
+    box.addEventListener('touchstart', (e) => onPointerDown(e, false), { passive: false });
+
+    // Resizing
+    handle.addEventListener('mousedown', (e) => onPointerDown(e, true));
+    handle.addEventListener('touchstart', (e) => onPointerDown(e, true), { passive: false });
+  }
+
+  snapObsCenter() {
+    if (!this.compositor?.obsSources) return;
+    const sources = this.compositor.obsSources;
+    for (const s of Object.values(sources)) {
+      if (s.id === 'lyrics' || s.id === 'visualizer' || s.id === 'songBanner' || s.id === 'socialTicker') {
+        s.x = Math.max(0, (1 - s.w) / 2);
+      }
+    }
+    this.compositor.saveObsSources();
+    this.renderObsOverlay();
   }
 
   onPlatformChanged() {
