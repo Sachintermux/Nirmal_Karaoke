@@ -5,13 +5,30 @@
 
 let activeOverlay = null;
 let activeCountdownTimer = null;
+let chimeAudioCtx = null;
+
+function getChimeAudioContext() {
+  try {
+    if (chimeAudioCtx && chimeAudioCtx.state !== 'closed') {
+      return chimeAudioCtx;
+    }
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    chimeAudioCtx = new AudioCtx();
+    return chimeAudioCtx;
+  } catch (_) {
+    return null;
+  }
+}
 
 // Synthesize a gaming notification chime using Web Audio API
 function playGamingInviteChime() {
   try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
+    const ctx = getChimeAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
     const t = ctx.currentTime;
 
     const playTone = (freq, start, duration, gainVal = 0.2) => {
@@ -36,11 +53,6 @@ function playGamingInviteChime() {
     playTone(659.25, t + 0.08, 0.25, 0.28); // E5
     playTone(783.99, t + 0.16, 0.28, 0.32); // G5
     playTone(1046.50, t + 0.24, 0.45, 0.35);// C6 triumph finish
-
-    // Cleanly close audio context to prevent hardware AudioContext ceiling exhaustion
-    setTimeout(() => {
-      try { ctx.close(); } catch (_) {}
-    }, 1200);
   } catch (err) {
     console.warn('[GameInvite] audio chime skipped:', err);
   }

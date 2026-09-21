@@ -260,11 +260,15 @@ export class LyricsManager {
 
   generateOffsetLrcText() {
     let out = '';
-    let lastTime = -1;
+    const offsetMs = Math.round((this.lyricSyncOffset || 0) * 1000);
+    if (offsetMs !== 0) {
+      out += `[offset:${offsetMs}]\n`;
+    }
+    let lastTime = -0.01;
     this.parsedLyrics.forEach((l) => {
-      let nt = Math.max(0, l.time + this.lyricSyncOffset);
+      let nt = l.time;
       if (nt <= lastTime) {
-        nt = lastTime + 0.1;
+        nt = Number((lastTime + 0.05).toFixed(2));
       }
       lastTime = nt;
       const m = Math.floor(nt / 60).toString().padStart(2, '0');

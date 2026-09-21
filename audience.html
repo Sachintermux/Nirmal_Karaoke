@@ -1543,6 +1543,19 @@
       return;
     }
 
+    try { micSource?.disconnect?.(); } catch (_) {}
+    micSource = null;
+    try { micGain?.disconnect?.(); } catch (_) {}
+    micGain = null;
+    if (dspNodes) {
+      Object.keys(dspNodes).forEach(k => {
+        if (k !== 'loaded') {
+          try { dspNodes[k]?.disconnect?.(); } catch (_) {}
+          delete dspNodes[k];
+        }
+      });
+    }
+
     micSource = audioCtx.createMediaStreamSource(rawMicStream);
     // Fix G/H: guest vocal mic is intentionally mono (single singer channel).
     // Pin to 1-ch explicit to prevent phantom stereo issues in the DSP graph.

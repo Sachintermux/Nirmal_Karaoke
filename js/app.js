@@ -388,7 +388,7 @@ function setupLiveShareUI() {
     liveHost.broadcastChatMessage('Host (Admin)', text, false, true);
     const msg = document.createElement('div');
     msg.style.color = 'var(--accent-blue)';
-    msg.innerHTML = `⭐ <strong>You</strong>: ${text}`;
+    msg.innerHTML = `⭐ <strong>You</strong>: ${escapeHtml(text)}`;
     adminChatLog.appendChild(msg);
     adminChatLog.scrollTop = adminChatLog.scrollHeight;
     adminReplyInput.value = '';

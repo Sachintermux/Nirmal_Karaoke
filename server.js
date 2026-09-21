@@ -355,6 +355,13 @@ setInterval(() => {
           sender.sseRes.write(`event: invite_response\ndata: ${JSON.stringify(expiredData)}\n\n`);
         } catch (_) {}
       }
+      // Notify recipient that invite timed out so modal dialog auto-dismisses
+      const toUser = inv.toUserId ? activeUsers.get(inv.toUserId) : null;
+      if (toUser?.sseRes && !toUser.sseRes.writableEnded) {
+        try {
+          toUser.sseRes.write(`event: invite_expired\ndata: ${JSON.stringify(expiredData)}\n\n`);
+        } catch (_) {}
+      }
       activeInvites.delete(invId);
     } else if (now - inv.createdAt > 60000) {
       activeInvites.delete(invId);
@@ -1658,6 +1665,8 @@ wss.on('connection', (ws, req) => {
   console.info(`[RELAY STEP 2/7] Resolved candidate RTMP target: ${maskStreamSecret(rtmpUrl, streamKey)}`);
   console.info(`[RELAY STEP 3/7] Waiting for first MediaRecorder chunk from browser client...`);
 
+  let isStdinPaused = false;
+
   ws.on('message', (chunk, isBinary) => {
     if (!isBinary && typeof chunk === 'string') {
       // Ignore text control messages sent accidentally by the browser.
@@ -1701,14 +1710,20 @@ wss.on('connection', (ws, req) => {
       if (!firstChunk) firstChunk = Buffer.from(buffer);
 
       const accepted = ffmpegProc.stdin.write(buffer);
-      if (!accepted) {
+      if (!accepted && !isStdinPaused) {
+        isStdinPaused = true;
         handleLog(`[backpressure] FFmpeg stdin high-water mark reached at ${totalBytes} bytes; pausing incoming socket\n`);
-        if (ws._socket && typeof ws._socket.pause === 'function') {
-          try { ws._socket.pause(); } catch (_) {}
-          ffmpegProc.stdin.once('drain', () => {
-            try { ws._socket?.resume?.(); } catch (_) {}
-          });
-        }
+        try {
+          if (typeof ws.pause === 'function') ws.pause();
+          else if (ws._socket && typeof ws._socket.pause === 'function') ws._socket.pause();
+        } catch (_) {}
+        ffmpegProc.stdin.once('drain', () => {
+          isStdinPaused = false;
+          try {
+            if (typeof ws.resume === 'function') ws.resume();
+            else if (ws._socket && typeof ws._socket.resume === 'function') ws._socket.resume();
+          } catch (_) {}
+        });
       }
     } catch (err) {
       handleLog(`[stdin error] ${err?.message || String(err)}\n`);

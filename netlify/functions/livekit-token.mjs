@@ -78,12 +78,20 @@ export default async (req) => {
       if (!roomName) return json({ error: 'roomName is required' }, 400);
       endedRooms.add(roomName);
 
-      // Also stop any running external RTMP streams for this room
-      const activeEgress = activeEgressStreams.get(roomName);
-      if (activeEgress?.egressId && egressClient) {
-        try { await egressClient.stopEgress(activeEgress.egressId); } catch (_) {}
-        activeEgressStreams.delete(roomName);
+      // Stop any running external RTMP streams for this room directly via LiveKit API
+      if (egressClient) {
+        try {
+          const list = await egressClient.listEgress({ roomName });
+          if (Array.isArray(list)) {
+            for (const eg of list) {
+              if (eg.status === 0 || eg.status === 1 || eg.status === 'EGRESS_STARTING' || eg.status === 'EGRESS_ACTIVE') {
+                try { await egressClient.stopEgress(eg.egressId); } catch (_) {}
+              }
+            }
+          }
+        } catch (_) {}
       }
+      activeEgressStreams.delete(roomName);
 
       if (svc) {
         try {
@@ -212,12 +220,15 @@ export default async (req) => {
       let egressId = String(body.egressId || activeEgress?.egressId || '').trim();
 
       if (egressClient) {
-        if (!egressId && roomName) {
+        if (roomName) {
           try {
             const list = await egressClient.listEgress({ roomName });
             if (Array.isArray(list)) {
-              const active = list.find(e => e.status === 0 || e.status === 1 || e.status === 'EGRESS_STARTING' || e.status === 'EGRESS_ACTIVE');
-              if (active) egressId = active.egressId;
+              for (const eg of list) {
+                if (eg.status === 0 || eg.status === 1 || eg.status === 'EGRESS_STARTING' || eg.status === 'EGRESS_ACTIVE') {
+                  try { await egressClient.stopEgress(eg.egressId); } catch (_) {}
+                }
+              }
             }
           } catch (listErr) {
             console.warn('[Multistream listEgress fallback notice]:', listErr?.message || listErr);
@@ -234,6 +245,11 @@ export default async (req) => {
 
       if (roomName) activeEgressStreams.delete(roomName);
       return json({ ok: true, status: 'stopped' }, 200);
+    }
+
+    // Route stop-ffmpeg action so it does not fail with missing token parameters
+    if (action === 'stop-ffmpeg' || action === 'stop_ffmpeg' || pathname.endsWith('/stop-ffmpeg')) {
+      return json({ ok: true, status: 'stopped', message: 'FFmpeg relay runs on Node backend relay server.' }, 200);
     }
 
     // C. External Stream Status

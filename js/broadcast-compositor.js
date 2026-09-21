@@ -184,6 +184,14 @@ export class BroadcastCompositor {
       try { this._videoTrack.stop(); } catch (_) {}
       this._videoTrack = null;
     }
+    if (this._canvasStream) {
+      try {
+        this._canvasStream.getTracks().forEach(t => {
+          try { t.stop(); } catch (_) {}
+        });
+      } catch (_) {}
+      this._canvasStream = null;
+    }
     if (this._worker) {
       try {
         this._worker.postMessage('stop');
@@ -217,6 +225,7 @@ export class BroadcastCompositor {
     this.drawScene();
     const fps = this.targetFps || 25;
     const canvasStream = this.canvas.captureStream(fps);
+    this._canvasStream = canvasStream;
     this._videoTrack = canvasStream.getVideoTracks()[0] || null;
 
     const tracks = [];
@@ -398,6 +407,13 @@ export class BroadcastCompositor {
       try {
         this._previewCtx.drawImage(this.canvas, 0, 0, this._previewCanvas.width, this._previewCanvas.height);
       } catch (_) {}
+    }
+
+    // Guarantee unthrottled frame emission for captureStream even when tab is in background
+    if (this._canvasStream && typeof this._canvasStream.requestFrame === 'function') {
+      try { this._canvasStream.requestFrame(); } catch (_) {}
+    } else if (this._videoTrack && typeof this._videoTrack.requestFrame === 'function') {
+      try { this._videoTrack.requestFrame(); } catch (_) {}
     }
   }
 

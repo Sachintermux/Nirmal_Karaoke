@@ -561,6 +561,20 @@ export class MultiStreamManager {
     this.updateStateUI();
     this.startTimer();
     this.resetStartButton();
+
+    if (!this._renderKeepAliveTimer) {
+      this._renderKeepAliveTimer = setInterval(() => {
+        try {
+          const host = this.getCloudRelayUrl();
+          if (host) {
+            const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+            const scheme = isLocal && location.protocol !== 'https:' ? 'http://' : 'https://';
+            const cleanHost = host.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '');
+            fetch(`${scheme}${cleanHost}/api/health`, { cache: 'no-store' }).catch(() => {});
+          }
+        } catch (_) {}
+      }, 4 * 60 * 1000);
+    }
   }
 
   // ─── WebSocket + MediaRecorder pipeline ───────────────────────────────────
@@ -882,6 +896,10 @@ export class MultiStreamManager {
     this.isStreaming    = false;
     this.sessionId      = null;
     this.activePlatform = null;
+    if (this._renderKeepAliveTimer) {
+      clearInterval(this._renderKeepAliveTimer);
+      this._renderKeepAliveTimer = null;
+    }
     this.stopTimer();
     this.updateStateUI();
 

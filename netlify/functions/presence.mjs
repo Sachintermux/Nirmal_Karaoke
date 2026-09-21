@@ -26,6 +26,20 @@ function cleanupStale() {
   }
   for (const [invId, inv] of activeInvites.entries()) {
     if (now > inv.expiresAt || now - inv.createdAt > 60000) {
+      if (inv.status === 'pending') {
+        const senderId = inv.fromUser?.id;
+        if (senderId) {
+          const resList = inviteResponses.get(senderId) || [];
+          resList.push({
+            inviteId: invId,
+            status: 'expired',
+            accepted: false,
+            roomId: inv.roomId,
+            type: inv.fromUser?.type || 'duet'
+          });
+          inviteResponses.set(senderId, resList);
+        }
+      }
       activeInvites.delete(invId);
     }
   }

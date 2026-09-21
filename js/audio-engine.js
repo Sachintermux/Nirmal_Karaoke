@@ -60,8 +60,11 @@ export class AudioEngine {
     }
     if (this._clockKeepAlive) {
       try {
-        this._clockKeepAlive.stop();
-        this._clockKeepAlive.disconnect();
+        if (typeof this._clockKeepAlive.stop === 'function') this._clockKeepAlive.stop();
+        if (typeof this._clockKeepAlive.disconnect === 'function') this._clockKeepAlive.disconnect();
+        this._clockKeepAlive.osc?.stop?.();
+        this._clockKeepAlive.osc?.disconnect?.();
+        this._clockKeepAlive.gain?.disconnect?.();
       } catch (_) {}
       this._clockKeepAlive = null;
     }
@@ -590,7 +593,13 @@ export class AudioEngine {
       // 4. Start inaudible master clock keepalive to keep AudioContext hardware clock running
       try {
         if (this._clockKeepAlive) {
-          try { this._clockKeepAlive.stop(); this._clockKeepAlive.disconnect(); } catch (_) {}
+          try {
+            if (typeof this._clockKeepAlive.stop === 'function') this._clockKeepAlive.stop();
+            if (typeof this._clockKeepAlive.disconnect === 'function') this._clockKeepAlive.disconnect();
+            this._clockKeepAlive.osc?.stop?.();
+            this._clockKeepAlive.osc?.disconnect?.();
+            this._clockKeepAlive.gain?.disconnect?.();
+          } catch (_) {}
           this._clockKeepAlive = null;
         }
         const osc = this.ctx.createOscillator();
@@ -601,7 +610,7 @@ export class AudioEngine {
         gain.connect(this.ctx.destination);
         gain.connect(e.mixBus);
         osc.start();
-        this._clockKeepAlive = osc;
+        this._clockKeepAlive = { osc, gain };
       } catch (keepAliveErr) {
         console.warn('[AudioEngine] Master clock keepalive notice:', keepAliveErr);
       }
@@ -938,8 +947,8 @@ export class AudioEngine {
   connectMediaElement(mediaEl) {
     if (!mediaEl || !this.ctx || !this.engine?.mediaGain) return;
     try {
-      if (!this.mediaElementSource) {
-        if (mediaEl.__audioSourceNode && mediaEl.__audioContext === this.ctx) {
+      if (!this.mediaElementSource || this.mediaElementSource.context !== this.ctx) {
+        if (mediaEl.__audioSourceNode && mediaEl.__audioSourceNode.context === this.ctx) {
           this.mediaElementSource = mediaEl.__audioSourceNode;
         } else {
           try {
@@ -947,7 +956,7 @@ export class AudioEngine {
             mediaEl.__audioSourceNode = this.mediaElementSource;
             mediaEl.__audioContext = this.ctx;
           } catch (createErr) {
-            if (mediaEl.__audioSourceNode) {
+            if (mediaEl.__audioSourceNode && mediaEl.__audioSourceNode.context === this.ctx) {
               this.mediaElementSource = mediaEl.__audioSourceNode;
             } else if (typeof mediaEl.captureStream === 'function' || typeof mediaEl.mozCaptureStream === 'function') {
               const stream = (mediaEl.captureStream || mediaEl.mozCaptureStream).call(mediaEl);

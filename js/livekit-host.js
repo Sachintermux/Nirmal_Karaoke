@@ -761,7 +761,9 @@ export class LiveKitLiveStreamHost {
     state.stalls = (state.stalls || 0) + 1;
     state.healthy = 0;
     const currentMs = this.getAudienceMonitorJitterTarget(item.track) || NIRMAL_LOW_LATENCY_AUDIO.initialMs;
-    const nextMs = Math.min(NIRMAL_LOW_LATENCY_AUDIO.criticalMs, Math.max(currentMs + 15, NIRMAL_LOW_LATENCY_AUDIO.moderateMs));
+    const step = state.stalls <= 2 ? 10 : 15;
+    const maxTarget = state.stalls > 4 ? NIRMAL_LOW_LATENCY_AUDIO.criticalMs : NIRMAL_LOW_LATENCY_AUDIO.severeMs;
+    const nextMs = Math.min(maxTarget, Math.max(currentMs + step, NIRMAL_LOW_LATENCY_AUDIO.moderateMs));
     state.lastDelay = nextMs / 1000;
     this.setAudienceMonitorJitterTarget(item.track, nextMs);
     if (this.duetMonitorEnabled) {
