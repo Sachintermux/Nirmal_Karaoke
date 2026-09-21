@@ -607,7 +607,13 @@ export class MultiStreamManager {
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
-          if (msg.type === 'live' || msg.type === 'streaming') {
+          if (msg.type === 'rtmp-connected') {
+            console.info('[MultiStream] RTMP transport connected:', msg.message);
+            if (this.streamStatusBadge && !this.hasConfirmedLive) {
+              this.streamStatusBadge.className = 'status-badge-connecting';
+              this.streamStatusBadge.innerHTML = '<span class="badge-dot" style="background:#ffd166;"></span> CONNECTED (Publishing to YouTube…)';
+            }
+          } else if (msg.type === 'live' || msg.type === 'streaming') {
             this.hasConfirmedLive = true;
             console.info('[MultiStream] Destination confirmed LIVE broadcast:', msg.stats);
             if (this.streamStatusBadge) {
@@ -621,7 +627,7 @@ export class MultiStreamManager {
             this.hasConfirmedLive = false;
             console.error('[MultiStream] Server streaming error:', msg.message);
             let friendlyMsg = 'Stream error: ' + msg.message;
-            if (/I\/O error|End of file|Broken pipe|refused|failed to connect/i.test(msg.message)) {
+            if (/I\/O error|End of file|Broken pipe|refused|failed to connect|cannot open connection|error in the pull function|inactive stream key/i.test(msg.message)) {
               friendlyMsg = '⚠️ YouTube connection failed: ' + msg.message + '\n\n💡 Fixes in YouTube Studio:\n1. Make sure your live stream in YouTube Studio (studio.youtube.com) is in "Ready" or "Stream" mode.\n2. If you previously started or stopped a stream, YouTube marks that broadcast as finished. Click "Reset" next to your stream key in Stream Settings, copy the new key, and paste it here.\n3. Make sure you select "YouTube Live (RTMPS Secure)" which uses port 443.';
             }
             this.showError(friendlyMsg);

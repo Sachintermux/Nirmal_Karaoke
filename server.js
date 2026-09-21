@@ -930,15 +930,17 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
         '-g', '60',
         '-keyint_min', '60',
         '-sc_threshold', '0',
+        '-flags', '+cgop',
         '-b:v', '400k',
         '-x264-params', 'subme=0:me=dia:no-mbtree=1:aq-mode=0:ref=1:partitions=none',
         '-threads', '2',
 
-        // AAC audio
+        // AAC audio with synchronized PTS
         '-c:a', 'aac',
         '-b:a', '64k',
         '-ar', '44100',
         '-ac', '2',
+        '-af', 'asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0',
 
         // Quick 3-second test run (90 frames)
         '-t', '3',
@@ -980,7 +982,7 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
 
         // Early handshake success: If connected and frames are publishing without errors
         const lower = line.toLowerCase();
-        const hasError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data|end of file/i.test(lower);
+        const hasError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data|end of file|error in the pull function|cannot open connection/i.test(lower);
         if (sawRtmpConnect && sawOutputFrames && !hasError) {
           const match = line.match(/frame=\s*(\d+)/i);
           if (match && parseInt(match[1], 10) >= 20) {
@@ -1001,7 +1003,7 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
       const timer = setTimeout(() => {
         try { p.kill('SIGKILL'); } catch (_) {}
         const lower = out.toLowerCase();
-        const publishError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data|end of file/i.test(lower);
+        const publishError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data|end of file|error in the pull function|cannot open connection/i.test(lower);
         const ok = !publishError && sawRtmpConnect && sawOutputFrames;
         finish({
           url: safeUrl,
@@ -1018,13 +1020,13 @@ app.get('/api/stream/test-ffmpeg', async (req, res) => {
         clearTimeout(timer);
 
         const lower = out.toLowerCase();
-        const publishError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data|end of file/i.test(lower);
+        const publishError = /server error|error publishing|could not write header|operation not permitted|connection refused|timed out|broken pipe|connection reset|invalid data|end of file|error in the pull function|cannot open connection|i\/o error/i.test(lower);
         const ok = code === 0 && !publishError && sawRtmpConnect && sawOutputFrames;
 
         let errorMsg = null;
         if (!ok) {
-          if (/end of file/i.test(lower)) {
-            errorMsg = 'YouTube closed the connection (End of file). This happens when the live broadcast was ended in YouTube Studio or this Stream Key is inactive. In YouTube Studio, click "Reset" next to your Stream Key or create a new live stream.';
+          if (/end of file|error in the pull function|i\/o error|cannot open connection/i.test(lower)) {
+            errorMsg = 'YouTube closed the connection (End of file / Inactive Stream Key). In YouTube Studio, ensure your live stream is active, click "Reset" next to your Stream Key to generate a fresh key, and try again.';
           } else if (/server error/i.test(lower)) {
             errorMsg = 'YouTube rejected the stream key (Server error). Please check your Stream Key in YouTube Studio.';
           } else if (/connection refused|timed out/i.test(lower)) {
@@ -1141,6 +1143,7 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
     '-g', '60',
     '-keyint_min', '60',
     '-sc_threshold', '0',
+    '-flags', '+cgop',
 
     // High-performance container-optimized x264 parameters:
     // Disables slow subpixel refinement (subme=0, me=dia) and macroblock tree (no-mbtree=1)
@@ -1153,12 +1156,12 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
     '-maxrate', videoBitrate,
     '-bufsize', bufSize,
 
-    // Audio: stereo AAC at 44.1 kHz.
+    // Audio: stereo AAC at 44.1 kHz with synchronized presentation timestamps.
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
     '-ac', '2',
-    '-af', 'aresample=async=1:first_pts=0',
+    '-af', 'asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0',
 
     '-max_muxing_queue_size', '4096',
 
@@ -1197,13 +1200,17 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
     }
 
     // Definitive failures that should immediately surface to the UI.
-    if (/server error|error publishing|could not write header to rtmp|connection refused|connection timed out|timed out|broken pipe|connection reset|ssl error|tls error|handshake failed/i.test(lower)) {
+    if (/server error|error publishing|could not write header to rtmp|connection refused|connection timed out|timed out|broken pipe|connection reset|ssl error|tls error|handshake failed|error in the pull function|cannot open connection|end of file/i.test(lower)) {
       // Ensure this is an RTMP output failure, not a transient input/decoder notice
       if (!/pipe:0|stdin|dec:|vist#/i.test(lower)) {
+        let msg = line.trim() || 'FFmpeg/RTMP(S) publish error';
+        if (/end of file|error in the pull function|cannot open connection/i.test(lower)) {
+          msg = 'YouTube closed the connection (End of file / Inactive Stream Key). In YouTube Studio, ensure your live stream is active, click "Reset" next to your Stream Key to generate a fresh key, and try again.';
+        }
         if (onState) {
           onState({
             state: 'error',
-            message: line.trim() || 'FFmpeg/RTMP(S) publish error'
+            message: msg
           });
         }
         return;
@@ -1538,11 +1545,16 @@ wss.on('connection', (ws, req) => {
           .join(' ')
           .trim();
 
+        let errMsg = finalLogs.slice(-4000) || `FFmpeg exited with code ${code}`;
+        if (/end of file|error in the pull function|cannot open connection/i.test(finalLogs)) {
+          errMsg = 'YouTube closed the connection (End of file / Inactive Stream Key). In YouTube Studio (studio.youtube.com), ensure your live stream is active, click "Reset" next to your Stream Key, copy the new key, and try again.';
+        }
+
         send({
           type: 'error',
           code: rtmpConnected ? 'FFMPEG_EXITED' : 'RTMP_CONNECTION_FAILED',
           sessionId,
-          message: finalLogs.slice(-4000) || `FFmpeg exited with code ${code}`
+          message: errMsg
         });
       }
     });
