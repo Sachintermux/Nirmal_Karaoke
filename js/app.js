@@ -12,6 +12,7 @@ import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=29';
 import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=29';
 
 const audioEngine = new AudioEngine();
+if (typeof window !== 'undefined') window.audioEngine = audioEngine;
 const lyricsManager = new LyricsManager();
 const searchManager = new MusicSearchManager(audioEngine, lyricsManager);
 const visualizer = new VisualizerRenderer(audioEngine);
@@ -19,6 +20,25 @@ const liveHost = new LiveStreamHost(audioEngine);
 const presence = new PresenceManager();
 const multistream = new MultiStreamManager(liveHost, audioEngine, lyricsManager);
 const artistTools = new ArtistToolsManager(audioEngine);
+
+multistream.onStreamingStateChange = (isStreaming) => {
+  if (isStreaming) {
+    presence.updateLiveStatus({
+      role: 'host',
+      roomId: liveHost?.roomId || 'stage-broadcast',
+      roomName: 'YouTube Live Stream',
+      isLive: true
+    });
+  } else if (!liveHost?.isConnected?.()) {
+    presence.updateLiveStatus({
+      role: 'idle',
+      roomId: null,
+      roomName: null,
+      isLive: false
+    });
+  }
+  syncBackgroundKeepAlive();
+};
 
 export function shouldKeepAlive() {
   const isPlayerPlaying = filePlayerGlobal && !filePlayerGlobal.paused && !filePlayerGlobal.ended;
@@ -2309,8 +2329,8 @@ window.addEventListener('DOMContentLoaded', () => {
 function shouldWarnOnReload() {
   if (window.__bypassUnloadWarning) return false;
 
-  // 1. Live stream broadcast active or LiveKit room connected
-  if (liveHost?.isLive || liveHost?.room?.state === 'connected' || liveHost?.impl?.room?.state === 'connected') {
+  // 1. Live stream broadcast active or LiveKit room connected or multistream active
+  if (liveHost?.isLive || liveHost?.room?.state === 'connected' || liveHost?.impl?.room?.state === 'connected' || multistream?.isStreaming) {
     return true;
   }
   // 2. Microphone or camera is active

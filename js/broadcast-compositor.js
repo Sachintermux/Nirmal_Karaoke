@@ -467,7 +467,8 @@ export class BroadcastCompositor {
     // Guarantee unthrottled frame emission for captureStream even when tab is in background
     if (this._canvasStream && typeof this._canvasStream.requestFrame === 'function') {
       try { this._canvasStream.requestFrame(); } catch (_) {}
-    } else if (this._videoTrack && typeof this._videoTrack.requestFrame === 'function') {
+    }
+    if (this._videoTrack && typeof this._videoTrack.requestFrame === 'function') {
       try { this._videoTrack.requestFrame(); } catch (_) {}
     }
   }

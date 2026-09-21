@@ -589,6 +589,7 @@ export class MultiStreamManager {
     } else {
       try { await this.liveHost.ensureProgramAudioPublished?.(); } catch (_) {}
     }
+    try { await this.liveHost.reconcileAudienceMicPublications?.(); } catch (_) {}
     console.info(`[MultiStream STEP 3/8] Live Stage room verified: ${roomName}`);
 
     // 3. Extract dedicated mixed stereo audio stream from AudioEngine
@@ -723,6 +724,7 @@ export class MultiStreamManager {
     this.updateStateUI();
     this.startTimer();
     this.resetStartButton();
+    try { this.onStreamingStateChange?.(true); } catch (_) {}
 
     if (!this._renderKeepAliveTimer) {
       this._renderKeepAliveTimer = setInterval(() => {
@@ -1064,6 +1066,7 @@ export class MultiStreamManager {
     }
     this.stopTimer();
     this.updateStateUI();
+    try { this.onStreamingStateChange?.(false); } catch (_) {}
 
     if (this.btnStopStream) {
       this.btnStopStream.disabled = false;

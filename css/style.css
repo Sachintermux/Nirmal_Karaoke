@@ -36,16 +36,33 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}a{color:inherit}
  body[data-mobile-screen="audience"] .mobile-screen:not([data-screen-group="audience"]){display:none!important}
  .control-rail{margin-top:0!important}
 }
-@media(max-width:768px){
- input:not([type="range"]), select, textarea, .expand-box input, .search-row input { font-size:16px!important; }
+@media(max-width:850px){
+ input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), select, textarea, .expand-box input, .search-row input { font-size:16px!important; }
 }
 @media(max-width:600px){
  .topbar .btn-text{display:none!important}
- .topbar .button{padding:8px 10px;min-height:36px;font-size:12px}
- .topbar-actions{gap:5px}
+ .topbar .button{padding:8px 8px;min-height:34px;font-size:12px}
+ .topbar-actions{gap:4px}
  .status-deck{display:none!important}
 }
-@media(max-width:430px){.topbar{padding:0 6px}.brand{font-size:11px}.brand-mark{width:26px;height:26px;margin-right:5px}.button-live{font-size:9px!important;padding:7px 8px!important}.quick-actions{gap:6px}.quick-actions .button{padding:8px 5px;font-size:10px}.lyrics-container{height:190px}.preset-grid{gap:6px}.preset-btn{font-size:16px}.preset-btn span{font-size:9px}.button-row{gap:6px}.button-row .button{padding:9px 7px}.two-col{gap:7px}}
+@media(max-width:430px){
+ .topbar{padding:0 6px}
+ .brand{font-size:11px}
+ .brand-mark{width:24px;height:24px;margin-right:4px}
+ .brand em{display:none}
+ .topbar-actions{gap:3px}
+ .topbar .button{padding:6px 6px;font-size:11px;min-height:30px}
+ .button-live{font-size:10px!important;padding:6px 8px!important}
+ .quick-actions{gap:6px}
+ .quick-actions .button{padding:8px 5px;font-size:10px}
+ .lyrics-container{height:190px}
+ .preset-grid{gap:6px}
+ .preset-btn{font-size:16px}
+ .preset-btn span{font-size:9px}
+ .button-row{gap:6px}
+ .button-row .button{padding:9px 7px}
+ .two-col{gap:7px}
+}
 @media(min-width:851px){.control-rail{min-width:0}.studio-main>.card{min-height:100%}}
 /* Audience page compatibility variables/classes. */
 :root{--bg-dark:var(--bg);--bg-panel:rgba(20,16,31,.94);--bg-surface:var(--panel2);--border:var(--line);--text-main:var(--text);--text-dim:var(--muted);--accent-blue:var(--cyan);--accent-purple:var(--purple);--accent-green:var(--green);--accent-red:var(--red);--accent-orange:var(--orange);--accent-pink:var(--pink)}

@@ -9,6 +9,9 @@ let chimeAudioCtx = null;
 
 function getChimeAudioContext() {
   try {
+    if (window.audioEngine?.ctx && window.audioEngine.ctx.state !== 'closed') {
+      return window.audioEngine.ctx;
+    }
     if (chimeAudioCtx && chimeAudioCtx.state !== 'closed') {
       return chimeAudioCtx;
     }

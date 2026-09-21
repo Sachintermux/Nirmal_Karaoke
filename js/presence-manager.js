@@ -12,7 +12,8 @@ export class PresenceManager {
   constructor() {
     this.user = this.loadOrCreateProfile();
     this.device = window.innerWidth <= 850 ? 'mobile' : 'desktop';
-    this.currentRole = 'idle'; // 'host' | 'audience' | 'idle'
+    this.isStudioAdmin = typeof window !== 'undefined' && (!window.location.pathname.includes('audience.html') && !window.location.pathname.includes('users.html'));
+    this.currentRole = this.isStudioAdmin ? 'host' : 'idle'; // 'host' | 'audience' | 'idle'
     this.currentRoomId = null;
     this.currentRoomName = null;
     this.isLive = false;
@@ -189,10 +190,10 @@ export class PresenceManager {
 
     const targetRoom = invite.roomId || invite.fromUser?.roomId;
 
-    // 1. Host Broadcast Lock: If host is broadcasting live, block incoming invitations to join other rooms
-    if (this.isLive && this.currentRole === 'host') {
+    // 1. Host Broadcast Lock: If host is broadcasting live or on index.html studio, block invitations to leave and join other rooms
+    if (this.isStudioAdmin || (this.isLive && this.currentRole === 'host')) {
       if (targetRoom && targetRoom !== this.currentRoomId) {
-        console.warn(`[Presence] Host is broadcasting live in room ${this.currentRoomId}; auto-declining external invitation to ${targetRoom}`);
+        console.warn(`[Presence] Host is sovereign in studio stage (${this.currentRoomId || 'active'}); auto-declining external invitation to ${targetRoom}`);
         this.respondInvite(invite.id, false, 'Host is currently broadcasting live');
         return;
       }
@@ -205,8 +206,8 @@ export class PresenceManager {
       async (inv) => {
         await this.respondInvite(inv.id, true);
         const invTargetRoom = inv.roomId || inv.fromUser?.roomId;
-        // If Host is broadcasting live, admit the guest into this stage WITHOUT redirecting the Admin
-        if (this.isLive && this.currentRole === 'host') {
+        // On studio admin page or while broadcasting, NEVER navigate away to audience.html
+        if (this.isStudioAdmin || (this.isLive && this.currentRole === 'host')) {
           console.info('[Presence] Host accepted duet request; admitting guest into active stage:', this.currentRoomId);
           return;
         }

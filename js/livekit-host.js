@@ -717,6 +717,14 @@ export class LiveKitLiveStreamHost {
     audio.addEventListener('pause', () => this.updateAudienceMonitorStatus());
     document.body.appendChild(audio);
 
+    // Actively start playback (even while muted) to ensure Chromium decodes WebRTC RTP frames into MediaStreamTrack
+    try {
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    } catch (_) {}
+
     item.audio = audio;
     this.guestAudioElements.set(item.key, item);
     this.applyAudienceAudioOutputDevice(item);
@@ -995,6 +1003,14 @@ export class LiveKitLiveStreamHost {
     this.ensureAudienceAudioElement(item);
     if (this.duetMonitorEnabled && !this.mutedGuests.has(participant.identity) && !track.isMuted && this.audienceMonitorUnlocked) {
       this.playAudienceItem(item);
+    }
+    // Always bridge guest microphone into AudioEngine broadcast destination (guestMixBus -> stereoMerge -> _broadcastDest)
+    const rawTrack = track.mediaStreamTrack || track;
+    if (rawTrack && this.audioEngine?.bridgeGuestAudioTrack) {
+      this.audioEngine.bridgeGuestAudioTrack(rawTrack, participant.identity);
+      if (this.mutedGuests.has(participant.identity) || track.isMuted) {
+        this.audioEngine.setGuestAudioVolume?.(participant.identity, 0);
+      }
     }
     this.updateAudienceMonitorStatus();
     return item;

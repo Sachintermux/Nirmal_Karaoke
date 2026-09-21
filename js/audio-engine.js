@@ -540,8 +540,8 @@ export class AudioEngine {
       e.guestMixBus.gain.value = 1.0;
       try {
         e.guestMixBus.channelCount = 2;
-        e.guestMixBus.channelCountMode = 'explicit';
-        e.guestMixBus.channelInterpretation = 'discrete';
+        e.guestMixBus.channelCountMode = 'max';
+        e.guestMixBus.channelInterpretation = 'speakers';
       } catch (_) {}
       e.guestMixBus.connect(e.stereoOutputBus);
 
@@ -1081,9 +1081,16 @@ export class AudioEngine {
    * Directly sums remote singer vocals into guestMixBus -> stereoOutputBus -> stereoMerge -> dest & _broadcastDest.
    * This guarantees that YouTube Live viewers, stage recordings, and audience members hear both the Host and all Guests.
    */
-  bridgeGuestAudioTrack(track, identity) {
-    if (!this.ctx || !this.engine?.guestMixBus || !track || !identity) return null;
+  async bridgeGuestAudioTrack(track, identity) {
+    if (!track || !identity) return null;
     try {
+      if (!this.isGraphComplete()) {
+        await this.boot().catch(() => {});
+      }
+      if (!this.ctx || !this.engine?.guestMixBus) {
+        console.warn(`[AudioEngine] bridgeGuestAudioTrack: AudioEngine graph not ready for ${identity}`);
+        return null;
+      }
       if (this.ctx.state === 'suspended') {
         this.ctx.resume().catch(() => {});
       }
@@ -1100,10 +1107,12 @@ export class AudioEngine {
       const gainNode = this.ctx.createGain();
       gainNode.gain.value = 1.0;
 
-      try { sourceNode.channelCount = 2; } catch (_) {}
-      try { sourceNode.channelCountMode = 'explicit'; } catch (_) {}
-      try { gainNode.channelCount = 2; } catch (_) {}
-      try { gainNode.channelCountMode = 'explicit'; } catch (_) {}
+      // Safe stereo upmixing on gain node (do not alter sourceNode.channelCount which throws in Chromium)
+      try {
+        gainNode.channelCount = 2;
+        gainNode.channelCountMode = 'max';
+        gainNode.channelInterpretation = 'speakers';
+      } catch (_) {}
 
       sourceNode.connect(gainNode);
       gainNode.connect(this.engine.guestMixBus);

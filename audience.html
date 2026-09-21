@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" name="viewport"/>
 <title>Live Karaoke Broadcast, Chat &amp; Duet</title>
 <link href="./css/style.css?v=29" rel="stylesheet"/>
 <link href="./css/game-invite.css?v=29" rel="stylesheet"/>
@@ -19,8 +19,8 @@
           background: radial-gradient(circle at center, #101216 0%, #07080b 100%);
           overscroll-behavior-y: contain;
         }
-        @media (max-width: 768px) {
-          input:not([type="range"]), select, textarea { font-size: 16px !important; }
+        @media (max-width: 850px) {
+          input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px !important; }
         }
         .broadcast-card {
           background: var(--bg-panel);
@@ -1550,6 +1550,7 @@
     if (dspNodes) {
       Object.keys(dspNodes).forEach(k => {
         if (k !== 'loaded') {
+          try { dspNodes[k]?.port?.close?.(); } catch (_) {}
           try { dspNodes[k]?.disconnect?.(); } catch (_) {}
           delete dspNodes[k];
         }
@@ -1641,6 +1642,7 @@
     if (dspNodes) {
       Object.keys(dspNodes).forEach(k => {
         if (k !== 'loaded') {
+          try { dspNodes[k]?.port?.close?.(); } catch (_) {}
           try { dspNodes[k]?.disconnect?.(); } catch (_) {}
           delete dspNodes[k];
         }
