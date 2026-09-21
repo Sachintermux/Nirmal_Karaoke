@@ -1119,8 +1119,8 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
     // Input: continuous WebM/Matroska from browser MediaRecorder.
     '-err_detect', 'ignore_err',
     '-fflags', '+nobuffer+genpts+discardcorrupt',
-    '-probesize', '256k',
-    '-analyzeduration', '500000',
+    '-probesize', '1M',
+    '-analyzeduration', '1000000',
     '-f', 'matroska,webm',
     '-i', 'pipe:0',
 
@@ -1191,15 +1191,23 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
 
     const lower = line.toLowerCase();
 
-    // Definitive failures that should immediately surface to the UI.
-    if (/server error|error publishing|could not write header|operation not permitted|connection refused|connection timed out|timed out|broken pipe|connection reset|ssl error|handshake failed|invalid data found|conversion failed|end of file/i.test(lower)) {
-      if (onState) {
-        onState({
-          state: 'error',
-          message: line.trim() || 'FFmpeg/RTMP(S) publish error'
-        });
-      }
+    // Ignore non-fatal input decoder warnings (e.g. discarding initial interframe before keyframe, transient packet drop)
+    if (/discarding interframe|dec:vp8|dec:h264|decoding error|packet corrupt|non-existing pps|corrupt frame|missing picture|skipping frame|invalid data found when processing input/i.test(lower)) {
       return;
+    }
+
+    // Definitive failures that should immediately surface to the UI.
+    if (/server error|error publishing|could not write header to rtmp|connection refused|connection timed out|timed out|broken pipe|connection reset|ssl error|tls error|handshake failed/i.test(lower)) {
+      // Ensure this is an RTMP output failure, not a transient input/decoder notice
+      if (!/pipe:0|stdin|dec:|vist#/i.test(lower)) {
+        if (onState) {
+          onState({
+            state: 'error',
+            message: line.trim() || 'FFmpeg/RTMP(S) publish error'
+          });
+        }
+        return;
+      }
     }
 
     // Transport-level RTMP(S) connection indicators.

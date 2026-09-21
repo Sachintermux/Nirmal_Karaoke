@@ -590,22 +590,10 @@ export class MultiStreamManager {
         if (resolved) return;
         resolved = true;
         clearTimeout(connectTimer);
-        console.info('[MultiStream] WebSocket connected to backend. Starting unified MediaRecorder.');
+        console.info('[MultiStream] WebSocket connected to backend. Starting clean unified MediaRecorder.');
         try {
-          // Flush any buffered chunks before new recording starts
-          if (this._pendingChunks && this._pendingChunks.length > 0) {
-            console.info(`[MultiStream] Flushing ${this._pendingChunks.length} queued media chunks...`);
-            while (this._pendingChunks.length > 0) {
-              const chunk = this._pendingChunks.shift();
-              try {
-                if (typeof chunk.arrayBuffer === 'function') {
-                  chunk.arrayBuffer().then(buf => { if (ws.readyState === WebSocket.OPEN) ws.send(buf); });
-                } else if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(chunk);
-                }
-              } catch (_) {}
-            }
-          }
+          this._stopMediaRecorder();
+          this._pendingChunks = [];
           this._startMediaRecorder(stream, ws);
           resolve();
         } catch (recErr) {
@@ -723,19 +711,37 @@ export class MultiStreamManager {
       recorder = new MediaRecorder(stream);
     }
 
-    recorder.ondataavailable = async (ev) => {
-      if (!ev.data || ev.data.size === 0) return;
-      if (ws.readyState === WebSocket.OPEN) {
+    this._stopMediaRecorder();
+    this._pendingChunks = [];
+
+    const chunkQueue = [];
+    let isProcessingQueue = false;
+
+    const flushQueue = async () => {
+      if (isProcessingQueue) return;
+      isProcessingQueue = true;
+      while (chunkQueue.length > 0 && ws.readyState === WebSocket.OPEN) {
+        const item = chunkQueue.shift();
         try {
-          const buf = await ev.data.arrayBuffer();
-          ws.send(buf);
-        } catch (_) {
-          ws.send(ev.data);
+          if (item instanceof Blob) {
+            const buf = await item.arrayBuffer();
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(buf);
+            }
+          } else if (ws.readyState === WebSocket.OPEN) {
+            ws.send(item);
+          }
+        } catch (err) {
+          console.warn('[MultiStream] Chunk transmit warning:', err);
         }
-      } else {
-        this._pendingChunks.push(ev.data);
-        if (this._pendingChunks.length > 20) this._pendingChunks.shift();
       }
+      isProcessingQueue = false;
+    };
+
+    recorder.ondataavailable = (ev) => {
+      if (!ev.data || ev.data.size === 0) return;
+      chunkQueue.push(ev.data);
+      flushQueue();
     };
 
     recorder.onerror = (e) => {
