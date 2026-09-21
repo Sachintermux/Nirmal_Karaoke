@@ -1117,8 +1117,8 @@ function detectAudioInWebM(buf) {
  */
 function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p', hasAudio = true) {
   let scaleFilter = 'scale=960:540:flags=fast_bilinear';
-  let videoBitrate = '1600k';
-  let bufSize = '3200k';
+  let videoBitrate = '1400k';
+  let bufSize = '2800k';
 
   if (quality === '720p') {
     scaleFilter = 'scale=1280:720:flags=fast_bilinear';
@@ -1148,7 +1148,7 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p', hasAudio = true)
     // YouTube Live Ingestion REQUIRES an AAC audio stream and drops video-only streams.
     args.push(
       '-f', 'lavfi',
-      '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100'
+      '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'
     );
   }
 
@@ -1183,12 +1183,12 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p', hasAudio = true)
     '-maxrate', videoBitrate,
     '-bufsize', bufSize,
 
-    // Audio: stereo AAC at 44.1 kHz with synchronized presentation timestamps.
+    // Audio: stereo AAC at 48 kHz with synchronized presentation timestamps.
     '-c:a', 'aac',
     '-b:a', '128k',
-    '-ar', '44100',
+    '-ar', '48000',
     '-ac', '2',
-    '-af', 'asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0',
+    '-af', 'asetpts=PTS-STARTPTS,aresample=async=1000:first_pts=0',
 
     '-max_muxing_queue_size', '4096',
 

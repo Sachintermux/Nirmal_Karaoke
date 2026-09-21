@@ -22,6 +22,8 @@ export class AudioEngine {
     this.activeMicNode = null;
     this.recorder = null;
     this.recChunks = [];
+    this._broadcastDest = null;
+    this._clockKeepAlive = null;
   }
 
   isGraphComplete() {
@@ -542,6 +544,57 @@ export class AudioEngine {
       this.startGateAndVoiceAssists();
       this.updateAutoTuneSettings();
 
+      // 1. Automatically connect filePlayer so karaoke backing tracks are always in the mix
+      const filePlayer = typeof document !== 'undefined' ? document.getElementById('filePlayer') : null;
+      if (filePlayer) {
+        this.connectMediaElement(filePlayer);
+      }
+
+      // 2. Re-wire active microphone if already running
+      if (this.activeMicStream && this.activeMicStream.active) {
+        try {
+          if (this.activeMicNode) {
+            try { this.activeMicNode.disconnect(); } catch (_) {}
+          }
+          this.activeMicNode = this.ctx.createMediaStreamSource(this.activeMicStream);
+          this.activeMicNode.connect(e.micGain);
+          console.info('[AudioEngine] Active microphone re-wired into DSP graph.');
+        } catch (micErr) {
+          console.warn('[AudioEngine] Mic re-wire notice:', micErr);
+        }
+      }
+
+      // 3. Re-wire active tab audio if screen/tab capture is active
+      if (this.activeTabStream && this.activeTabStream.active) {
+        try {
+          if (this.activeTabNode) {
+            try { this.activeTabNode.disconnect(); } catch (_) {}
+          }
+          this.activeTabNode = this.ctx.createMediaStreamSource(this.activeTabStream);
+          this.activeTabNode.connect(e.mediaGain);
+          console.info('[AudioEngine] Active tab audio re-wired into DSP graph.');
+        } catch (_) {}
+      }
+
+      // 4. Start inaudible master clock keepalive to keep AudioContext hardware clock running
+      try {
+        if (this._clockKeepAlive) {
+          try { this._clockKeepAlive.stop(); this._clockKeepAlive.disconnect(); } catch (_) {}
+          this._clockKeepAlive = null;
+        }
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.frequency.value = 440;
+        gain.gain.value = 0.000001; // -120dB completely inaudible
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        gain.connect(e.mixBus);
+        osc.start();
+        this._clockKeepAlive = osc;
+      } catch (keepAliveErr) {
+        console.warn('[AudioEngine] Master clock keepalive notice:', keepAliveErr);
+      }
+
       return this.engine;
     } catch (err) {
       console.error('[Nirmal] AudioEngine boot failed, cleaning up state:', err);
@@ -872,18 +925,73 @@ export class AudioEngine {
   }
 
   connectMediaElement(mediaEl) {
-    if (!mediaEl || !this.ctx || !this.engine.mediaGain) return;
-    // A MediaElementSource can only be created once for a given HTMLMediaElement.
-    // Reusing the same element is required; changing src is safe and keeps the
-    // audio routed through the master MediaStreamDestination.
-    if (!this.mediaElementSource) {
-      this.mediaElementSource = this.ctx.createMediaElementSource(mediaEl);
-      // Fix B: pin to 2-ch stereo so a stereo music file is never collapsed
-      // to mono by the browser's default channel-count negotiation.
-      try { this.mediaElementSource.channelCount = 2; } catch (_) {}
-      try { this.mediaElementSource.channelCountMode = 'explicit'; } catch (_) {}
-      try { this.mediaElementSource.channelInterpretation = 'discrete'; } catch (_) {}
-      this.mediaElementSource.connect(this.engine.mediaGain);
+    if (!mediaEl || !this.ctx || !this.engine?.mediaGain) return;
+    try {
+      if (!this.mediaElementSource) {
+        this.mediaElementSource = this.ctx.createMediaElementSource(mediaEl);
+        try { this.mediaElementSource.channelCount = 2; } catch (_) {}
+        try { this.mediaElementSource.channelCountMode = 'explicit'; } catch (_) {}
+        try { this.mediaElementSource.channelInterpretation = 'discrete'; } catch (_) {}
+      }
+      if (this.mediaElementSource) {
+        try { this.mediaElementSource.disconnect(); } catch (_) {}
+        this.mediaElementSource.connect(this.engine.mediaGain);
+        console.info('[AudioEngine] filePlayer successfully routed to mediaGain.');
+      }
+    } catch (err) {
+      console.warn('[AudioEngine] connectMediaElement notice:', err?.message || err);
+    }
+  }
+
+  /**
+   * Generates or returns a dedicated MediaStreamAudioDestinationNode for livestreaming.
+   * Directly sums both karaoke backing track (filePlayer) and vocals (micGain + AutoTune) from stereoMerge.
+   * Completely independent of LiveKit's participant publication so LiveKit operations never affect it.
+   */
+  createBroadcastDestination() {
+    if (!this.ctx || !this.engine?.stereoMerge) {
+      console.warn('[AudioEngine] Cannot create broadcast destination: engine not booted.');
+      return null;
+    }
+
+    try {
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+
+      // Recreate destination if missing, on wrong context, or previous track was terminated
+      const existingTrack = this._broadcastDest?.stream?.getAudioTracks?.()[0];
+      if (!this._broadcastDest || this._broadcastDest.context !== this.ctx || !existingTrack || existingTrack.readyState !== 'live') {
+        if (this._broadcastDest) {
+          try { this.engine.stereoMerge.disconnect(this._broadcastDest); } catch (_) {}
+        }
+        try {
+          this._broadcastDest = new MediaStreamAudioDestinationNode(this.ctx, {
+            channelCount: 2,
+            channelCountMode: 'explicit',
+            channelInterpretation: 'discrete'
+          });
+        } catch (_) {
+          this._broadcastDest = this.ctx.createMediaStreamDestination();
+          try {
+            this._broadcastDest.channelCount = 2;
+            this._broadcastDest.channelCountMode = 'explicit';
+            this._broadcastDest.channelInterpretation = 'discrete';
+          } catch (_) {}
+        }
+        this.engine.stereoMerge.connect(this._broadcastDest);
+        console.info('[AudioEngine] Dedicated broadcast destination created and linked to stereoMerge.');
+      }
+
+      const track = this._broadcastDest.stream.getAudioTracks()[0];
+      if (track) {
+        track.enabled = true;
+        try { track.contentHint = 'music'; } catch (_) {}
+      }
+      return this._broadcastDest.stream;
+    } catch (destErr) {
+      console.error('[AudioEngine] Error creating broadcast destination:', destErr);
+      return this.engine?.dest?.stream || null;
     }
   }
 

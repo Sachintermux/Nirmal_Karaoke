@@ -425,38 +425,33 @@ export class MultiStreamManager {
     }
     console.info(`[MultiStream STEP 3/8] Live Stage room verified: ${roomName}`);
 
-    // 3. Extract mixed stereo audio track from AudioEngine
-    // Ensure AudioEngine destination is actively producing audio frames so MediaRecorder
-    // always includes the Opus audio track in the WebM container even if no song is playing.
-    if (ae?.ctx && ae?.engine?.dest) {
-      try {
-        if (ae.ctx.state === 'suspended') {
-          await ae.ctx.resume();
-        }
-        if (!this._audioKeepAlive) {
-          const osc = ae.ctx.createOscillator();
-          const gain = ae.ctx.createGain();
-          osc.frequency.value = 440;
-          gain.gain.value = 0.00001; // completely inaudible (-100dB)
-          osc.connect(gain);
-          gain.connect(ae.engine.dest);
-          osc.start();
-          this._audioKeepAlive = osc;
-        }
-      } catch (carrierErr) {
-        console.warn('[MultiStream] Audio keep-alive notice:', carrierErr);
+    // 3. Extract dedicated mixed stereo audio stream from AudioEngine
+    let broadcastAudioStream = null;
+    if (ae?.createBroadcastDestination) {
+      broadcastAudioStream = ae.createBroadcastDestination();
+    }
+    if (!broadcastAudioStream) {
+      broadcastAudioStream = ae?.engine?.dest?.stream
+                          || this.liveHost?.impl?.audioEngine?.engine?.dest?.stream
+                          || this.liveHost?.audioEngine?.engine?.dest?.stream;
+    }
+
+    let audioTrack = broadcastAudioStream?.getAudioTracks?.()[0] || null;
+
+    if (!audioTrack || audioTrack.readyState !== 'live') {
+      if (ae?.createBroadcastDestination) {
+        broadcastAudioStream = ae.createBroadcastDestination();
+        audioTrack = broadcastAudioStream?.getAudioTracks?.()[0] || null;
       }
     }
 
-    const mixedStream = ae?.engine?.dest?.stream
-                     || this.liveHost?.impl?.audioEngine?.engine?.dest?.stream
-                     || this.liveHost?.audioEngine?.engine?.dest?.stream;
+    if (audioTrack) {
+      audioTrack.enabled = true;
+      try { audioTrack.contentHint = 'music'; } catch (_) {}
+    }
 
-    let audioTrack = mixedStream?.getAudioTracks?.()[0] || null;
-
-    // Robust Fallback: If no active audio track, synthesize an inaudible audio carrier
-    // so YouTube never rejects the live stream due to missing audio.
-    if (!audioTrack) {
+    // Robust Fallback: Synthesize an audio destination if needed
+    if (!audioTrack || audioTrack.readyState !== 'live') {
       try {
         const audioCtx = ae?.ctx || (window.AudioContext ? new (window.AudioContext || window.webkitAudioContext)() : null);
         if (audioCtx) {
@@ -472,14 +467,11 @@ export class MultiStreamManager {
           gain.connect(destNode);
           osc.start();
           audioTrack = destNode.stream.getAudioTracks()[0];
+          audioTrack.enabled = true;
         }
       } catch (synthErr) {
         console.warn('[MultiStream] Audio synthesis fallback notice:', synthErr);
       }
-    }
-
-    if (audioTrack) {
-      audioTrack.enabled = true;
     }
 
     if (!audioTrack) {
@@ -489,9 +481,12 @@ export class MultiStreamManager {
       return;
     }
 
+    const programLevel = ae?.getProgramLevel ? ae.getProgramLevel() : 0;
+    console.info(`[MultiStream STEP 4/8] Dedicated broadcast audio track ready: level=${programLevel.toFixed(4)}, state=${audioTrack.readyState}`);
+
     // 4. Generate Unified Broadcast Stream (Canvas Video + Mixed Audio)
     const broadcastStream = this.compositor.getMediaStream(audioTrack);
-    console.info('[MultiStream STEP 4/8] Unified broadcast stream initialized:', {
+    console.info('[MultiStream STEP 4.1/8] Unified broadcast stream initialized:', {
       videoTracks: broadcastStream.getVideoTracks().map(t => `${t.kind}:${t.readyState}:enabled=${t.enabled}`),
       audioTracks: broadcastStream.getAudioTracks().map(t => `${t.kind}:${t.readyState}:enabled=${t.enabled}`)
     });
@@ -661,7 +656,7 @@ export class MultiStreamManager {
               const platLabel = (this.activePlatform || 'YOUTUBE').toUpperCase().replace('_RTMPS', '').replace('_RTMP_STANDARD', '');
               const rate = msg.stats?.bitrate ? ` (${msg.stats.bitrate})` : '';
               this.streamStatusBadge.className = 'status-badge-live';
-              this.streamStatusBadge.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}${rate}`;
+              this.streamStatusBadge.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}${rate} (10s Buffer Active)`;
             }
             this.updateStateUI();
           } else if (msg.type === 'error') {
@@ -762,21 +757,24 @@ export class MultiStreamManager {
     this._stopMediaRecorder();
     this._pendingChunks = [];
 
+    const BUFFER_TARGET_CHUNKS = 10; // 10 seconds delay buffer to prevent YouTube buffering
+    let isBufferingInitial = true;
     const chunkQueue = [];
     let isProcessingQueue = false;
     let chunkCount = 0;
 
     const flushQueue = async () => {
       if (isProcessingQueue) return;
+      if (isBufferingInitial) return; // Wait until 10-second pre-roll buffer is gathered
       isProcessingQueue = true;
       while (chunkQueue.length > 0 && ws.readyState === WebSocket.OPEN) {
         const item = chunkQueue.shift();
         try {
           chunkCount++;
           if (chunkCount === 1) {
-            console.info(`[MultiStream STEP 7/8] Chunk #1 transmitted to relay via WebSocket (${item.size || item.byteLength || 'binary'} bytes). Awaiting FFmpeg initialization.`);
+            console.info(`[MultiStream STEP 7/8] Chunk #1 transmitted to relay via WebSocket (${item.size || item.byteLength || 'binary'} bytes, 10s pre-roll buffer releasing). Awaiting FFmpeg initialization.`);
           } else if (chunkCount % 10 === 0) {
-            console.info(`[MultiStream UPLOAD] Transmitted ${chunkCount} media chunks to relay.`);
+            console.info(`[MultiStream UPLOAD] Transmitted ${chunkCount} media chunks to relay (10s continuous buffer active).`);
           }
           if (item instanceof Blob) {
             const buf = await item.arrayBuffer();
@@ -796,7 +794,29 @@ export class MultiStreamManager {
     recorder.ondataavailable = (ev) => {
       if (!ev.data || ev.data.size === 0) return;
       chunkQueue.push(ev.data);
-      flushQueue();
+
+      if (isBufferingInitial) {
+        const currentSeconds = chunkQueue.length;
+        console.info(`[MultiStream STEP 7.0/8] Buffering 10s smooth playback delay: ${currentSeconds}/${BUFFER_TARGET_CHUNKS}s...`);
+        if (this.streamStatusBadge && !this.hasConfirmedLive) {
+          this.streamStatusBadge.className = 'status-badge-connecting';
+          this.streamStatusBadge.innerHTML = `<span class="badge-dot" style="background:#ffd166;"></span> BUFFERING (${currentSeconds}/${BUFFER_TARGET_CHUNKS}s DELAY)`;
+        }
+        if (this.btnStartStream && !this.hasConfirmedLive) {
+          this.btnStartStream.textContent = `Buffering (${currentSeconds}/${BUFFER_TARGET_CHUNKS}s)…`;
+        }
+
+        if (currentSeconds >= BUFFER_TARGET_CHUNKS) {
+          isBufferingInitial = false;
+          console.info(`[MultiStream STEP 7.1/8] 10-second smooth buffer primed! Releasing pre-buffered media pipeline to cloud relay.`);
+          if (this.streamStatusBadge && !this.hasConfirmedLive) {
+            this.streamStatusBadge.innerHTML = '<span class="badge-dot" style="background:#ffd166;"></span> CONNECTING TO YOUTUBE…';
+          }
+          flushQueue();
+        }
+      } else {
+        flushQueue();
+      }
     };
 
     recorder.onerror = (e) => {

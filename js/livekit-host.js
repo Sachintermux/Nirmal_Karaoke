@@ -259,7 +259,7 @@ export class LiveKitLiveStreamHost {
     if (switchBtn) switchBtn.style.display = 'none';
 
     if (this.programPublication?.track) {
-      try { await this.room?.localParticipant?.unpublishTrack(this.programPublication.track); } catch (_) {}
+      try { await this.room?.localParticipant?.unpublishTrack(this.programPublication.track, false); } catch (_) {}
     }
     this.programPublication = null;
     this.programTrack = null;
@@ -419,7 +419,7 @@ export class LiveKitLiveStreamHost {
     };
 
     if (this.programPublication?.track) {
-      try { await this.room.localParticipant.unpublishTrack(this.programPublication.track); } catch (_) {}
+      try { await this.room.localParticipant.unpublishTrack(this.programPublication.track, false); } catch (_) {}
       this.programPublication = null;
     }
 

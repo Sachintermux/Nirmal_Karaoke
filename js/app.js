@@ -1,12 +1,12 @@
-import { AudioEngine } from './audio-engine.js?v=25';
-import { LyricsManager } from './lyrics.js?v=25';
-import { MusicSearchManager } from './music-search.js?v=25';
-import { VisualizerRenderer } from './visualizer.js?v=25';
-import { playSFX } from './sfx.js?v=25';
-import { LiveStreamHost } from './live-stream.js?v=25';
-import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=25';
-import { PresenceManager } from './presence-manager.js?v=25';
-import { MultiStreamManager } from './multistream.js?v=25';
+import { AudioEngine } from './audio-engine.js?v=26';
+import { LyricsManager } from './lyrics.js?v=26';
+import { MusicSearchManager } from './music-search.js?v=26';
+import { VisualizerRenderer } from './visualizer.js?v=26';
+import { playSFX } from './sfx.js?v=26';
+import { LiveStreamHost } from './live-stream.js?v=26';
+import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=26';
+import { PresenceManager } from './presence-manager.js?v=26';
+import { MultiStreamManager } from './multistream.js?v=26';
 
 const audioEngine = new AudioEngine();
 const lyricsManager = new LyricsManager();
@@ -27,6 +27,12 @@ lyricsManager.onLyricsUpdated = (parsed) => {
 
 const filePlayerGlobal = document.getElementById('filePlayer');
 filePlayerGlobal?.addEventListener('play', () => {
+  if (audioEngine) {
+    if (audioEngine.ctx && audioEngine.ctx.state === 'suspended') {
+      audioEngine.ctx.resume().catch(() => {});
+    }
+    audioEngine.connectMediaElement(filePlayerGlobal);
+  }
   if (liveHost?.room?.state === 'connected') {
     liveHost.ensureProgramAudioPublished?.().catch(() => {});
   }
