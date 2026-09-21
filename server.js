@@ -50,6 +50,10 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'nirmal-karaoke-web', transport: 'livekit-sfu', livekitConfigured: livekitConfigured() });
 });
 
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, service: 'nirmal-karaoke-web', transport: 'livekit-sfu', livekitConfigured: livekitConfigured() });
+});
+
 app.get('/api/stream/diag', async (_req, res) => {
   const dns = require('dns').promises;
   const net = require('net');
@@ -820,25 +824,46 @@ function getCandidateRtmpUrls(platform, streamKey, customUrl = '') {
       const parsed = new URL(base);
       const cleanPath = parsed.pathname.replace(/\/+$/, '');
       if (cleanPath.endsWith(`/${key}`)) {
+        if (base.includes('youtube.com') && base.startsWith('rtmp://')) {
+          const secureBase = base.replace('rtmp://a.rtmp.youtube.com', 'rtmps://a.rtmps.youtube.com:443')
+                                 .replace('rtmp://b.rtmp.youtube.com', 'rtmps://b.rtmps.youtube.com:443');
+          return [secureBase, base];
+        }
         return [base];
       }
     } catch (_) {
       throw new Error('Invalid RTMP Server URL');
     }
 
+    if (base.includes('youtube.com') && base.startsWith('rtmp://')) {
+      const secureBase = base.replace('rtmp://a.rtmp.youtube.com', 'rtmps://a.rtmps.youtube.com:443')
+                             .replace('rtmp://b.rtmp.youtube.com', 'rtmps://b.rtmps.youtube.com:443');
+      return [`${secureBase.replace(/\/+$/, '')}/${key}`, `${base.replace(/\/+$/, '')}/${key}`];
+    }
+
     return [`${base.replace(/\/+$/, '')}/${key}`];
   }
 
-  if (plat === 'youtube' || plat === 'youtube_rtmps') {
-    return [`rtmps://a.rtmps.youtube.com:443/live2/${key}`];
+  // YouTube Live: Always prioritize RTMPS port 443 (firewall-friendly on Render/cloud & local)
+  if (plat === 'youtube_rtmps' || plat === 'youtube') {
+    return [
+      `rtmps://a.rtmps.youtube.com:443/live2/${key}`,
+      `rtmp://a.rtmp.youtube.com/live2/${key}`
+    ];
   }
 
   if (plat === 'youtube_standard_rtmp') {
-    return [`rtmp://a.rtmp.youtube.com:1935/live2/${key}`];
+    return [
+      `rtmp://a.rtmp.youtube.com:1935/live2/${key}`,
+      `rtmps://a.rtmps.youtube.com:443/live2/${key}`
+    ];
   }
 
   if (plat === 'twitch') {
-    return [`rtmps://live.twitch.tv:443/app/${key}`];
+    return [
+      `rtmps://live.twitch.tv:443/app/${key}`,
+      `rtmp://live.twitch.tv/app/${key}`
+    ];
   }
 
   if (plat === 'facebook') {

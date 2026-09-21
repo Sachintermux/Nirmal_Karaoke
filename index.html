@@ -12,9 +12,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.min.js"></script>
 
-<script>
-      window.NIRMAL_STREAM_RELAY_URL = "http://localhost:3000";
-    </script>
 
     <link href="./css/style.css" rel="stylesheet">
     <link href="./css/game-invite.css?v=24" rel="stylesheet">
@@ -565,8 +562,8 @@
         data-screen="effects" href="#effects">✦<span>Effects</span></a><a
         data-screen="audience" href="#audience">👥<span>Crowd</span></a><a
         href="./users.html">⚡<span>Lobby</span></a></nav>
-<div class="modal" id="shareModal" style="display:none">
-    <div class="modal-card">
+<div class="modal" id="shareModal" style="display:none; overflow-y:auto; padding:20px 10px; align-items:flex-start; box-sizing:border-box;">
+    <div class="modal-card" style="margin:auto; max-height:calc(100vh - 40px); overflow-y:auto; overscroll-behavior:contain;">
         <button class="modal-close" id="btnCloseShareModal">×</button>
         <p class="eyebrow">GO LIVE</p>
         <h2>Share your stage</h2>
@@ -617,15 +614,15 @@
 </div>
 
 <!-- Multistream / External RTMP Streaming Modal -->
-<div class="modal" id="modalExternalStream" style="display:none">
-    <div class="modal-card" style="max-width:540px; width:100%;">
-        <button class="modal-close" id="btnCloseMultistream">×</button>
-        <div class="card-heading" style="margin-bottom:12px;">
+<div class="modal" id="modalExternalStream" style="display:none; overflow-y:auto; padding:20px 10px; align-items:flex-start; box-sizing:border-box;">
+    <div class="modal-card" style="max-width:560px; width:100%; margin:auto; max-height:calc(100vh - 40px); overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; text-align:left; gap:12px; box-sizing:border-box;">
+        <button class="modal-close" id="btnCloseMultistream" style="position:sticky; top:0; float:right; margin-top:-6px; margin-right:-6px; z-index:20; cursor:pointer;">×</button>
+        <div class="card-heading" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:flex-start;">
             <div>
                 <p class="eyebrow">BROADCAST TO THE WORLD</p>
                 <h2>📡 Multistream (YouTube, Twitch, RTMP)</h2>
             </div>
-            <div id="streamStatusBadge" class="status-badge-offline" style="font-size:0.7rem; font-weight:800; padding:4px 8px; border-radius:6px; background:rgba(255,255,255,0.08); color:var(--text-dim);">⚪ OFFLINE</div>
+            <div id="streamStatusBadge" class="status-badge-offline" style="font-size:0.7rem; font-weight:800; padding:4px 8px; border-radius:6px; background:rgba(255,255,255,0.08); color:var(--text-dim); margin-right:32px;">⚪ OFFLINE</div>
         </div>
 
         <p class="muted" style="font-size:0.78rem; margin-bottom:14px;">
@@ -741,7 +738,7 @@
 
         <div id="streamErrorNotice" style="display:none; margin-top:10px; padding:10px 12px; background:rgba(255,51,102,0.15); border:1px solid #ff3366; border-radius:8px; color:#ff3366; font-size:0.76rem;"></div>
 
-        <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="position:sticky; bottom:-26px; margin:10px -26px -26px -26px; padding:14px 26px; background:rgba(16, 12, 24, 0.96); backdrop-filter:blur(14px); border-top:1px solid rgba(255,255,255,0.08); border-radius:0 0 25px 25px; display:flex; justify-content:space-between; align-items:center; z-index:15;">
             <div style="font-size:0.8rem; font-weight:700; color:var(--text-dim);">
                 Uptime: <span id="streamTimer" style="color:#00e5ff; font-family:monospace; font-size:0.9rem;">00:00</span>
             </div>

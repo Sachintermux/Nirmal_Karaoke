@@ -74,10 +74,19 @@ export class MultiStreamManager {
   }
 
   getCloudRelayUrl() {
+    const isLocalhost = typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
     const saved = localStorage.getItem(STORAGE_KEY_RELAY_URL);
-    if (saved && saved.trim()) return saved.trim();
+    if (saved && saved.trim()) {
+      const val = saved.trim();
+      if (isLocalhost || (!val.includes('localhost') && !val.includes('127.0.0.1'))) {
+        return val;
+      }
+    }
     if (typeof window !== 'undefined' && window.NIRMAL_STREAM_RELAY_URL && window.NIRMAL_STREAM_RELAY_URL.trim()) {
-      return window.NIRMAL_STREAM_RELAY_URL.trim();
+      const val = window.NIRMAL_STREAM_RELAY_URL.trim();
+      if (isLocalhost || (!val.includes('localhost') && !val.includes('127.0.0.1'))) {
+        return val;
+      }
     }
     return DEFAULT_CLOUD_RELAY_URL;
   }
@@ -530,18 +539,20 @@ export class MultiStreamManager {
     const proto = isLocal && location.protocol !== 'https:' ? 'ws' : 'wss';
     const httpProto = isLocal && location.protocol !== 'https:' ? 'http:' : 'https:';
 
-    // Fast non-blocking pre-flight health check (4s timeout)
-    try {
-      const controller = new AbortController();
-      const hTimer = setTimeout(() => controller.abort(), 4000);
-      const healthCheck = await fetch(`${httpProto}//${targetHost}/api/health`, {
-        cache: 'no-store',
-        signal: controller.signal
-      });
-      clearTimeout(hTimer);
-      if (!healthCheck.ok) throw new Error(`Server returned ${healthCheck.status}`);
-    } catch (netErr) {
-      console.info(`[MultiStream] Pre-flight notice for ${targetHost} (${netErr.message}) — proceeding with WebSocket.`);
+    // Cloud servers (e.g. Render free tier) may be sleeping and need ~25-45s to wake up
+    if (!isLocal) {
+      this.setStatus('Waking up cloud server…');
+      try {
+        const controller = new AbortController();
+        const hTimer = setTimeout(() => controller.abort(), 12000);
+        await fetch(`${httpProto}//${targetHost}/api/health`, {
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        clearTimeout(hTimer);
+      } catch (netErr) {
+        console.info(`[MultiStream] Pre-flight notice for ${targetHost} (${netErr.message}) — proceeding with WebSocket.`);
+      }
     }
 
     return new Promise((resolve, reject) => {
@@ -566,12 +577,12 @@ export class MultiStreamManager {
       ws.binaryType = 'arraybuffer';
       this._ws = ws;
 
-      const CONNECT_TIMEOUT = 12000;
+      const CONNECT_TIMEOUT = isLocal ? 15000 : 45000;
       let connectTimer = setTimeout(() => {
         if (!resolved) {
           try { ws.close(); } catch (_) {}
           this.compositor.stop();
-          reject(new Error(`Connection to streaming server timed out (${targetHost}). Make sure Render service is awake.`));
+          reject(new Error(`Connection to streaming server timed out (${targetHost}). If using Render free tier, the server may be waking up—please try starting again in a moment.`));
         }
       }, CONNECT_TIMEOUT);
 
@@ -686,11 +697,11 @@ export class MultiStreamManager {
   _startMediaRecorder(stream, ws) {
     let mimeType = '';
     const candidates = [
-      'video/webm;codecs=h264,opus',
-      'video/mp4;codecs=avc1,mp4a',
-      'video/webm;codecs=h264',
       'video/webm;codecs=vp8,opus',
-      'video/webm'
+      'video/webm;codecs=h264,opus',
+      'video/webm;codecs=vp9,opus',
+      'video/webm',
+      'video/mp4;codecs=avc1,mp4a'
     ];
     for (const c of candidates) {
       if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) {
