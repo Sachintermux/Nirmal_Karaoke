@@ -1148,7 +1148,8 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '540p') {
     // High-performance container-optimized x264 parameters:
     // Disables slow subpixel refinement (subme=0, me=dia) and macroblock tree (no-mbtree=1)
     // Runs at >2.5x real-time even on restricted 0.1 vCPU cloud containers, preventing live stream stall
-    '-x264-params', 'keyint=60:min-keyint=60:scenecut=0:force-cfr=1:subme=0:me=dia:no-mbtree=1:aq-mode=0:ref=1:partitions=none',
+        // Added: profile=baseline ensures YouTube compatibility, nal-hrd=cbr ensures constant bitrate signaling
+    '-x264-params', 'profile=baseline:level=3.1:keyint=60:min-keyint=60:no-scenecut=1:force-cfr=1:subme=1:me=hex:no-mbtree=1:aq-mode=0:ref=2:partitions=i8x8,i4x4:nal-hrd=cbr:vbv-bufsize=1600:vbv-maxrate=1600',
     '-threads', '2',
 
     // YouTube CBR-style configuration.
