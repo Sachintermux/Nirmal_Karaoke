@@ -24,6 +24,7 @@ export class AudioEngine {
     this.recChunks = [];
     this._broadcastDest = null;
     this._clockKeepAlive = null;
+    this._guestAudioNodes = new Map();
   }
 
   isGraphComplete() {
@@ -42,6 +43,7 @@ export class AudioEngine {
       e.analyser &&
       e.programOut &&
       e.stereoOutputBus &&
+      e.guestMixBus &&
       e.dest &&
       e.dest.stream &&
       e.dest.stream.getAudioTracks &&
@@ -67,6 +69,13 @@ export class AudioEngine {
         this._clockKeepAlive.gain?.disconnect?.();
       } catch (_) {}
       this._clockKeepAlive = null;
+    }
+    if (this._guestAudioNodes) {
+      for (const [, entry] of this._guestAudioNodes.entries()) {
+        try { entry.gainNode?.disconnect(); } catch (_) {}
+        try { entry.sourceNode?.disconnect(); } catch (_) {}
+      }
+      this._guestAudioNodes.clear();
     }
     this._autoTuneTelemetryListeners = [];
 
@@ -524,6 +533,18 @@ export class AudioEngine {
       e.monitorGain.gain.value = monitorToggle?.checked ? 1.0 : 0.0;
 
       e.programOut.connect(e.stereoOutputBus);
+
+      // Multi-Guest Live Stage Audio Mixing Bus:
+      // Combines remote audience duet singers directly into stereoOutputBus -> stereoMerge -> dest & _broadcastDest
+      e.guestMixBus = this.ctx.createGain();
+      e.guestMixBus.gain.value = 1.0;
+      try {
+        e.guestMixBus.channelCount = 2;
+        e.guestMixBus.channelCountMode = 'explicit';
+        e.guestMixBus.channelInterpretation = 'discrete';
+      } catch (_) {}
+      e.guestMixBus.connect(e.stereoOutputBus);
+
       e.stereoOutputBus.connect(e.stereoSplit);
       e.stereoMerge.connect(e.analyser);
       e.stereoMerge.connect(e.dest);
@@ -549,7 +570,7 @@ export class AudioEngine {
         e.reverbConvolver, e.reverbGain,
         e.echoTap, e.echoDelay, e.echoFeed, e.echoDamp,
         e.masterGain, e.limiter, e.analyser,
-        e.programOut, e.stereoOutputBus, e.monitorGain
+        e.programOut, e.stereoOutputBus, e.guestMixBus, e.monitorGain
       ].forEach(n => { if (n) setStereo(n); });
 
       const dspLed = document.getElementById('led-dsp');
@@ -1053,5 +1074,72 @@ export class AudioEngine {
     let sum = 0;
     for (const sample of data) sum += sample * sample;
     return Math.sqrt(sum / data.length);
+  }
+
+  /**
+   * Bridges a remote guest microphone track into the AudioEngine broadcast destination.
+   * Directly sums remote singer vocals into guestMixBus -> stereoOutputBus -> stereoMerge -> dest & _broadcastDest.
+   * This guarantees that YouTube Live viewers, stage recordings, and audience members hear both the Host and all Guests.
+   */
+  bridgeGuestAudioTrack(track, identity) {
+    if (!this.ctx || !this.engine?.guestMixBus || !track || !identity) return null;
+    try {
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+      this.removeGuestAudioTrack(identity);
+
+      const msTrack = track.mediaStreamTrack || track;
+      if (!msTrack || msTrack.readyState !== 'live') {
+        console.warn(`[AudioEngine] bridgeGuestAudioTrack: track for ${identity} is not live`, msTrack);
+        return null;
+      }
+
+      const mediaStream = new MediaStream([msTrack]);
+      const sourceNode = this.ctx.createMediaStreamSource(mediaStream);
+      const gainNode = this.ctx.createGain();
+      gainNode.gain.value = 1.0;
+
+      try { sourceNode.channelCount = 2; } catch (_) {}
+      try { sourceNode.channelCountMode = 'explicit'; } catch (_) {}
+      try { gainNode.channelCount = 2; } catch (_) {}
+      try { gainNode.channelCountMode = 'explicit'; } catch (_) {}
+
+      sourceNode.connect(gainNode);
+      gainNode.connect(this.engine.guestMixBus);
+
+      this._guestAudioNodes.set(identity, { sourceNode, gainNode, track: msTrack });
+      console.info(`[AudioEngine] 🎙️ Successfully bridged guest microphone for "${identity}" into live broadcast mix.`);
+      return gainNode;
+    } catch (err) {
+      console.error(`[AudioEngine] Error bridging guest microphone for "${identity}":`, err);
+      return null;
+    }
+  }
+
+  removeGuestAudioTrack(identity) {
+    if (!this._guestAudioNodes || !this._guestAudioNodes.has(identity)) return;
+    const entry = this._guestAudioNodes.get(identity);
+    try { entry.gainNode?.disconnect(); } catch (_) {}
+    try { entry.sourceNode?.disconnect(); } catch (_) {}
+    this._guestAudioNodes.delete(identity);
+    console.info(`[AudioEngine] Removed guest audio track for "${identity}".`);
+  }
+
+  setGuestAudioVolume(identity, volume) {
+    if (!this._guestAudioNodes || !this._guestAudioNodes.has(identity)) return;
+    const entry = this._guestAudioNodes.get(identity);
+    if (entry?.gainNode && this.ctx) {
+      const vol = Math.max(0, Math.min(Number(volume) || 0, 2.0));
+      try {
+        entry.gainNode.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.02);
+      } catch (_) {
+        entry.gainNode.gain.value = vol;
+      }
+    }
+  }
+
+  hasGuestAudioTrack(identity) {
+    return !!(this._guestAudioNodes && this._guestAudioNodes.has(identity));
   }
 }

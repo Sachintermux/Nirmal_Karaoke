@@ -187,16 +187,31 @@ export class PresenceManager {
       if (handled) return;
     }
 
+    const targetRoom = invite.roomId || invite.fromUser?.roomId;
+
+    // 1. Host Broadcast Lock: If host is broadcasting live, block incoming invitations to join other rooms
+    if (this.isLive && this.currentRole === 'host') {
+      if (targetRoom && targetRoom !== this.currentRoomId) {
+        console.warn(`[Presence] Host is broadcasting live in room ${this.currentRoomId}; auto-declining external invitation to ${targetRoom}`);
+        this.respondInvite(invite.id, false, 'Host is currently broadcasting live');
+        return;
+      }
+    }
+
     // Default: show authentic BGMI / Free Fire game style invite popup
     showGameInviteDialog(
       invite,
       // onAccept
       async (inv) => {
         await this.respondInvite(inv.id, true);
-        // Automatically join the host's room as duet partner
-        const targetRoom = inv.roomId || inv.fromUser?.roomId;
-        if (targetRoom) {
-          const targetUrl = `./audience.html?room=${encodeURIComponent(targetRoom)}&role=duet&autoJoin=1`;
+        const invTargetRoom = inv.roomId || inv.fromUser?.roomId;
+        // If Host is broadcasting live, admit the guest into this stage WITHOUT redirecting the Admin
+        if (this.isLive && this.currentRole === 'host') {
+          console.info('[Presence] Host accepted duet request; admitting guest into active stage:', this.currentRoomId);
+          return;
+        }
+        if (invTargetRoom) {
+          const targetUrl = `./audience.html?room=${encodeURIComponent(invTargetRoom)}&role=duet&autoJoin=1`;
           window.location.href = targetUrl;
         }
       },
@@ -235,7 +250,7 @@ export class PresenceManager {
     }
   }
 
-  async respondInvite(inviteId, accepted) {
+  async respondInvite(inviteId, accepted, reason = '') {
     try {
       const r = await fetch('/api/presence/respond-invite', {
         method: 'POST',
@@ -243,7 +258,8 @@ export class PresenceManager {
         body: JSON.stringify({
           inviteId,
           responderId: this.user.id,
-          accepted: !!accepted
+          accepted: !!accepted,
+          reason
         })
       });
       return await r.json();

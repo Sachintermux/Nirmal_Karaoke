@@ -315,10 +315,25 @@ export class BroadcastCompositor {
     // ─── 2. Camera Feeds & DOM Metadata Cache (Refreshed every 350ms) ────────
     if (!this._lastDomScan || performance.now() - this._lastDomScan > 350) {
       this._lastDomScan = performance.now();
-      this._cachedHostVideo = document.querySelector('#liveStageVideoGrid [data-is-admin="1"] video')
-                           || document.querySelector('.stage-video-grid [data-is-admin="1"] video');
-      this._cachedGuestVideo = document.querySelector('#liveStageVideoGrid [data-is-admin="0"] video')
-                            || document.querySelector('.stage-video-grid [data-is-admin="0"] video');
+
+      // Scan Host Card
+      const hostCard = document.querySelector('#liveStageVideoGrid [data-is-admin="1"], .stage-video-grid [data-is-admin="1"]');
+      const hostVideo = hostCard?.querySelector('video') || null;
+      const hostLabel = hostCard?.querySelector('.video-badge')?.textContent?.replace(/🎤/g, '')?.trim() || 'HOST (YOU)';
+      this._cachedHost = hostVideo ? { video: hostVideo, label: `🎤 ${hostLabel}`, isAdmin: true } : null;
+
+      // Scan up to 3 Guest Cards
+      const allGuestCards = Array.from(document.querySelectorAll('#liveStageVideoGrid [data-is-admin="0"], .stage-video-grid [data-is-admin="0"], #liveStageVideoGrid .stage-video-card:not([data-is-admin="1"]), .stage-video-grid .stage-video-card:not([data-is-admin="1"])'));
+      const uniqueGuestCards = allGuestCards.filter(c => c !== hostCard && c.querySelector('video'));
+      this._cachedGuests = uniqueGuestCards.slice(0, 3).map((card, idx) => {
+        const video = card.querySelector('video');
+        const badgeText = card.querySelector('.video-badge')?.textContent?.replace(/🎤/g, '')?.trim();
+        return {
+          video,
+          label: badgeText ? `🎤 ${badgeText}` : `👥 GUEST ${idx + 1}`,
+          isAdmin: false
+        };
+      });
 
       const activeEl = document.querySelector('.lyric-line.active');
       if (activeEl) {
@@ -334,67 +349,95 @@ export class BroadcastCompositor {
       this._cachedSongName = titleEl?.textContent?.trim() || 'Live Karaoke Session';
     }
 
-    let hasHostCam = false;
-    let hasGuestCam = false;
-
-    const hostVideoCard = this._cachedHostVideo;
-    const guestVideoCard = this._cachedGuestVideo;
-
-    if (this.layers.hostCamera && hostVideoCard && hostVideoCard.videoWidth > 0 && !hostVideoCard.paused) {
-      hasHostCam = true;
+    const activeBoxes = [];
+    if (this.layers.hostCamera && this._cachedHost?.video) {
+      const v = this._cachedHost.video;
+      if (v.videoWidth > 0 && !v.paused) {
+        activeBoxes.push(this._cachedHost);
+      }
     }
-    if (this.layers.guestCamera && guestVideoCard && guestVideoCard.videoWidth > 0 && !guestVideoCard.paused) {
-      hasGuestCam = true;
+    if (this.layers.guestCamera && this._cachedGuests?.length) {
+      for (const g of this._cachedGuests) {
+        if (activeBoxes.length >= 4) break;
+        if (g.video && g.video.videoWidth > 0 && !g.video.paused) {
+          activeBoxes.push(g);
+        }
+      }
     }
+    const numCams = activeBoxes.length;
 
     const mode = this.layout || 'spotlight';
 
-    if (mode !== 'visualizer') {
-      const topY = Math.round(h * 0.13);
+    if (mode !== 'visualizer' && numCams > 0) {
+      const topY = Math.round(h * 0.12);
+
       if (mode === 'karaoke') {
-        // Karaoke Focus Layout: Big central lyrics, camera in top-right Picture-in-Picture
-        const pipW = Math.round(w * 0.25);
-        const pipH = Math.round(pipW * 0.58);
-        const pipX = w - pipW - Math.round(w * 0.03);
-        if (hasHostCam) {
-          this.drawVideoBox(ctx, hostVideoCard, pipX, topY, pipW, pipH, '🎤 SINGER PIP', colors);
-        } else if (hasGuestCam) {
-          this.drawVideoBox(ctx, guestVideoCard, pipX, topY, pipW, pipH, '👥 GUEST PIP', colors);
+        // Karaoke Focus Layout: Big central lyrics, camera(s) in top-right Picture-in-Picture
+        if (numCams === 1) {
+          const pipW = Math.round(w * 0.25);
+          const pipH = Math.round(pipW * 0.58);
+          const pipX = w - pipW - Math.round(w * 0.03);
+          this.drawVideoBox(ctx, activeBoxes[0].video, pipX, topY, pipW, pipH, activeBoxes[0].label, colors);
+        } else {
+          const pipGap = Math.round(w * 0.01);
+          const pipW = Math.round(Math.min(w * 0.20, (w * 0.55 - (numCams * pipGap)) / numCams));
+          const pipH = Math.round(pipW * 0.58);
+          const totalPipW = numCams * pipW + (numCams - 1) * pipGap;
+          const startPipX = w - totalPipW - Math.round(w * 0.03);
+          activeBoxes.forEach((box, i) => {
+            const bx = startPipX + i * (pipW + pipGap);
+            this.drawVideoBox(ctx, box.video, bx, topY, pipW, pipH, box.label, colors);
+          });
         }
-      } else if (mode === 'duet' || (hasHostCam && hasGuestCam)) {
-        // Duet Split Screen: Host on left, Guest on right
+      } else if (numCams === 1) {
+        // 1 Camera: Spotlight Layout
+        const boxW = Math.round(w * 0.48);
+        const boxH = Math.round(boxW * 0.6);
+        const boxX = Math.round((w - boxW) / 2);
+        this.drawVideoBox(ctx, activeBoxes[0].video, boxX, topY, boxW, boxH, activeBoxes[0].label, colors);
+      } else if (numCams === 2) {
+        // 2 Cameras: 2-Box Split Side-by-Side (Host on left, Guest on right)
         const boxMargin = Math.round(w * 0.03);
         const gap = Math.round(w * 0.02);
         const boxW = Math.round((w - (boxMargin * 2) - gap) / 2);
-        const boxH = Math.round(boxW * 0.6);
-        if (hasHostCam) {
-          this.drawVideoBox(ctx, hostVideoCard, boxMargin, topY, boxW, boxH, '🎤 HOST SINGER', colors);
-        }
-        if (hasGuestCam) {
-          this.drawVideoBox(ctx, guestVideoCard, boxMargin + boxW + gap, topY, boxW, boxH, '👥 GUEST DUET', colors);
-        }
-      } else if (hasHostCam) {
-        // Spotlight Layout: Center camera
-        const boxW = Math.round(w * 0.48);
-        const boxH = Math.round(boxW * 0.6);
-        const boxX = Math.round((w - boxW) / 2);
-        this.drawVideoBox(ctx, hostVideoCard, boxX, topY, boxW, boxH, '🎤 HOST SINGER', colors);
-      } else if (hasGuestCam) {
-        const boxW = Math.round(w * 0.48);
-        const boxH = Math.round(boxW * 0.6);
-        const boxX = Math.round((w - boxW) / 2);
-        this.drawVideoBox(ctx, guestVideoCard, boxX, topY, boxW, boxH, '👥 GUEST DUET', colors);
+        const boxH = Math.round(Math.min(boxW * 0.6, h * 0.48));
+        this.drawVideoBox(ctx, activeBoxes[0].video, boxMargin, topY, boxW, boxH, activeBoxes[0].label, colors);
+        this.drawVideoBox(ctx, activeBoxes[1].video, boxMargin + boxW + gap, topY, boxW, boxH, activeBoxes[1].label, colors);
+      } else if (numCams === 3) {
+        // 3 Cameras: 3-Box Panel Side-by-Side (1 Host + 2 Guests)
+        const boxMargin = Math.round(w * 0.025);
+        const gap = Math.round(w * 0.015);
+        const boxW = Math.round((w - (boxMargin * 2) - (gap * 2)) / 3);
+        const boxH = Math.round(Math.min(boxW * 0.65, h * 0.46));
+        activeBoxes.forEach((box, i) => {
+          const bx = boxMargin + i * (boxW + gap);
+          this.drawVideoBox(ctx, box.video, bx, topY, boxW, boxH, box.label, colors);
+        });
+      } else if (numCams >= 4) {
+        // 4 Cameras: 4-Box 2x2 Quad Grid (1 Host + 3 Guests)
+        const boxMargin = Math.round(w * 0.03);
+        const gapX = Math.round(w * 0.02);
+        const gapY = Math.round(h * 0.015);
+        const boxW = Math.round((w - (boxMargin * 2) - gapX) / 2);
+        const boxH = Math.round(Math.min(boxW * 0.52, (h * 0.50 - gapY) / 2));
+        activeBoxes.slice(0, 4).forEach((box, i) => {
+          const row = Math.floor(i / 2);
+          const col = i % 2;
+          const bx = boxMargin + col * (boxW + gapX);
+          const by = topY + row * (boxH + gapY);
+          this.drawVideoBox(ctx, box.video, bx, by, boxW, boxH, box.label, colors);
+        });
       }
     }
 
     // ─── 3. Audio Visualizer Layer ────────────────────────────────────────────
     if (this.layers.visualizer) {
-      this.drawVisualizer(ctx, w, h, (hasHostCam || hasGuestCam) && mode !== 'visualizer', colors, mode);
+      this.drawVisualizer(ctx, w, h, numCams > 0 && mode !== 'visualizer', colors, mode, numCams);
     }
 
     // ─── 4. Karaoke Lyrics Layer ──────────────────────────────────────────────
     if (this.layers.lyrics) {
-      this.drawLyrics(ctx, w, h, (hasHostCam || hasGuestCam) && mode !== 'visualizer', colors, mode);
+      this.drawLyrics(ctx, w, h, numCams > 0 && mode !== 'visualizer', colors, mode, numCams);
     }
 
     // ─── 5. Stage Header & Song Banner ────────────────────────────────────────
@@ -477,7 +520,7 @@ export class BroadcastCompositor {
     ctx.restore();
   }
 
-  drawVisualizer(ctx, w, h, hasCameras, colors, mode) {
+  drawVisualizer(ctx, w, h, hasCameras, colors, mode, numCams = 0) {
     const engine = this.audioEngine?.engine;
     let hasSignal = false;
 
@@ -499,7 +542,10 @@ export class BroadcastCompositor {
     let baseY = hasCameras ? Math.round(h * 0.68) : Math.round(h * 0.60);
     let maxBarHeight = Math.round(h * 0.17);
 
-    if (isVisMode) {
+    if (hasCameras && numCams >= 4) {
+      baseY = Math.round(h * 0.72);
+      maxBarHeight = Math.round(h * 0.11);
+    } else if (isVisMode) {
       baseY = Math.round(h * 0.64);
       maxBarHeight = Math.round(h * 0.30);
     } else if (isKaraokeMode) {
@@ -536,7 +582,7 @@ export class BroadcastCompositor {
     ctx.restore();
   }
 
-  drawLyrics(ctx, w, h, hasCameras, colors, mode) {
+  drawLyrics(ctx, w, h, hasCameras, colors, mode, numCams = 0) {
     const currentLine = this._cachedCurrentLine || '♪ ♫ ♪ Nirmal Karaoke Live ♪ ♫ ♪';
     const nextLine = this._cachedNextLine || 'Sing along with your favorite tracks';
 
@@ -546,7 +592,11 @@ export class BroadcastCompositor {
     let mainFontSize = Math.round(Math.max(16, h * 0.048));
     let nextFontSize = Math.round(Math.max(12, h * 0.030));
 
-    if (isKaraokeMode) {
+    if (hasCameras && numCams >= 4) {
+      y = Math.round(h * 0.81);
+      mainFontSize = Math.round(Math.max(14, h * 0.040));
+      nextFontSize = Math.round(Math.max(11, h * 0.026));
+    } else if (isKaraokeMode) {
       y = Math.round(h * 0.44);
       mainFontSize = Math.round(Math.max(20, h * 0.065));
       nextFontSize = Math.round(Math.max(14, h * 0.038));

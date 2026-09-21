@@ -14,6 +14,10 @@ export class LiveStreamHost {
   get hostCamera() { return this.impl?.hostCamera; }
   get filterManager() { return this.impl?.filterManager; }
 
+  isConnected() {
+    return !!(this.impl?.isConnected?.() || (this.room && this.room.state === 'connected'));
+  }
+
   init(...args) {
     this.impl.init(...args);
   }

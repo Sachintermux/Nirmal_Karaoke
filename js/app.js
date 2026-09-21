@@ -705,16 +705,32 @@ function setupLiveShareUI() {
           </div>
         </div>
         <div style="flex-shrink:0;">
-          ${isLive && u.roomId ? `
-            <div style="display:flex; align-items:center; gap:4px;">
-              <a href="./audience.html?room=${encodeURIComponent(u.roomId)}&role=audience" target="_blank" class="button button-quiet" style="padding:5px 8px; font-size:0.72rem; text-decoration:none;">👁️ Watch</a>
-              <a href="./audience.html?room=${encodeURIComponent(u.roomId)}&role=duet&autoJoin=1" class="button button-primary" style="padding:5px 8px; font-size:0.72rem; text-decoration:none;">🎤 Duet</a>
-            </div>
-          ` : (isInvited ? `
-            <span style="color:var(--accent-orange); font-size:0.72rem; font-weight:700;">⏳ Invited...</span>
-          ` : `
-            <button class="button button-quiet btn-invite-singer" data-user-id="${u.id}" style="padding:5px 10px; font-size:0.72rem; border-color:var(--accent-green); color:var(--accent-green);">📩 Invite Duet</button>
-          `)}
+          ${(() => {
+            const isHostBroadcasting = (typeof liveHost !== 'undefined' && liveHost?.isConnected?.())
+                                    || (typeof multistream !== 'undefined' && multistream?.isStreaming)
+                                    || (typeof presence !== 'undefined' && presence?.isLive && presence?.currentRole === 'host');
+
+            if (isLive && u.roomId) {
+              if (isHostBroadcasting && u.roomId !== liveHost?.roomId) {
+                return `
+                  <div style="display:flex; align-items:center; gap:4px;">
+                    <a href="./audience.html?room=${encodeURIComponent(u.roomId)}&role=audience" target="_blank" class="button button-quiet" style="padding:5px 8px; font-size:0.72rem; text-decoration:none;" title="Watch in new tab without disrupting broadcast">👁️ Watch</a>
+                    <button class="button button-quiet" disabled style="padding:5px 8px; font-size:0.72rem; opacity:0.5; cursor:not-allowed;" title="You are live as Host! End broadcast before joining another stage.">🔒 Live Host</button>
+                  </div>
+                `;
+              }
+              return `
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <a href="./audience.html?room=${encodeURIComponent(u.roomId)}&role=audience" target="_blank" class="button button-quiet" style="padding:5px 8px; font-size:0.72rem; text-decoration:none;">👁️ Watch</a>
+                  <a href="./audience.html?room=${encodeURIComponent(u.roomId)}&role=duet&autoJoin=1" class="button button-primary" style="padding:5px 8px; font-size:0.72rem; text-decoration:none;">🎤 Duet</a>
+                </div>
+              `;
+            }
+            if (isInvited) {
+              return `<span style="color:var(--accent-orange); font-size:0.72rem; font-weight:700;">⏳ Invited...</span>`;
+            }
+            return `<button class="button button-quiet btn-invite-singer" data-user-id="${u.id}" style="padding:5px 10px; font-size:0.72rem; border-color:var(--accent-green); color:var(--accent-green);">📩 Invite Duet</button>`;
+          })()}
         </div>
       `;
 
@@ -748,6 +764,53 @@ function setupLiveShareUI() {
     });
   }
 
+  // Multi-Audience Batch Invitations: Invite all online singers simultaneously
+  const btnInviteAllSingers = document.getElementById('btnInviteAllSingers');
+  const lblLobbyBatchStatus = document.getElementById('lblLobbyBatchStatus');
+
+  btnInviteAllSingers?.addEventListener('click', async () => {
+    const list = presence.onlineUsers || [];
+    const available = list.filter(u => u.id !== presence.user.id && !pendingInvitesSet.has(u.id));
+    if (!available.length) {
+      if (lblLobbyBatchStatus) lblLobbyBatchStatus.textContent = 'No new online singers to invite.';
+      setTimeout(() => { if (lblLobbyBatchStatus) lblLobbyBatchStatus.textContent = ''; }, 3000);
+      return;
+    }
+
+    btnInviteAllSingers.disabled = true;
+    btnInviteAllSingers.textContent = `⏳ Inviting (${available.length})...`;
+    if (lblLobbyBatchStatus) lblLobbyBatchStatus.textContent = `Inviting ${available.length} singers to your stage...`;
+
+    try {
+      if (!liveHost.isConnected?.()) {
+        const rId = await liveHost.createRoom(true);
+        await liveHost.ensureProgramAudioPublished?.().catch(() => {});
+        presence.updateLiveStatus({ role: 'host', roomId: rId, roomName: 'My Live Stage', isLive: true });
+        renderShareLinks(rId);
+      }
+
+      const promises = available.map(u => {
+        pendingInvitesSet.add(u.id);
+        return presence.sendInvite(u.id, 'duet').catch(err => {
+          console.warn(`[Presence] batch invite error for ${u.id}:`, err);
+        });
+      });
+
+      await Promise.allSettled(promises);
+      renderDesktopSingersList(presence.onlineUsers);
+      btnInviteAllSingers.textContent = '✅ Invited All!';
+      if (lblLobbyBatchStatus) lblLobbyBatchStatus.textContent = `⚡ Sent ${available.length} invitations!`;
+      setTimeout(() => {
+        btnInviteAllSingers.disabled = false;
+        btnInviteAllSingers.textContent = '⚡ Invite All Online';
+      }, 4000);
+    } catch (err) {
+      alert('Batch invite error: ' + (err.message || err));
+      btnInviteAllSingers.disabled = false;
+      btnInviteAllSingers.textContent = '⚡ Invite All Online';
+    }
+  });
+
   // Update presence list on SSE event
   presence.onUserListUpdated = (users) => {
     renderDesktopSingersList(users);
@@ -773,11 +836,8 @@ function setupLiveShareUI() {
     renderDesktopSingersList(presence.onlineUsers);
   });
 
+  // In-page Lobby Modal for both Desktop and Mobile (Never navigates away)
   const openLobbyModal = (e) => {
-    if (window.innerWidth <= 850) {
-      window.location.href = './users.html';
-      return;
-    }
     if (e) e.preventDefault();
     if (usersModal) usersModal.style.display = 'flex';
     renderDesktopSingersList(presence.onlineUsers);
@@ -785,6 +845,14 @@ function setupLiveShareUI() {
 
   btnOpenUsersLobby?.addEventListener('click', openLobbyModal);
   navLinkUsers?.addEventListener('click', openLobbyModal);
+  const mobileNavLobbyBtn = document.getElementById('mobileNavLobbyBtn');
+  mobileNavLobbyBtn?.addEventListener('click', openLobbyModal);
+
+  const btnRefreshLobbySingers = document.getElementById('btnRefreshLobbySingers');
+  btnRefreshLobbySingers?.addEventListener('click', () => {
+    presence.pushHeartbeat?.().catch(() => {});
+    renderDesktopSingersList(presence.onlineUsers);
+  });
 
   btnCloseUsersModal?.addEventListener('click', () => {
     if (usersModal) usersModal.style.display = 'none';
@@ -793,6 +861,18 @@ function setupLiveShareUI() {
   btnQuickGoLiveFromLobby?.addEventListener('click', () => {
     if (usersModal) usersModal.style.display = 'none';
     btnOpen?.click();
+  });
+
+  // Admin Broadcast Lock: Prevent accidental browser navigation or tab closure while broadcasting
+  window.addEventListener('beforeunload', (e) => {
+    const isHostBroadcasting = (typeof liveHost !== 'undefined' && liveHost?.isConnected?.())
+                            || (typeof multistream !== 'undefined' && multistream?.isStreaming)
+                            || (typeof presence !== 'undefined' && presence?.isLive && presence?.currentRole === 'host');
+    if (isHostBroadcasting) {
+      e.preventDefault();
+      e.returnValue = 'Live broadcast in progress! Leaving will disconnect all audience members and stop the live stream.';
+      return e.returnValue;
+    }
   });
 
   // High-rate playback clock sync. Lyrics use interpolation on the audience

@@ -810,7 +810,8 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}a{color:inherit}
 
 /* Mobile & Low-End Hardware Compatibility Optimizations */
 @media (max-width: 580px) {
-  #modalExternalStream .modal-card {
+  #modalExternalStream .modal-card,
+  #usersModal .modal-card {
     padding: 16px 12px !important;
     border-radius: 18px !important;
     width: 96vw !important;

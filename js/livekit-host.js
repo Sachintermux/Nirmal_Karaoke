@@ -1015,6 +1015,13 @@ export class LiveKitLiveStreamHost {
           if (!track || track.kind !== L.Track.Kind.Audio) continue;
           const item = this.upsertAudienceMicItem(track, publication, participant);
           this.ensureAudienceAudioElement(item);
+          const msTrack = track.mediaStreamTrack || track;
+          if (msTrack && this.audioEngine?.bridgeGuestAudioTrack) {
+            this.audioEngine.bridgeGuestAudioTrack(msTrack, participant.identity);
+            if (this.mutedGuests.has(participant.identity) || track.isMuted) {
+              this.audioEngine.setGuestAudioVolume(participant.identity, 0);
+            }
+          }
         } catch (e) {
           console.warn('[Nirmal] reconcile audience microphone failed:', participant.identity, publication?.trackSid, e);
         }
@@ -1150,8 +1157,16 @@ export class LiveKitLiveStreamHost {
       if (this.duetMonitorEnabled && this.audienceMonitorUnlocked && !track.isMuted && !this.mutedGuests.has(participant.identity)) {
         this.playAudienceItem(item);
       }
+      // Bridge guest microphone into AudioEngine broadcast destination (dest / stereoMerge / guestMixBus)
+      const rawTrack = track.mediaStreamTrack || track;
+      if (rawTrack && this.audioEngine?.bridgeGuestAudioTrack) {
+        this.audioEngine.bridgeGuestAudioTrack(rawTrack, participant.identity);
+        if (this.mutedGuests.has(participant.identity) || track.isMuted) {
+          this.audioEngine.setGuestAudioVolume(participant.identity, 0);
+        }
+      }
       this.updateAudienceMonitorStatus();
-      console.info('[Nirmal] audience MIC subscribed', {
+      console.info('[Nirmal] audience MIC subscribed & mixed into broadcast', {
         participant: participant.identity,
         name: participant.name,
         sid: publication?.trackSid,
@@ -1163,15 +1178,21 @@ export class LiveKitLiveStreamHost {
     });
 
     this.room.on(L.RoomEvent.TrackMuted, (publication, participant) => {
+      if (this.audioEngine?.setGuestAudioVolume && participant?.identity) {
+        this.audioEngine.setGuestAudioVolume(participant.identity, 0);
+      }
       for (const item of this.guestAudioElements.values()) {
         if (item.participant?.identity !== participant?.identity || item.publication !== publication) continue;
         this.stopAudienceItem(item);
       }
     });
     this.room.on(L.RoomEvent.TrackUnmuted, (publication, participant) => {
+      const mutedByAdmin = this.mutedGuests.has(participant?.identity);
+      if (this.audioEngine?.setGuestAudioVolume && participant?.identity) {
+        this.audioEngine.setGuestAudioVolume(participant.identity, mutedByAdmin ? 0 : 1.0);
+      }
       for (const item of this.guestAudioElements.values()) {
         if (item.participant?.identity !== participant?.identity || item.publication !== publication) continue;
-        const mutedByAdmin = this.mutedGuests.has(participant?.identity);
         if (this.duetMonitorEnabled && !mutedByAdmin && this.audienceMonitorUnlocked) {
           this.ensureAudienceAudioElement(item);
           this.playAudienceItem(item);
@@ -1185,6 +1206,9 @@ export class LiveKitLiveStreamHost {
     });
     this.room.on(L.RoomEvent.TrackUnpublished, (publication, participant) => {
       if (!participant || publication?.kind !== L.Track.Kind.Audio) return;
+      if (this.audioEngine?.removeGuestAudioTrack && participant.identity) {
+        this.audioEngine.removeGuestAudioTrack(participant.identity);
+      }
       for (const [key, item] of this.guestAudioElements) {
         if (item.participant?.identity !== participant.identity || item.publication?.trackSid !== publication.trackSid) continue;
         try { item.track?.detach?.(item.audio); } catch (_) {}
@@ -1204,6 +1228,9 @@ export class LiveKitLiveStreamHost {
 
     this.room.on(L.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
       if (track.kind === L.Track.Kind.Audio) {
+        if (this.audioEngine?.removeGuestAudioTrack && participant?.identity) {
+          this.audioEngine.removeGuestAudioTrack(participant.identity);
+        }
         for (const [key, item] of this.guestAudioElements) {
           if (item.track !== track) continue;
           try { item.track?.detach?.(item.audio); } catch (_) {}
@@ -1295,6 +1322,9 @@ export class LiveKitLiveStreamHost {
 
   setGuestMute(guestId, muteState) {
     if (muteState) this.mutedGuests.add(guestId); else this.mutedGuests.delete(guestId);
+    if (this.audioEngine?.setGuestAudioVolume) {
+      this.audioEngine.setGuestAudioVolume(guestId, muteState ? 0 : 1.0);
+    }
     for (const item of this.guestAudioElements.values()) {
       if (item.participant?.identity !== guestId) continue;
       if (muteState) this.stopAudienceItem(item);
@@ -1307,6 +1337,9 @@ export class LiveKitLiveStreamHost {
   }
 
   cleanupGuest(id) {
+    if (this.audioEngine?.removeGuestAudioTrack) {
+      this.audioEngine.removeGuestAudioTrack(id);
+    }
     for (const [key, item] of this.guestAudioElements) {
       if (item.participant?.identity !== id) continue;
       this.stopAudienceItem(item);
@@ -1321,6 +1354,11 @@ export class LiveKitLiveStreamHost {
   }
 
   destroyAudienceMonitor() {
+    if (this.audioEngine?._guestAudioNodes) {
+      for (const id of Array.from(this.audioEngine._guestAudioNodes.keys())) {
+        this.audioEngine.removeGuestAudioTrack(id);
+      }
+    }
     for (const item of this.guestAudioElements.values()) {
       this.stopAudienceItem(item);
       try { item.track?.detach?.(item.audio); } catch (_) {}
