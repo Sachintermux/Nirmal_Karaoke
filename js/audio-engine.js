@@ -44,6 +44,8 @@ export class AudioEngine {
       e.programOut &&
       e.stereoOutputBus &&
       e.guestMixBus &&
+      e.recDest &&
+      e.monitorBus &&
       e.dest &&
       e.dest.stream &&
       e.dest.stream.getAudioTracks &&
@@ -530,33 +532,19 @@ export class AudioEngine {
       e.stereoSplit.connect(e.stereoMerge, 0, 0);
       e.stereoSplit.connect(e.stereoMerge, 1, 1);
 
-      // Local Monitoring Architecture:
-      // 1. Music/Backing Track Monitor (Always audible to host so they can sing along!)
-      e.mediaMonitorGain = this.ctx.createGain();
-      e.mediaMonitorGain.gain.value = parseFloat(sliderMediaVol?.value || 1.0);
-      e.mediaOutBus.connect(e.mediaMonitorGain);
-      e.mediaMonitorGain.connect(this.ctx.destination);
-
-      // 2. Microphone Sidetone/Monitor (Headphones only! Controlled by monitorToggle to prevent speaker screech)
-      e.micMonitorGain = this.ctx.createGain();
-      e.micMonitorGain.gain.value = monitorToggle?.checked ? 1.0 : 0.0;
-      e.proOutput.connect(e.micMonitorGain);
-      e.micMonitorGain.connect(this.ctx.destination);
-
-      // 3. System/Tab Audio Monitor (Desktop audio audible locally)
-      e.systemAudioMonitorGain = this.ctx.createGain();
-      e.systemAudioMonitorGain.gain.value = 1.0;
-      e.systemAudioGain.connect(e.systemAudioMonitorGain);
-      e.systemAudioMonitorGain.connect(this.ctx.destination);
-
-      // Backward compatibility reference for monitorGain
-      e.monitorGain = e.micMonitorGain;
-
+      // Program Out (post-limiter)
       e.programOut.connect(e.stereoOutputBus);
+      e.stereoOutputBus.connect(e.stereoSplit);
+      e.stereoMerge.connect(e.analyser);
+      e.stereoMerge.connect(e.dest);
 
-      // Dedicated YouTube Broadcast Audio Bus:
-      // Combines remote audience duet singers strictly into YouTube Live broadcast destination (_broadcastDest)
-      // Isolated from LiveKit room destination (e.dest) to eliminate echo and audio doubling for singers!
+      // Duet Guest Mix Bus:
+      // Combines remote audience duet singers.
+      // Connected to:
+      // 1. Local Monitor (monitorBus -> ctx.destination) so host can hear the guest singing along!
+      // 2. Recording destination (recDest) so stage recordings capture both host and duet guests!
+      // 3. YouTube Broadcast destination (_broadcastDest) so live streams include both host and duet guests!
+      // ISOLATED from e.dest (LiveKit publication) to eliminate echo and audio doubling for room participants!
       e.guestMixBus = this.ctx.createGain();
       e.guestMixBus.gain.value = 1.0;
       try {
@@ -565,9 +553,65 @@ export class AudioEngine {
         e.guestMixBus.channelInterpretation = 'speakers';
       } catch (_) {}
 
-      e.stereoOutputBus.connect(e.stereoSplit);
-      e.stereoMerge.connect(e.analyser);
-      e.stereoMerge.connect(e.dest);
+      // Dedicated Stage Recording Bus:
+      // Combines:
+      // 1. Host program mix (backing track + host vocals + auto-tune + effects + limiter) from e.stereoMerge
+      // 2. Duet guest vocals from e.guestMixBus
+      try {
+        e.recDest = new MediaStreamAudioDestinationNode(this.ctx, {
+          channelCount: 2,
+          channelCountMode: 'explicit',
+          channelInterpretation: 'discrete'
+        });
+      } catch (_) {
+        e.recDest = this.ctx.createMediaStreamDestination();
+        try {
+          e.recDest.channelCount = 2;
+          e.recDest.channelCountMode = 'explicit';
+          e.recDest.channelInterpretation = 'discrete';
+        } catch (_) {}
+      }
+      e.stereoMerge.connect(e.recDest);
+      e.guestMixBus.connect(e.recDest);
+
+      // Central Local Monitor Architecture:
+      // e.monitorBus -> e.localMasterGain -> this.ctx.destination
+      e.monitorBus = this.ctx.createGain();
+      e.localMasterGain = this.ctx.createGain();
+      e.localMasterGain.gain.value = parseFloat(volSlider?.value || 1.0);
+      e.monitorBus.connect(e.localMasterGain);
+      e.localMasterGain.connect(this.ctx.destination);
+
+      const isHeadphones = !!monitorToggle?.checked;
+
+      // 1. Backing track monitor (audible when monitorToggle is OFF, so speaker playback doesn't have mic)
+      e.mediaMonitorGain = this.ctx.createGain();
+      e.mediaMonitorGain.gain.value = isHeadphones ? 0.0 : parseFloat(sliderMediaVol?.value || 1.0);
+      e.mediaOutBus.connect(e.mediaMonitorGain);
+      e.mediaMonitorGain.connect(e.monitorBus);
+
+      // 2. System audio monitor
+      e.systemAudioMonitorGain = this.ctx.createGain();
+      e.systemAudioMonitorGain.gain.value = isHeadphones ? 0.0 : 1.0;
+      e.systemAudioGain.connect(e.systemAudioMonitorGain);
+      e.systemAudioMonitorGain.connect(e.monitorBus);
+
+      // 3. Program vocal & effects monitor (Headphones only! Controlled by monitorToggle)
+      // When headphones mode is active, routes the entire pristine program mix (with Auto-Tune, EQ, Reverb, Echo, Backing)
+      e.programMonitorGain = this.ctx.createGain();
+      e.programMonitorGain.gain.value = isHeadphones ? 1.0 : 0.0;
+      e.stereoMerge.connect(e.programMonitorGain);
+      e.programMonitorGain.connect(e.monitorBus);
+
+      // Backward compatibility aliases
+      e.micMonitorGain = e.programMonitorGain;
+      e.monitorGain = e.programMonitorGain;
+
+      // 4. Remote duet guests monitor (ALWAYS audible to host so host hears guest singers!)
+      e.guestMonitorGain = this.ctx.createGain();
+      e.guestMonitorGain.gain.value = 1.0;
+      e.guestMixBus.connect(e.guestMonitorGain);
+      e.guestMonitorGain.connect(e.monitorBus);
 
       [
         e.mediaGain, e.micGain, e.micAnalyser,
@@ -589,7 +633,8 @@ export class AudioEngine {
         e.echoTap, e.echoDelay, e.echoFeed, e.echoDamp,
         e.masterGain, e.limiter, e.analyser,
         e.programOut, e.stereoOutputBus, e.guestMixBus,
-        e.mediaMonitorGain, e.micMonitorGain, e.systemAudioMonitorGain
+        e.monitorBus, e.localMasterGain,
+        e.mediaMonitorGain, e.programMonitorGain, e.systemAudioMonitorGain, e.guestMonitorGain
       ].forEach(n => { if (n) setStereo(n); });
 
       const dspLed = document.getElementById('led-dsp');
@@ -783,21 +828,35 @@ export class AudioEngine {
 
   applyPreset(presetKey) {
     const p = PRESETS[presetKey];
-    if (!p || !this.engine.pitcher) return;
+    if (!p || !this.engine?.pitcher || !this.ctx) return;
 
     if (p.isBypass) {
-      this.engine.fxBypassGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.02);
-      this.engine.fxActiveGain.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.02);
+      if (this.engine.fxBypassGain?.gain) {
+        this.engine.fxBypassGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.02);
+      }
+      if (this.engine.fxActiveGain?.gain) {
+        this.engine.fxActiveGain.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.02);
+      }
     } else {
-      this.engine.fxBypassGain.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.02);
-      this.engine.fxActiveGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.02);
+      if (this.engine.fxBypassGain?.gain) {
+        this.engine.fxBypassGain.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.02);
+      }
+      if (this.engine.fxActiveGain?.gain) {
+        this.engine.fxActiveGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.02);
+      }
 
-      this.engine.pitcher.parameters.get('pitch').setTargetAtTime(p.pitch, this.ctx.currentTime, 0.02);
-      this.engine.hp.frequency.setTargetAtTime(p.lowCut, this.ctx.currentTime, 0.02);
-      this.engine.lp.frequency.setTargetAtTime(p.highCut, this.ctx.currentTime, 0.02);
-      this.engine.formantEq.frequency.setTargetAtTime(p.eqFreq, this.ctx.currentTime, 0.02);
-      this.engine.formantEq.gain.setTargetAtTime(p.eqGain, this.ctx.currentTime, 0.02);
-      this.engine.waveshaper.curve = p.drive > 0 ? this.makeDistortionCurve(p.drive * 1.5) : null;
+      try {
+        const pPitch = this.engine.pitcher.parameters?.get?.('pitch');
+        if (pPitch) pPitch.setTargetAtTime(p.pitch, this.ctx.currentTime, 0.02);
+      } catch (_) {}
+
+      try {
+        if (this.engine.hp?.frequency) this.engine.hp.frequency.setTargetAtTime(p.lowCut, this.ctx.currentTime, 0.02);
+        if (this.engine.lp?.frequency) this.engine.lp.frequency.setTargetAtTime(p.highCut, this.ctx.currentTime, 0.02);
+        if (this.engine.formantEq?.frequency) this.engine.formantEq.frequency.setTargetAtTime(p.eqFreq, this.ctx.currentTime, 0.02);
+        if (this.engine.formantEq?.gain) this.engine.formantEq.gain.setTargetAtTime(p.eqGain, this.ctx.currentTime, 0.02);
+        if (this.engine.waveshaper) this.engine.waveshaper.curve = p.drive > 0 ? this.makeDistortionCurve(p.drive * 1.5) : null;
+      } catch (_) {}
     }
   }
 
@@ -979,9 +1038,91 @@ export class AudioEngine {
     const lblKey = document.getElementById('lblKey');
     if (lblKey) lblKey.textContent = this.currentKey > 0 ? `+${this.currentKey}` : this.currentKey;
     await this.boot();
-    if (this.engine.mediaPitcher && this.ctx) {
-      this.engine.mediaPitcher.parameters.get('pitch').setTargetAtTime(Math.pow(2, this.currentKey / 12), this.ctx.currentTime, 0.05);
+    if (this.engine?.mediaPitcher && this.ctx) {
+      try {
+        const p = this.engine.mediaPitcher.parameters?.get?.('pitch');
+        if (p) {
+          p.setTargetAtTime(Math.pow(2, this.currentKey / 12), this.ctx.currentTime, 0.05);
+        }
+      } catch (_) {}
     }
+  }
+
+  updateMonitorRouting() {
+    const monitorToggle = document.getElementById('monitorToggle');
+    const isHeadphones = !!monitorToggle?.checked;
+    if (!this.ctx || !this.engine) return;
+    const t = this.ctx.currentTime;
+    if (this.engine.programMonitorGain?.gain) {
+      this.engine.programMonitorGain.gain.setTargetAtTime(isHeadphones ? 1.0 : 0.0, t, 0.02);
+    }
+    if (this.engine.mediaMonitorGain?.gain) {
+      const mediaVol = parseFloat(document.getElementById('sliderMediaVol')?.value || 1.0);
+      this.engine.mediaMonitorGain.gain.setTargetAtTime(isHeadphones ? 0.0 : mediaVol, t, 0.02);
+    }
+    if (this.engine.systemAudioMonitorGain?.gain) {
+      this.engine.systemAudioMonitorGain.gain.setTargetAtTime(isHeadphones ? 0.0 : 1.0, t, 0.02);
+    }
+  }
+
+  setMasterVolume(val) {
+    if (!this.ctx || !this.engine) return;
+    const v = parseFloat(val);
+    if (Number.isFinite(v)) {
+      const t = this.ctx.currentTime;
+      if (this.engine.masterGain?.gain) {
+        this.engine.masterGain.gain.setTargetAtTime(v, t, 0.02);
+      }
+      if (this.engine.localMasterGain?.gain) {
+        this.engine.localMasterGain.gain.setTargetAtTime(v, t, 0.02);
+      }
+    }
+  }
+
+  getRecordingStream() {
+    if (this.engine?.recDest?.stream && this.engine.recDest.stream.getAudioTracks().length > 0) {
+      return this.engine.recDest.stream;
+    }
+    return this.engine?.dest?.stream || null;
+  }
+
+  getAudioDiagnostics() {
+    const micTrack = this.activeMicStream?.getAudioTracks?.()[0];
+    const destTrack = this.engine?.dest?.stream?.getAudioTracks?.()[0];
+    const recTrack = this.engine?.recDest?.stream?.getAudioTracks?.()[0];
+    const micSettings = micTrack ? (micTrack.getSettings?.() || {}) : {};
+    const destSettings = destTrack ? (destTrack.getSettings?.() || {}) : {};
+
+    return {
+      contextState: this.ctx?.state || 'uninitialized',
+      sampleRate: this.ctx?.sampleRate || 0,
+      baseLatencyMs: this.ctx?.baseLatency ? (this.ctx.baseLatency * 1000).toFixed(2) : 'N/A',
+      outputLatencyMs: this.ctx?.outputLatency ? (this.ctx.outputLatency * 1000).toFixed(2) : 'N/A',
+      maxChannels: this.ctx?.destination?.maxChannelCount || 2,
+      monitorVocalActive: !!document.getElementById('monitorToggle')?.checked,
+      workletsLoaded: !!this._workletsLoaded,
+      currentKey: this.currentKey,
+      mic: {
+        active: !!(micTrack && micTrack.readyState === 'live'),
+        label: micTrack?.label || 'None',
+        sampleRate: micSettings.sampleRate || this.ctx?.sampleRate || 0,
+        channelCount: micSettings.channelCount || 1,
+        latency: micSettings.latency ? `${(micSettings.latency * 1000).toFixed(1)}ms` : 'auto',
+        echoCancellation: !!micSettings.echoCancellation,
+        noiseSuppression: !!micSettings.noiseSuppression,
+        autoGainControl: !!micSettings.autoGainControl
+      },
+      programOutput: {
+        active: !!(destTrack && destTrack.readyState === 'live'),
+        channels: destSettings.channelCount || this.engine?.dest?.channelCount || 2,
+        levelRms: this.getProgramLevel()
+      },
+      recording: {
+        active: !!(this.recorder && this.recorder.state === 'recording'),
+        recDestLive: !!(recTrack && recTrack.readyState === 'live')
+      },
+      duetGuestsCount: this._guestAudioNodes ? this._guestAudioNodes.size : 0
+    };
   }
 
   connectMediaElement(mediaEl) {

@@ -101,13 +101,26 @@ filePlayerGlobal?.addEventListener('ended', () => {
 async function scanHardware() {
   const speakerSelect = document.getElementById('speakerSelect');
   if (!navigator.mediaDevices?.enumerateDevices || !speakerSelect) return;
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  speakerSelect.innerHTML = '<option value="">Default Audio Interface / Bluetooth</option>';
-  devices.filter((d) => d.kind === 'audiooutput').forEach((device, i) => {
-    const opt = document.createElement('option');
-    opt.value = device.deviceId;
-    opt.textContent = device.label || `Output Channel ${i + 1}`;
-    speakerSelect.appendChild(opt);
+  try {
+    const currentVal = speakerSelect.value;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    speakerSelect.innerHTML = '<option value="">Default Audio Interface / Bluetooth</option>';
+    devices.filter((d) => d.kind === 'audiooutput').forEach((device, i) => {
+      const opt = document.createElement('option');
+      opt.value = device.deviceId;
+      opt.textContent = device.label || `Output Channel ${i + 1}`;
+      if (device.deviceId && device.deviceId === currentVal) opt.selected = true;
+      speakerSelect.appendChild(opt);
+    });
+  } catch (err) {
+    console.warn('[Nirmal] scanHardware notice:', err);
+  }
+}
+
+if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    console.info('[Nirmal] Audio device change detected, refreshing hardware channels...');
+    scanHardware();
   });
 }
 
@@ -388,6 +401,55 @@ function setupLiveShareUI() {
     syncBackgroundKeepAlive();
   }
 
+  function handleDuetRequest({ identity, name }) {
+    console.info(`[Nirmal] Duet request from ${name} (${identity})`);
+    let container = document.getElementById('duetRequestContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'duetRequestContainer';
+      container.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:360px;width:calc(100% - 40px);pointer-events:none;';
+      document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.style.cssText = 'background:linear-gradient(135deg, #1c152b, #0f0b18);border:2px solid var(--accent-pink, #ff007f);border-radius:12px;padding:14px 16px;box-shadow:0 0 25px rgba(255,0,127,0.4);color:#fff;font-size:0.85rem;pointer-events:auto;';
+    toast.innerHTML = `
+      <div style="font-weight:800;font-size:0.95rem;color:var(--accent-pink, #ff007f);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+        <span>🎤</span> Duet Mic Request
+      </div>
+      <div style="margin-bottom:12px;line-height:1.4;">
+        <strong>${escapeHtml(name)}</strong> requested to join the stage for a Duet!
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn-decline-duet" style="background:rgba(255,255,255,0.1);color:#aaa;border:1px solid rgba(255,255,255,0.2);padding:6px 12px;border-radius:6px;font-size:0.8rem;cursor:pointer;font-weight:700;">Decline</button>
+        <button class="btn-accept-duet" style="background:var(--accent-green, #00ff88);color:#000;border:none;padding:6px 14px;border-radius:6px;font-size:0.8rem;cursor:pointer;font-weight:800;">Accept & Bring Onstage</button>
+      </div>
+    `;
+    container.appendChild(toast);
+
+    toast.querySelector('.btn-accept-duet').onclick = async () => {
+      try {
+        await liveHost.approveDuetRequest(identity);
+        toast.innerHTML = `<div style="color:var(--accent-green);font-weight:800;">✓ Approved! ${escapeHtml(name)} is joining the stage.</div>`;
+        setTimeout(() => toast.remove(), 2500);
+      } catch (err) {
+        alert('Could not approve duet request: ' + (err.message || err));
+        toast.remove();
+      }
+    };
+
+    toast.querySelector('.btn-decline-duet').onclick = async () => {
+      try {
+        await liveHost.rejectDuetRequest(identity);
+        toast.remove();
+      } catch (_) {
+        toast.remove();
+      }
+    };
+
+    setTimeout(() => { if (toast.isConnected) toast.remove(); }, 45000);
+  }
+
   liveHost.init(
     (roomId) => renderShareLinks(roomId),
     (count) => {
@@ -400,7 +462,8 @@ function setupLiveShareUI() {
     },
     handleAudienceChatMessage,
     handleAudienceListUpdate, // <-- Ensures Audience panel draws properly
-    (reason) => resetLiveBroadcastUI(reason)
+    (reason) => resetLiveBroadcastUI(reason),
+    handleDuetRequest
   );
 
   // Host sends chat reply back to audience
@@ -1163,12 +1226,16 @@ function setupEventListeners() {
   });
 
   document.getElementById('monitorToggle')?.addEventListener('change', (e) => {
-    const val = e.target.checked ? 1.0 : 0.0;
-    if (audioEngine.engine.micMonitorGain && audioEngine.ctx) {
-      audioEngine.engine.micMonitorGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.02);
-    }
-    if (audioEngine.engine.monitorGain && audioEngine.ctx) {
-      audioEngine.engine.monitorGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.02);
+    if (audioEngine.updateMonitorRouting) {
+      audioEngine.updateMonitorRouting();
+    } else {
+      const val = e.target.checked ? 1.0 : 0.0;
+      if (audioEngine.engine.micMonitorGain && audioEngine.ctx) {
+        audioEngine.engine.micMonitorGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.02);
+      }
+      if (audioEngine.engine.monitorGain && audioEngine.ctx) {
+        audioEngine.engine.monitorGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.02);
+      }
     }
   });
 
@@ -1365,7 +1432,9 @@ function setupEventListeners() {
     const lbl = document.getElementById('valVol');
     if (lbl) lbl.textContent = `${Math.round(v * 100)}%`;
     await audioEngine.boot();
-    if (audioEngine.engine.masterGain && audioEngine.ctx) {
+    if (audioEngine.setMasterVolume) {
+      audioEngine.setMasterVolume(v);
+    } else if (audioEngine.engine.masterGain && audioEngine.ctx) {
       audioEngine.engine.masterGain.gain.setTargetAtTime(v, audioEngine.ctx.currentTime, 0.02);
     }
   });
@@ -2317,7 +2386,8 @@ function setupEventListeners() {
     } else {
       audioEngine.recChunks = [];
       try {
-        audioEngine.recorder = new MediaRecorder(audioEngine.engine.dest.stream);
+        const recStream = audioEngine.getRecordingStream ? audioEngine.getRecordingStream() : audioEngine.engine.dest.stream;
+        audioEngine.recorder = new MediaRecorder(recStream);
       } catch (e) {
         alert('Recording is not supported in this browser.');
         return;
@@ -2404,5 +2474,95 @@ window.addEventListener('beforeunload', (e) => {
     e.preventDefault();
     e.returnValue = 'A live karaoke session is currently active. Reloading will disconnect your broadcast and audio.';
     return e.returnValue;
+  }
+});
+
+// ─── Developer Diagnostics HUD Controller ────────────────────────────────────
+let diagnosticsTimer = null;
+
+async function refreshDiagnosticsHUD() {
+  const modal = document.getElementById('diagnosticsModal');
+  if (!modal || modal.style.display === 'none') {
+    if (diagnosticsTimer) {
+      clearInterval(diagnosticsTimer);
+      diagnosticsTimer = null;
+    }
+    return;
+  }
+
+  // 1. AudioEngine stats
+  const audioStats = audioEngine?.getAudioDiagnostics ? audioEngine.getAudioDiagnostics() : {};
+  const setEl = (id, text, color = null) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text ?? '--';
+    if (color) el.style.color = color;
+  };
+
+  setEl('diagCtxState', audioStats.contextState || 'uninitialized', audioStats.contextState === 'running' ? 'var(--accent-green)' : 'var(--accent-orange)');
+  setEl('diagSampleRate', audioStats.sampleRate ? `${audioStats.sampleRate} Hz` : 'N/A');
+  setEl('diagBaseLatency', audioStats.baseLatencyMs !== 'N/A' ? `${audioStats.baseLatencyMs} ms` : 'N/A');
+  setEl('diagOutputLatency', audioStats.outputLatencyMs !== 'N/A' ? `${audioStats.outputLatencyMs} ms` : 'N/A');
+  setEl('diagChannels', audioStats.maxChannels ? `${audioStats.maxChannels} ch (Stereo Discrete)` : '2 ch');
+  setEl('diagProgramLevel', audioStats.programOutput ? `${(audioStats.programOutput.levelRms * 100).toFixed(1)}%` : '0%');
+  setEl('diagWorklets', audioStats.workletsLoaded ? 'Active (Ultra-low latency)' : 'Fallback GainNodes', audioStats.workletsLoaded ? 'var(--accent-green)' : 'var(--accent-orange)');
+  setEl('diagMonitorMode', audioStats.monitorVocalActive ? '🎧 Headphones (Full FX)' : '🔈 Speakers (Vocal Muted to Prevent Feedback)');
+
+  // 2. Mic Hardware stats
+  const mic = audioStats.mic || {};
+  setEl('diagMicActive', mic.active ? `Active (${mic.label || 'Default'})` : 'Inactive', mic.active ? 'var(--accent-green)' : 'var(--text-dim)');
+  setEl('diagMicRate', mic.sampleRate ? `${mic.sampleRate} Hz` : 'N/A');
+  setEl('diagMicChannels', mic.channelCount ? `${mic.channelCount} ch (Upmixed to Stereo Center)` : '1 ch');
+  setEl('diagMicEcho', mic.echoCancellation ? 'Enabled' : 'Disabled (Pristine Vocal Mode)');
+  setEl('diagMicNoise', mic.noiseSuppression ? 'Enabled' : 'Disabled (Pristine Vocal Mode)');
+  setEl('diagMicAgc', mic.autoGainControl ? 'Enabled' : 'Disabled (Hardware Dynamics Active)');
+
+  // 3. LiveKit SFU stats
+  const lk = liveHost?.getLiveKitDiagnostics ? await liveHost.getLiveKitDiagnostics() : {};
+  setEl('diagLkState', lk.state || 'disconnected', lk.state === 'connected' ? 'var(--accent-green)' : 'var(--text-dim)');
+  setEl('diagLkRoom', lk.roomId || 'Not active');
+  setEl('diagLkAudience', lk.remoteParticipantCount !== undefined ? `${lk.remoteParticipantCount} participants` : '0');
+  const pubAudio = lk.publishedTracks?.find(t => t.kind === 'audio');
+  setEl('diagLkPubAudio', pubAudio ? `Published • SID: ${pubAudio.sid.slice(-6)} • 2ch forceStereo` : 'None published', pubAudio ? 'var(--accent-green)' : 'var(--text-dim)');
+  setEl('diagLkDuets', `${lk.activeGuestAudioCount || 0} active duet streams`);
+  setEl('diagLkDuetMonitor', lk.duetMonitorEnabled ? 'ON (Audible to Host)' : 'OFF (Muted)');
+
+  // 4. Recording & Broadcaster stats
+  const rec = audioStats.recording || {};
+  setEl('diagRecState', rec.active ? 'RECORDING ACTIVE' : 'Idle', rec.active ? 'var(--accent-pink)' : 'var(--text-dim)');
+  setEl('diagRecStream', rec.recDestLive ? '2ch MediaStreamDestination Ready (Master + Duets)' : 'Standby');
+}
+
+function openDiagnosticsHUD() {
+  const modal = document.getElementById('diagnosticsModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  refreshDiagnosticsHUD();
+  if (!diagnosticsTimer) {
+    diagnosticsTimer = setInterval(refreshDiagnosticsHUD, 800);
+  }
+}
+
+function closeDiagnosticsHUD() {
+  const modal = document.getElementById('diagnosticsModal');
+  if (modal) modal.style.display = 'none';
+  if (diagnosticsTimer) {
+    clearInterval(diagnosticsTimer);
+    diagnosticsTimer = null;
+  }
+}
+
+document.getElementById('btnOpenDiagnostics')?.addEventListener('click', openDiagnosticsHUD);
+document.getElementById('btnCloseDiagnostics')?.addEventListener('click', closeDiagnosticsHUD);
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'D' && e.shiftKey && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    const modal = document.getElementById('diagnosticsModal');
+    if (modal && modal.style.display === 'flex') {
+      closeDiagnosticsHUD();
+    } else {
+      openDiagnosticsHUD();
+    }
   }
 });

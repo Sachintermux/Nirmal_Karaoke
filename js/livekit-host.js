@@ -103,15 +103,22 @@ export class LiveKitLiveStreamHost {
     return !!(this.room && this.room.state === 'connected' && this.roomId);
   }
 
-  init(onRoomCreated, onAudienceCountUpdate, onChatMessage, onAudienceListUpdate, onRoomDisconnected) {
+  init(onRoomCreated, onAudienceCountUpdate, onChatMessage, onAudienceListUpdate, onRoomDisconnected, onDuetRequest) {
     this.onRoomCreated = onRoomCreated;
     this.onAudienceCountUpdate = onAudienceCountUpdate;
     this.onChatMessage = onChatMessage;
     this.onAudienceListUpdate = onAudienceListUpdate;
     this.onRoomDisconnected = onRoomDisconnected;
+    this.onDuetRequest = onDuetRequest;
   }
 
   async createRoom(allowDuet = true) {
+    if (this.audioEngine) {
+      try { await this.audioEngine.boot(); } catch (err) {
+        console.warn('[Nirmal] AudioEngine boot in createRoom:', err);
+      }
+    }
+
     if (this.isConnected()) {
       try { await this.ensureProgramAudioPublished(); } catch (e) { console.warn('[Nirmal] program audio retry:', e); }
       return this.roomId;
@@ -1296,6 +1303,12 @@ export class LiveKitLiveStreamHost {
           if (this.latestTimePayload) {
             this.sendData({ type: 'SYNC_TIME', payload: this.latestTimePayload }, { reliable: false });
           }
+        } else if (data.type === 'REQUEST_MIC') {
+          console.info('[Nirmal] Received duet REQUEST_MIC from', id, data.name);
+          this.onDuetRequest?.({
+            identity: id,
+            name: data.name || participant.name || id
+          });
         } else if (data.type === 'AUDIENCE_CHAT') {
           this.onChatMessage?.(data.sender, data.text, data.isSpecial);
           this.broadcastChatMessage(data.sender, data.text, data.isSpecial, false, id);
@@ -1401,5 +1414,77 @@ export class LiveKitLiveStreamHost {
     }));
     this.onAudienceListUpdate?.(list);
     this.onAudienceCountUpdate?.(list.length);
+  }
+
+  async approveDuetRequest(guestId) {
+    if (!guestId || !this.room?.localParticipant) return;
+    console.info(`[Nirmal] Approving duet mic request for ${guestId}`);
+    await this.sendData({
+      type: 'APPROVE_MIC',
+      targetIdentity: guestId
+    }, { reliable: true });
+
+    const c = this.connections.get(guestId);
+    if (c) {
+      c.metadata = { ...c.metadata, role: 'duet', isDuetActive: true };
+      this.updateAudience();
+    }
+  }
+
+  async rejectDuetRequest(guestId) {
+    if (!guestId || !this.room?.localParticipant) return;
+    console.info(`[Nirmal] Rejecting duet mic request for ${guestId}`);
+    await this.sendData({
+      type: 'REJECT_MIC',
+      targetIdentity: guestId
+    }, { reliable: true });
+  }
+
+  async getLiveKitDiagnostics() {
+    if (!this.room) {
+      return { state: 'disconnected', roomId: null, identity: null };
+    }
+    const local = this.room.localParticipant;
+    const pubTracks = [];
+    if (local) {
+      for (const pub of local.trackPublications.values()) {
+        pubTracks.push({
+          sid: pub.trackSid,
+          kind: pub.kind,
+          source: pub.source,
+          muted: pub.isMuted,
+          settings: pub.track?.mediaStreamTrack?.getSettings?.() || {}
+        });
+      }
+    }
+
+    const subTracks = [];
+    if (this.room.remoteParticipants) {
+      for (const p of this.room.remoteParticipants.values()) {
+        for (const pub of p.trackPublications.values()) {
+          if (pub.isSubscribed) {
+            subTracks.push({
+              participant: p.identity,
+              name: p.name || p.identity,
+              kind: pub.kind,
+              source: pub.source,
+              muted: pub.isMuted,
+              sid: pub.trackSid
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      state: this.room.state,
+      roomId: this.roomId,
+      identity: local?.identity || null,
+      remoteParticipantCount: this.room.remoteParticipants ? this.room.remoteParticipants.size : 0,
+      publishedTracks: pubTracks,
+      subscribedTracks: subTracks,
+      duetMonitorEnabled: this.duetMonitorEnabled,
+      activeGuestAudioCount: this.guestAudioElements ? this.guestAudioElements.size : 0
+    };
   }
 }

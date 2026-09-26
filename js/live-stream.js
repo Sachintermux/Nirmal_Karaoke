@@ -50,4 +50,7 @@ export class LiveStreamHost {
   playAudienceGuest(...args) { return this.impl.playAudienceGuest?.(...args); }
   primeAudienceMonitorFromGesture(...args) { return this.impl.primeAudienceMonitorFromGesture?.(...args); }
   refreshAudienceMonitorOutputDevice(...args) { return this.impl.refreshAudienceMonitorOutputDevice?.(...args); }
+  approveDuetRequest(...args) { return this.impl.approveDuetRequest?.(...args); }
+  rejectDuetRequest(...args) { return this.impl.rejectDuetRequest?.(...args); }
+  getLiveKitDiagnostics(...args) { return this.impl.getLiveKitDiagnostics?.(...args); }
 }

@@ -34,6 +34,7 @@
             class="desktop-only"><i class="led" id="led-rec"></i>Rec</span></div>
     <div class="topbar-actions">
         <span class="badge" id="badgeExternalStreamLive" style="display:none;background:#ff0055;color:#fff;font-size:0.7rem;font-weight:800;padding:4px 8px;border-radius:6px;animation:pulseDot 1.5s infinite;">🔴 <span class="btn-text">Streaming</span></span>
+        <button class="button button-quiet" id="btnOpenDiagnostics" title="Developer Diagnostics HUD (Ctrl+Shift+D)">📊 <span class="btn-text">Diagnostics</span></button>
         <button class="button button-quiet" id="btnOpenMultistream" title="Broadcast live to YouTube, Twitch, Facebook or RTMP">📡 <span class="btn-text">Multistream</span></button>
         <button class="button button-quiet" id="btnOpenUsersLobby" title="View live online singers & send duet invites">👥 <span class="btn-text">Live Users</span> <span class="badge" id="topbarUsersBadge">0</span></button>
         <button class="button button-live" id="btnOpenShareModal">● <span class="btn-text">Go live</span></button>
@@ -897,6 +898,72 @@
             <div style="display:flex; gap:8px;">
                 <button class="button button-primary" id="btnStartExternalStream" style="background:linear-gradient(135deg, #ff0055 0%, #ff5500 100%); border:none; font-weight:900;">🚀 Start Live Stream</button>
                 <button class="button button-quiet danger" id="btnStopExternalStream" style="display:none; border-color:#ff3366; color:#ff3366;">⏹️ Stop Live Stream</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Developer Diagnostics HUD Modal -->
+<div class="modal" id="diagnosticsModal" style="display:none;">
+    <div class="modal-card" style="max-width:760px; width:95%; max-height:88vh; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--accent-cyan, #00f0ff); box-shadow:0 0 40px rgba(0,240,255,0.25);">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px; margin-bottom:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:1.4rem;">📊</span>
+                <h2 style="margin:0; font-size:1.15rem; font-weight:800; color:var(--accent-cyan, #00f0ff); letter-spacing:0.5px;">AUDIO & WEBRTC DIAGNOSTICS HUD</h2>
+            </div>
+            <button class="button button-quiet" id="btnCloseDiagnostics" style="padding:4px 10px; font-size:0.9rem;">✕ Close</button>
+        </div>
+
+        <div style="flex:1; overflow-y:auto; padding-right:6px; display:flex; flex-direction:column; gap:16px;">
+            <!-- Web Audio Engine -->
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
+                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-green, #00ff88); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">🎧 Web Audio DSP Engine</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
+                    <div><span style="color:var(--text-dim);">Context State:</span> <b id="diagCtxState">--</b></div>
+                    <div><span style="color:var(--text-dim);">Sample Rate:</span> <b id="diagSampleRate">--</b></div>
+                    <div><span style="color:var(--text-dim);">Base Latency:</span> <b id="diagBaseLatency">--</b></div>
+                    <div><span style="color:var(--text-dim);">Output Latency:</span> <b id="diagOutputLatency">--</b></div>
+                    <div><span style="color:var(--text-dim);">Hardware Channels:</span> <b id="diagChannels">--</b></div>
+                    <div><span style="color:var(--text-dim);">Program Output Level:</span> <b id="diagProgramLevel">--</b></div>
+                    <div><span style="color:var(--text-dim);">DSP Worklets:</span> <b id="diagWorklets">--</b></div>
+                    <div><span style="color:var(--text-dim);">Vocal Monitor Mode:</span> <b id="diagMonitorMode">--</b></div>
+                </div>
+            </div>
+
+            <!-- Microphone Hardware -->
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
+                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-pink, #ff007f); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">🎤 Microphone Hardware Input</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
+                    <div><span style="color:var(--text-dim);">Track Active:</span> <b id="diagMicActive">--</b></div>
+                    <div><span style="color:var(--text-dim);">Hardware Rate:</span> <b id="diagMicRate">--</b></div>
+                    <div><span style="color:var(--text-dim);">Input Channels:</span> <b id="diagMicChannels">--</b></div>
+                    <div><span style="color:var(--text-dim);">Echo Cancellation:</span> <b id="diagMicEcho">--</b></div>
+                    <div><span style="color:var(--text-dim);">Noise Suppression:</span> <b id="diagMicNoise">--</b></div>
+                    <div><span style="color:var(--text-dim);">Auto Gain Control:</span> <b id="diagMicAgc">--</b></div>
+                </div>
+            </div>
+
+            <!-- LiveKit Real-time SFU -->
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
+                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-cyan, #00f0ff); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">📡 LiveKit SFU Real-Time Transport</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
+                    <div><span style="color:var(--text-dim);">Connection:</span> <b id="diagLkState">--</b></div>
+                    <div><span style="color:var(--text-dim);">Room ID:</span> <b id="diagLkRoom">--</b></div>
+                    <div><span style="color:var(--text-dim);">Audience Count:</span> <b id="diagLkAudience">--</b></div>
+                    <div><span style="color:var(--text-dim);">Published Audio:</span> <b id="diagLkPubAudio">--</b></div>
+                    <div><span style="color:var(--text-dim);">Duet Guests Bridged:</span> <b id="diagLkDuets">--</b></div>
+                    <div><span style="color:var(--text-dim);">Guest Monitor Audio:</span> <b id="diagLkDuetMonitor">--</b></div>
+                </div>
+            </div>
+
+            <!-- Stage Recording & Broadcasting -->
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
+                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-purple, #b34bff); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">⏺️ Stage Recording & Stream Bus</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
+                    <div><span style="color:var(--text-dim);">Recording Bus:</span> <b id="diagRecState">--</b></div>
+                    <div><span style="color:var(--text-dim);">Recording Stream:</span> <b id="diagRecStream">--</b></div>
+                    <div><span style="color:var(--text-dim);">Audio Bus Channels:</span> <b>Stereo 2-Channel Discrete</b></div>
+                </div>
             </div>
         </div>
     </div>

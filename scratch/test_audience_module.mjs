@@ -1,0 +1,1794 @@
+
+  import { dspWorkletCode } from './js/dsp-code.js?v=29';
+  import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=29';
+  import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=29';
+  import { PresenceManager } from './js/presence-manager.js?v=29';
+  import { acquireWakeLock, releaseWakeLock } from './js/wake-lock.js?v=29';
+  import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './js/media-session.js?v=29';
+
+  const params = new URLSearchParams(location.search);
+  const roomId = params.get('room');
+  const guestRole = params.get('role') || 'listen';
+  const L = window.LivekitClient;
+
+  const presence = new PresenceManager();
+  let isDuetGuest = guestRole === 'participate' || guestRole === 'duet';
+  let hostDisconnectGraceTimer = null;
+  if (roomId) {
+    presence.updateLiveStatus({
+      role: isDuetGuest ? 'duet' : 'audience',
+      roomId,
+      roomName: `Live Room #${roomId}`,
+      isLive: true
+    });
+  }
+
+  const lyricsContent = document.getElementById('lyricsContentAudience');
+  const roleBadge = document.getElementById('roleBadge');
+  const btnTuneIn = document.getElementById('btnTuneIn');
+  const btnLeaveStage = document.getElementById('btnLeaveStage');
+  const btnRequestMic = document.getElementById('btnRequestMic');
+  const btnEnableMic = document.getElementById('btnEnableMic');
+  const btnToggleMute = document.getElementById('btnToggleMute');
+  const btnToggleCamera = document.getElementById('btnToggleCamera');
+  const btnAudienceSwitchCam = document.getElementById('btnAudienceSwitchCam');
+  const btnAudienceBottomSwitchCam = document.getElementById('btnAudienceBottomSwitchCam');
+  const guestCameraFilterToolbar = document.getElementById('guestCameraFilterToolbar');
+  const duetNotice = document.getElementById('duetNotice');
+  const guestVoiceModule = document.getElementById('guestVoiceModule');
+  const liveIndicator = document.getElementById('liveIndicator');
+  const chatMessages = document.getElementById('chatMessages');
+  const chatNickInput = document.getElementById('chatNickInput');
+  const chatTextInput = document.getElementById('chatTextInput');
+  const btnSendChat = document.getElementById('btnSendChat');
+  const songSearchRequestInput = document.getElementById('songSearchRequestInput');
+  const btnSearchSongRequest = document.getElementById('btnSearchSongRequest');
+  const songSearchSuggestions = document.getElementById('songSearchSuggestions');
+
+  let room = null;
+  let audioCtx = null;
+  // LiveKit-managed WebAudio receive path. The SDK owns the remote-track ->
+  // AudioContext graph; the app does not create a second receive graph.
+  let playbackCtx = null;
+  let playbackSinkId = '';
+  const liveAudio = document.getElementById('liveAudio');
+  let remoteAudio = new Map();
+  let rawMicStream = null;
+  let micSource = null;
+  let micGain = null;
+  let dspNodes = {};
+  let livekitMicPublication = null;
+  let livekitMicTrack = null;
+  let livekitCameraPublication = null;
+  let isMicMuted = false;
+  let isMicEnabled = false;
+  let isCameraEnabled = false;
+  let guestFilterEngine = new FaceFilterEngine({ width: 480, height: 360 });
+  let roomDiscontinued = false;
+  let hostForcedMute = false;
+  let statsTimer = null;
+  let parsedLyrics = [];
+  let currentLyricIndex = -1;
+  let lyricClock = { hostTime: 0, receivedPerf: 0, playing: false };
+  let lyricRaf = null;
+  let participantIdentity = null;
+  let reconnectAttempts = 0;
+  let reconnectTimer = null;
+  let audienceVolume = 1.25;
+  let clientSyncOffset = 0.0;
+
+  function setStatus(text, tone = 'var(--text-dim)') {
+    let box = document.getElementById('liveQualityStatus');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'liveQualityStatus';
+      box.style.cssText = 'margin-top:10px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:rgba(0,0,0,.3);font:600 11px/1.45 system-ui;color:var(--text-dim);text-align:left;';
+      liveIndicator.parentElement?.appendChild(box);
+    }
+    box.style.color = tone;
+    box.textContent = text;
+    const health = document.getElementById('liveAudioHealth');
+    if (health) { health.style.display = 'block'; health.textContent = text.replace(/^LIVE • /, 'Audio: '); }
+  }
+
+  async function leaveLiveStage() {
+    // Cancel any pending auto-reconnect timers first
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+    // Tear down guest microphone and camera cleanly
+    if (isMicEnabled) { try { await disableGuestMic(); } catch (_) {} }
+    if (isCameraEnabled) { try { await toggleGuestCamera(); } catch (_) {} }
+    if (guestFilterEngine) { try { guestFilterEngine.stopCamera(); } catch (_) {} }
+    // Disconnect from LiveKit room; set room=null BEFORE disconnect so the
+    // RoomEvent.Disconnected handler sees null and skips the retry loop.
+    const r = room;
+    room = null;
+    try { await r?.disconnect(); } catch (_) {}
+    remoteAudio.clear();
+    removeVideo({ identity: 'host' });
+    const guestContainer = document.getElementById('guestSelfVideoContainer');
+    const guestBox = document.getElementById('guestSelfVideoBox');
+    if (guestContainer) guestContainer.innerHTML = '';
+    if (guestBox) guestBox.style.display = 'none';
+    const toolbar = document.getElementById('guestCameraFilterToolbar');
+    if (toolbar) toolbar.style.display = 'none';
+    if (btnAudienceSwitchCam) btnAudienceSwitchCam.style.display = 'none';
+    if (btnAudienceBottomSwitchCam) btnAudienceBottomSwitchCam.style.display = 'none';
+    updateAudienceStageVideoLayout();
+    document.querySelectorAll('#liveVideoGrid > div').forEach(el => el.remove());
+    if (liveAudio) { liveAudio.pause(); liveAudio.srcObject = null; }
+    document.getElementById('liveAudioUnlock')?.remove();
+    // Reset UI to pre-connect state
+    if (btnTuneIn) {
+      if (!roomDiscontinued) {
+        btnTuneIn.style.display = 'inline-block';
+        btnTuneIn.disabled = false;
+        btnTuneIn.textContent = '🎧 Tap to Listen Live';
+      } else {
+        btnTuneIn.style.display = 'none';
+      }
+    }
+    if (btnLeaveStage) btnLeaveStage.style.display = 'none';
+    if (liveIndicator) liveIndicator.style.display = 'none';
+    if (duetNotice) duetNotice.style.display = 'none';
+    if (btnEnableMic) btnEnableMic.disabled = true;
+    if (btnToggleCamera) btnToggleCamera.disabled = true;
+    reconnectAttempts = 0;
+    releaseWakeLock();
+    stopBackgroundAudioKeepAlive();
+    if (!roomDiscontinued) {
+      setStatus('Disconnected from live stage.', 'var(--text-dim)');
+    }
+  }
+  if (btnLeaveStage) btnLeaveStage.addEventListener('click', leaveLiveStage);
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function addChatMessage(sender, text, isSpecial = false, isHost = false) {
+    const msg = document.createElement('div');
+    msg.className = isSpecial ? 'chat-msg-req' : isHost ? 'chat-msg-host' : 'chat-msg-user';
+    const safeSender = escapeHtml(sender);
+    const safeText = escapeHtml(text);
+    msg.innerHTML = isSpecial ? `🎵 <strong>${safeSender}</strong> requested: <em>${safeText}</em>` : isHost ? `⭐ <strong>${safeSender}</strong>: ${safeText}` : `<strong>${safeSender}</strong>: ${safeText}`;
+    chatMessages.appendChild(msg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  async function ensurePlaybackAudio() {
+    if (!playbackCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) throw new Error('Web Audio is not supported by this browser.');
+      playbackCtx = new AC({ latencyHint: 'interactive', sampleRate: 48000 });
+      // Fix E: pin the playback context's destination to 2-ch stereo.
+      // LiveKit's webAudioMix graph feeds decoded remote audio into this
+      // context's destination. Without explicit pinning the OS speaker
+      // channel count (often 1 on mobile / mono headsets) folds the
+      // received stereo stream to mono on the receive side.
+      try { playbackCtx.destination.channelCount = Math.min(2, playbackCtx.destination.maxChannelCount || 2); } catch (_) {}
+      try { playbackCtx.destination.channelCountMode = 'max'; } catch (_) {}
+      try { playbackCtx.destination.channelInterpretation = 'speakers'; } catch (_) {}
+      if (typeof playbackCtx.setSinkId === 'function' && playbackSinkId) {
+        try { await playbackCtx.setSinkId(playbackSinkId); } catch (_) {}
+      }
+    }
+    if (playbackCtx.state === 'suspended') await playbackCtx.resume();
+    return playbackCtx;
+  }
+
+  async function setPlaybackSinkId(deviceId) {
+    playbackSinkId = deviceId || '';
+    if (playbackCtx && typeof playbackCtx.setSinkId === 'function') {
+      try { await playbackCtx.setSinkId(playbackSinkId); } catch (_) {}
+    }
+  }
+
+  // Low-latency receiver policy: starts at 0ms and delivers packets immediately.
+  // RTCRtpReceiver.jitterBufferTarget is in milliseconds; LiveKit's
+  // setPlayoutDelay fallback takes seconds.
+  const KARAOKE_AUDIO_LATENCY = {
+    healthy: 30,
+    moderate: 45,
+    bad: 60,
+    severe: 80,
+    critical: 120,
+    stallFloor: 35,
+    max: 180,
+    recoverySteps: 3
+  };
+
+  function setAudioJitterTarget(track, targetMs) {
+    if (!track) return 0;
+    const ms = Math.max(0, Math.min(KARAOKE_AUDIO_LATENCY.max, Math.round(targetMs / 5) * 5));
+    try {
+      const receiver = track.receiver;
+      if (receiver && 'jitterBufferTarget' in receiver) {
+        receiver.jitterBufferTarget = ms;
+        track.__nirmalJitterTargetMs = ms;
+        return ms;
+      }
+    } catch (_) {}
+    try {
+      if (typeof track.setPlayoutDelay === 'function') {
+        track.setPlayoutDelay(ms / 1000);
+        track.__nirmalJitterTargetMs = ms;
+        return ms;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  function getAudioJitterTarget(track) {
+    try {
+      const receiver = track?.receiver;
+      if (receiver && 'jitterBufferTarget' in receiver && Number.isFinite(receiver.jitterBufferTarget)) {
+        return Number(receiver.jitterBufferTarget);
+      }
+    } catch (_) {}
+    if (Number.isFinite(track?.__nirmalJitterTargetMs)) return track.__nirmalJitterTargetMs;
+    try { return Number(track?.getPlayoutDelay?.() || 0) * 1000; } catch (_) {}
+    return 0;
+  }
+
+  function tuneReceiver(track) {
+    if (track && !Number.isFinite(track.__nirmalJitterTargetMs)) setAudioJitterTarget(track, KARAOKE_AUDIO_LATENCY.healthy);
+    return track || null;
+  }
+
+  function isHostRemotePublication(participant, publication) {
+    if (!participant) return false;
+    // Any remote participant publishing audio should be received and played
+    if (participant.identity && participant.identity === room?.localParticipant?.identity) return false;
+    return true;
+  }
+
+  async function attachRemoteAudio(track, participant, publication) {
+    if (!track || track.kind !== L.Track.Kind.Audio || !isHostRemotePublication(participant, publication)) return;
+    const key = `${participant.identity}:${publication?.trackSid || track.sid || track.name || 'audio'}`;
+    if (remoteAudio.has(key)) return;
+
+    tuneReceiver(track);
+    try {
+      await ensurePlaybackAudio();
+      
+      // If primary liveAudio is already in use, create a dedicated element so both host and duet sing concurrently
+      let audioEl = liveAudio;
+      if (remoteAudio.size > 0 || !audioEl) {
+        audioEl = document.createElement('audio');
+        audioEl.autoplay = true;
+        audioEl.playsInline = true;
+        audioEl.controls = false;
+        audioEl.preload = 'auto';
+        audioEl.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0.01;pointer-events:none;left:0;bottom:0;z-index:0;';
+        document.body.appendChild(audioEl);
+      }
+
+      try { track.detach?.(audioEl); } catch (_) {}
+      track.attach(audioEl);
+      audioEl.autoplay = true;
+      audioEl.playsInline = true;
+      audioEl.controls = false;
+      audioEl.preload = 'auto';
+      audioEl.dataset.livekitProgramAudio = 'true';
+      try { track.start?.(); } catch (_) {}
+      try { track.setVolume?.(audienceVolume); } catch (_) {}
+      setAudioJitterTarget(track, KARAOKE_AUDIO_LATENCY.healthy);
+      remoteAudio.set(key, { key, track, participant, publication, audio: audioEl, __stallCount: 0, __lastStallAt: 0, __stable: 0 });
+
+      audioEl.onerror = () => console.warn('[Nirmal] audience program audio element error', audioEl.error);
+      audioEl.onplaying = () => updatePlaybackUnlock();
+      audioEl.onpause = () => updatePlaybackUnlock();
+
+      try {
+        await audioEl.play();
+      } catch (playErr) {
+        console.info('[Nirmal] Program audio autoplay blocked by browser policy, awaiting unlock gesture:', playErr?.message || playErr);
+      }
+      updatePlaybackUnlock();
+      if (remoteAudio.size > 0) {
+        setStatus(`LIVE • ${remoteAudio.size} active audio • low-latency WebRTC`, 'var(--accent-green)');
+      }
+    } catch (e) {
+      console.warn('[Nirmal] Notice during program audio attach:', e);
+      updatePlaybackUnlock();
+    }
+  }
+
+  function handleRemoteAudioStall(item, reason) {
+    if (!item?.track) return;
+    item.__stallCount = (item.__stallCount || 0) + 1;
+    item.__lastStallAt = Date.now();
+    item.__stable = 0;
+    const current = getAudioJitterTarget(item.track) || KARAOKE_AUDIO_LATENCY.healthy;
+    const next = Math.min(KARAOKE_AUDIO_LATENCY.max, Math.max(current + 15, KARAOKE_AUDIO_LATENCY.stallFloor));
+    setAudioJitterTarget(item.track, next);
+    try { item.audio?.play?.().catch?.(() => {}); } catch (_) {}
+    console.warn('[Nirmal] remote program audio stall', { reason, targetMs: next });
+  }
+
+  function getRemoteStereoInfo(track) {
+    if (!track) return { channels: 0 };
+    try {
+      const settings = track.mediaStreamTrack?.getSettings?.() || {};
+      return {
+        channels: Number(settings.channelCount || 0),
+        sampleRate: Number(settings.sampleRate || 0)
+      };
+    } catch (_) { return { channels: 0, sampleRate: 0 }; }
+  }
+
+  function removeRemoteAudio(track, participant) {
+    for (const [key, item] of remoteAudio) {
+      if (item.track !== track && item.participant?.identity !== participant?.identity) continue;
+      try { item.track?.detach?.(item.audio); } catch (_) {}
+      if (item.audio && item.audio !== liveAudio) {
+        try { item.audio.pause(); } catch (_) {}
+        try { item.audio.remove(); } catch (_) {}
+      }
+      remoteAudio.delete(key);
+    }
+    if (remoteAudio.size === 0 && liveAudio) {
+      try { liveAudio.pause(); } catch (_) {}
+    }
+    updatePlaybackUnlock();
+  }
+
+  function updateAudienceStageVideoLayout() {
+    const adminBox = document.getElementById('adminVideoBox');
+    const guestBox = document.getElementById('guestSelfVideoBox');
+    const videoArena = document.getElementById('stageVideoArena');
+    const videoGrid = document.getElementById('stageVideoGrid');
+    const card = document.getElementById('broadcastCard') || document.querySelector('.broadcast-card');
+    const arena = document.getElementById('stageArena');
+    const toggleBtn = document.getElementById('btnToggleSideBySide');
+
+    const hasAdmin = adminBox && adminBox.style.display !== 'none';
+    const hasGuest = guestBox && guestBox.style.display !== 'none';
+    const hasAny = hasAdmin || hasGuest;
+
+    if (videoArena) videoArena.style.display = hasAny ? 'flex' : 'none';
+    if (videoGrid) {
+      if (hasAdmin && hasGuest) {
+        videoGrid.classList.remove('single-video');
+      } else {
+        videoGrid.classList.add('single-video');
+      }
+    }
+    if (hasAny) {
+      card?.classList.add('wide-stage');
+      arena?.classList.add('has-admin-video');
+    } else {
+      card?.classList.remove('wide-stage');
+      arena?.classList.remove('has-admin-video');
+    }
+    if (toggleBtn) {
+      const isSide = arena?.classList.contains('side-by-side');
+      toggleBtn.textContent = isSide ? '⧉ Side by Side' : '☰ Stacked View';
+    }
+  }
+
+  function renderVideo(track, participant) {
+    if (!track || track.kind !== L.Track.Kind.Video) return;
+    const isAdmin = String(participant?.identity || '').startsWith('host-');
+    if (isAdmin) {
+      removeVideo(participant);
+      const container = document.getElementById('adminVideoContainer');
+      const adminBox = document.getElementById('adminVideoBox');
+      if (container && adminBox) {
+        container.innerHTML = '';
+        const video = track.attach();
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = true;
+        container.appendChild(video);
+        adminBox.style.display = 'flex';
+        updateAudienceStageVideoLayout();
+      }
+      return;
+    }
+
+    // Guest / audience member video grid
+    let grid = document.getElementById('liveVideoGrid');
+    if (!grid) {
+      grid = document.createElement('div');
+      grid.id = 'liveVideoGrid';
+      grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px;';
+      liveIndicator.parentElement?.insertBefore(grid, liveIndicator);
+    }
+    removeVideo(participant);
+    const wrap = document.createElement('div');
+    wrap.dataset.identity = participant.identity;
+    wrap.dataset.isAdmin = '0';
+    wrap.style.cssText = 'position:relative;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#000;min-height:90px;';
+    const video = track.attach();
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.style.cssText = 'display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#000;';
+    const label = document.createElement('span');
+    label.textContent = `🎤 ${participant.name || 'AUDIENCE'}`;
+    label.style.cssText = 'position:absolute;left:6px;bottom:5px;padding:3px 6px;border-radius:5px;background:rgba(0,0,0,.65);color:#fff;font:700 10px system-ui;';
+    wrap.append(video, label);
+    grid.appendChild(wrap);
+  }
+
+  function removeVideo(participant) {
+    if (!participant) return;
+    const isAdmin = String(participant.identity || '').startsWith('host-');
+    if (isAdmin) {
+      const container = document.getElementById('adminVideoContainer');
+      const adminBox = document.getElementById('adminVideoBox');
+      if (container) {
+        const video = container.querySelector('video');
+        try { video && participant?.getTrackPublications && [...participant.trackPublications.values()].forEach(p => p.videoTrack?.detach?.(video)); } catch (_) {}
+        container.innerHTML = '';
+      }
+      if (adminBox) adminBox.style.display = 'none';
+      updateAudienceStageVideoLayout();
+      return;
+    }
+    const wrap = document.querySelector(`#liveVideoGrid [data-identity="${CSS.escape(participant.identity)}"]`);
+    if (!wrap) return;
+    const video = wrap.querySelector('video');
+    try { video && participant?.getTrackPublications && [...participant.trackPublications.values()].forEach(p => p.videoTrack?.detach?.(video)); } catch (_) {}
+    wrap.remove();
+  }
+
+  function sendPresenceUpdate() {
+    if (!room?.localParticipant) return;
+    const payload = new TextEncoder().encode(JSON.stringify({
+      type: 'GUEST_HELLO',
+      role: guestRole,
+      name: chatNickInput.value.trim() || 'Audience Guest',
+      isDuetActive: !!livekitMicPublication && isMicEnabled && !isMicMuted,
+      hasMic: !!livekitMicPublication && isMicEnabled && !isMicMuted,
+      hasCamera: !!livekitCameraPublication && isCameraEnabled
+    }));
+    room.localParticipant.publishData(payload, { reliable: true }).catch(() => {});
+  }
+
+  async function publishAudienceMicTrack(browserTrack, label = 'processed') {
+    if (!room?.localParticipant || !browserTrack) throw new Error('LiveKit room is not connected.');
+    browserTrack.enabled = true;
+    try { browserTrack.contentHint = 'speech'; } catch (_) {}
+    const publishOptions = {
+      source: L.Track.Source.Microphone,
+      audioPreset: { maxBitrate: 64_000, priority: 'high' },
+      dtx: false,
+      red: true,
+      forceStereo: true,
+      name: 'nirmal-audience-mic',
+      stream: 'nirmal-audience-mic'
+    };
+    // Use LiveKit's LocalAudioTrack wrapper when available. The fallback raw
+    // MediaStreamTrack path is intentionally kept because some mobile browsers
+    // are more reliable with a native mic track than an AudioWorklet destination.
+    livekitMicTrack = L.LocalAudioTrack ? new L.LocalAudioTrack(browserTrack) : browserTrack;
+    livekitMicPublication = await room.localParticipant.publishTrack(livekitMicTrack, publishOptions);
+    isMicEnabled = true;
+    isMicMuted = hostForcedMute;
+    if (isMicMuted) {
+      try { await livekitMicPublication.mute(); } catch (_) {}
+      browserTrack.enabled = false;
+    }
+    updateMicButtons();
+    sendPresenceUpdate();
+    console.info('[Nirmal] audience microphone published:', label, livekitMicPublication?.trackSid);
+    return livekitMicPublication;
+  }
+
+  async function connectLiveKit() {
+    if (!roomId) throw new Error('Invalid room link.');
+    if (!L) throw new Error('LiveKit client failed to load.');
+
+    const identity = participantIdentity || `guest-${crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : Math.random().toString(36).slice(2, 14)}`;
+    participantIdentity = identity;
+    // All audience members may independently publish microphone/camera. The
+    // token restricts them to those two sources; the host has a separate grant
+    // allowing the mixed program screen-share-audio source.
+    const role = guestRole === 'participate' ? 'duet' : 'audience';
+    const tokenPayload = { roomName: roomId, identity, role };
+    let tokenData = null;
+    let tokenError = null;
+    for (const endpoint of ['/api/livekit/token', '/.netlify/functions/livekit-token']) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const tokenRes = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          signal: controller.signal,
+          body: JSON.stringify(tokenPayload)
+        });
+        const data = await tokenRes.json().catch(() => ({}));
+        if (tokenRes.status === 410 || tokenRes.status === 404 || data.roomEnded || data.discontinued) {
+          roomDiscontinued = true;
+          if (btnTuneIn) btnTuneIn.style.display = 'none';
+          clearTimeout(timer);
+          throw new Error('This live broadcast has ended or is discontinued by the host.');
+        }
+        if (tokenRes.ok && data.url && data.token) { tokenData = data; clearTimeout(timer); break; }
+        tokenError = new Error(data.error || `Unable to obtain LiveKit token (${tokenRes.status}).`);
+        if (tokenRes.status === 503 || tokenRes.status === 400 || tokenRes.status === 401) { clearTimeout(timer); break; }
+      } catch (e) { tokenError = e?.name === 'AbortError' ? new Error(`LiveKit token endpoint timed out: ${endpoint}`) : e; }
+      finally { clearTimeout(timer); }
+    }
+    if (!tokenData) throw tokenError || new Error('LiveKit token endpoint is unavailable.');
+
+    await ensurePlaybackAudio();
+    room = new L.Room({
+      adaptiveStream: true,
+      dynacast: true,
+      // Prefer separate publisher/subscriber RTP when the browser supports it.
+      singlePeerConnection: false,
+      publishDefaults: { audioPreset: { maxBitrate: 64_000, priority: 'high' }, dtx: false, red: true, simulcast: false, forceStereo: true }
+    });
+
+    const handlePublishedTrack = async (publication, participant) => {
+      if (!publication) return;
+      try {
+        if (!publication.isSubscribed && (publication.kind === L.Track.Kind.Video || isHostRemotePublication(participant, publication))) publication.setSubscribed(true);
+        if (publication.isSubscribed && publication.track) {
+          if (publication.kind === L.Track.Kind.Audio) {
+            await attachRemoteAudio(publication.track, participant, publication);
+          } else if (publication.kind === L.Track.Kind.Video) {
+            renderVideo(publication.track, participant);
+          }
+        }
+      } catch (e) {
+        console.warn('[Nirmal] remote publication subscribe/attach failed', e);
+      }
+    };
+
+    try { void room.prepareConnection?.(tokenData.url, tokenData.token)?.catch?.(() => {}); } catch (_) {}
+
+    room.on(L.RoomEvent.TrackPublished, (publication, participant) => {
+      if (publication.kind === L.Track.Kind.Video || isHostRemotePublication(participant, publication)) handlePublishedTrack(publication, participant);
+    });
+    room.on(L.RoomEvent.TrackSubscribed, async (track, publication, participant) => {
+      if (track.kind === L.Track.Kind.Audio) await attachRemoteAudio(track, participant, publication);
+      if (track.kind === L.Track.Kind.Video) renderVideo(track, participant);
+    });
+    room.on(L.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+      if (track.kind === L.Track.Kind.Audio) removeRemoteAudio(track, participant);
+      if (track.kind === L.Track.Kind.Video) removeVideo(participant);
+    });
+    room.on(L.RoomEvent.TrackUnpublished, (publication, participant) => {
+      if (publication.kind === L.Track.Kind.Audio) removeRemoteAudio(publication.track, participant);
+      if (publication.kind === L.Track.Kind.Video) removeVideo(participant);
+    });
+    room.on(L.RoomEvent.ParticipantConnected, participant => {
+      if (String(participant.identity || '').startsWith('host-')) {
+        if (hostDisconnectGraceTimer) {
+          clearTimeout(hostDisconnectGraceTimer);
+          hostDisconnectGraceTimer = null;
+        }
+        setStatus('LIVE • Host reconnected! Live stage active', 'var(--accent-green)');
+      }
+      for (const publication of participant.trackPublications.values()) {
+        if (publication.kind === L.Track.Kind.Video || isHostRemotePublication(participant, publication)) handlePublishedTrack(publication, participant);
+      }
+    });
+    room.on(L.RoomEvent.ParticipantDisconnected, async participant => {
+      removeAllParticipantMedia(participant.identity);
+      if (String(participant.identity || '').startsWith('host-')) {
+        console.info('[Nirmal] Host temporarily disconnected, awaiting reconnect grace period');
+        setStatus('⚠️ Host temporarily disconnected. Waiting for host to reconnect...', 'var(--accent-orange)');
+        if (hostDisconnectGraceTimer) clearTimeout(hostDisconnectGraceTimer);
+        hostDisconnectGraceTimer = setTimeout(async () => {
+          if (!room || room.state !== 'connected') return;
+          const hostStillPresent = Array.from(room.remoteParticipants.values()).some(p => String(p.identity || '').startsWith('host-'));
+          if (!hostStillPresent) {
+            console.info('[Nirmal] Host reconnect grace period expired. Broadcast ended.');
+            roomDiscontinued = true;
+            setStatus('🔴 The host has left the live stage. The broadcast has ended.', 'var(--accent-red)');
+            await leaveLiveStage();
+            if (btnTuneIn) btnTuneIn.style.display = 'none';
+          }
+        }, 45000);
+      }
+    });
+    room.on(L.RoomEvent.TrackSubscriptionFailed, (sid, participant) => {
+      console.warn('[Nirmal] TrackSubscriptionFailed', sid, participant?.identity);
+      setStatus(`LIVE • could not subscribe to ${participant?.name || participant?.identity || 'remote'} media`, 'var(--accent-red)');
+    });
+    room.on(L.RoomEvent.TrackStreamStateChanged, (publication, state, participant) => {
+      console.info('[Nirmal] remote stream state', publication?.trackSid, state, participant?.identity);
+    });
+    room.on(L.RoomEvent.TrackMuted, (publication, participant) => {
+      for (const item of remoteAudio.values()) {
+        if (item.publication !== publication || item.participant?.identity !== participant?.identity) continue;
+        try { item.track?.setVolume?.(0); } catch (_) {}
+      }
+    });
+    room.on(L.RoomEvent.TrackUnmuted, (publication, participant) => {
+      for (const item of remoteAudio.values()) {
+        if (item.publication !== publication || item.participant?.identity !== participant?.identity) continue;
+        try { item.track?.setVolume?.(audienceVolume); } catch (_) {}
+        try { item.track?.start?.(); } catch (_) {}
+        try { item.audio?.play?.().catch?.(() => {}); } catch (_) {}
+      }
+    });
+    room.on(L.RoomEvent.DataReceived, async (payload, participant) => {
+      try {
+        const data = JSON.parse(new TextDecoder().decode(payload));
+        if (data.type === 'ROOM_DISCONTINUED') {
+          console.info('[Nirmal] Received ROOM_DISCONTINUED message from host');
+          roomDiscontinued = true;
+          setStatus('🔴 Broadcast discontinued by host. Live stream has ended.', 'var(--accent-red)');
+          await leaveLiveStage();
+          if (btnTuneIn) btnTuneIn.style.display = 'none';
+          alert('The host has ended this live broadcast. The live stage is now closed.');
+          return;
+        }
+        if (data.type === 'APPROVE_MIC') {
+          if (data.targetIdentity && data.targetIdentity === room?.localParticipant?.identity) {
+            console.info('[Nirmal] Host approved duet mic request!');
+            isDuetGuest = true;
+            const reqBtn = document.getElementById('btnRequestMic');
+            if (reqBtn) reqBtn.style.display = 'none';
+            const duetBox = document.getElementById('duetNotice');
+            if (duetBox) duetBox.style.display = 'block';
+            if (btnEnableMic) {
+              btnEnableMic.style.display = 'inline-flex';
+              btnEnableMic.disabled = false;
+            }
+            if (roleBadge) {
+              roleBadge.textContent = '🎤 Duet Singer Mode';
+              roleBadge.className = 'role-badge badge-duet';
+            }
+            alert('🎉 The Host accepted your duet request! Tap "Enable Mic" below to sing along!');
+          }
+          return;
+        }
+        if (data.type === 'REJECT_MIC') {
+          if (data.targetIdentity && data.targetIdentity === room?.localParticipant?.identity) {
+            console.info('[Nirmal] Host declined duet mic request');
+            const reqBtn = document.getElementById('btnRequestMic');
+            if (reqBtn) {
+              reqBtn.textContent = '🎤 Request Duet Mic to Sing';
+              reqBtn.disabled = false;
+            }
+            alert('The Host is not taking duet singers right now.');
+          }
+          return;
+        }
+        if (data.type === 'INIT_LYRICS') {
+          console.info('[Nirmal] Received INIT_LYRICS:', Array.isArray(data.payload) ? data.payload.length : 0);
+          renderAudienceLyrics(data.payload);
+          return;
+        }
+        if (data.type === 'STATE_SNAPSHOT') {
+          if (Array.isArray(data.lyrics)) renderAudienceLyrics(data.lyrics);
+          if (data.time) {
+            const p = data.time;
+            lyricClock = { hostTime: Number(p.currentTime || 0), receivedPerf: performance.now(), playing: p.playing !== false };
+            updateAudienceScroll(lyricClock.hostTime);
+          }
+          return;
+        }
+        if (data.type === 'SYNC_TIME') {
+          const payload = typeof data.payload === 'number' ? { currentTime: data.payload, playing: true } : (data.payload || {});
+          lyricClock = {
+            hostTime: Number(payload.currentTime || 0),
+            receivedPerf: performance.now(),
+            playing: payload.playing !== false
+          };
+          updateAudienceScroll(lyricClock.hostTime);
+        }
+        else if (data.type === 'VISUAL_DATA') {
+          const wrap = document.getElementById('audienceVisualizerWrap');
+          const cvs  = document.getElementById('audienceVisualizer');
+          if (!cvs || !wrap) return;
+          const bars = data.bars;
+          // Hide wrap and clear on silence/null
+          if (!bars || !Array.isArray(bars)) {
+            wrap.style.display = 'none';
+            const ctx2d = cvs.getContext('2d');
+            if (ctx2d) ctx2d.clearRect(0, 0, cvs.width, cvs.height);
+            return;
+          }
+          // Ensure canvas pixel size matches CSS layout size
+          const dpr = window.devicePixelRatio || 1;
+          const cw = wrap.clientWidth || 320;
+          const ch = 48;
+          if (cvs.width !== Math.round(cw * dpr) || cvs.height !== Math.round(ch * dpr)) {
+            cvs.width  = Math.round(cw * dpr);
+            cvs.height = Math.round(ch * dpr);
+          }
+          wrap.style.display = '';
+          const ctx2d = cvs.getContext('2d');
+          const w = cvs.width, h = cvs.height;
+          ctx2d.clearRect(0, 0, w, h);
+          const numBars = bars.length;
+          const barSpacing = w / numBars;
+          const barWidth = barSpacing * 0.65;
+          const baseLine = h * 0.92;
+          // Match host visualizer gradient: cyan → purple → pink
+          const grad = ctx2d.createLinearGradient(0, h * 0.05, 0, baseLine);
+          grad.addColorStop(0, '#00e5ff');
+          grad.addColorStop(0.5, '#a855f7');
+          grad.addColorStop(1, '#ff007f');
+          ctx2d.fillStyle = grad;
+          for (let i = 0; i < numBars; i++) {
+            const pct = (bars[i] || 0) / 255;
+            const barH = Math.pow(pct, 1.4) * (h * 0.85);
+            if (barH < 1) continue;
+            const barX = i * barSpacing + (barSpacing - barWidth) / 2;
+            const barY = baseLine - barH;
+            if (typeof ctx2d.roundRect === 'function') {
+              ctx2d.beginPath();
+              ctx2d.roundRect(barX, barY, barWidth, barH, [3, 3, 0, 0]);
+              ctx2d.fill();
+            } else {
+              ctx2d.fillRect(barX, barY, barWidth, barH);
+            }
+          }
+        }
+        else if (data.type === 'CHAT_BROADCAST') addChatMessage(data.sender, data.text, data.isSpecial, data.isHost);
+        else if (data.type === 'FORCE_MUTE') {
+          hostForcedMute = !!data.state;
+          isMicMuted = hostForcedMute;
+          rawMicStream?.getAudioTracks().forEach(t => { t.enabled = !isMicMuted; });
+          if (livekitMicPublication) {
+            if (isMicMuted) livekitMicPublication.mute?.();
+            else if (isMicEnabled) livekitMicPublication.unmute?.();
+          }
+          updateMicButtons();
+          sendPresenceUpdate();
+        }
+      } catch (_) {}
+    });
+    room.on(L.RoomEvent.AudioPlaybackStatusChanged, () => {
+      updatePlaybackUnlock();
+    });
+    room.on(L.RoomEvent.Reconnecting, () => {
+      setStatus('LIVE • reconnecting… keeping your live session active', 'var(--accent-orange)');
+    });
+    room.on(L.RoomEvent.Reconnected, async () => {
+      reconnectAttempts = 0;
+      setStatus('LIVE • reconnected • audio/video subscriptions restored', 'var(--accent-green)');
+      // Re-publish the local processed mic if LiveKit released the old publication.
+      if (isMicEnabled && livekitMicTrack && !livekitMicPublication) {
+        try {
+          livekitMicPublication = await room.localParticipant.publishTrack(livekitMicTrack, {
+            source: L.Track.Source.Microphone,
+            dtx: false,
+            red: true,
+            forceStereo: true,
+            audioPreset: { maxBitrate: 64_000, priority: 'high' },
+            name: 'nirmal-audience-mic',
+            stream: 'nirmal-audience-mic'
+          });
+        } catch (e) { console.warn('[Nirmal] microphone republish after reconnect failed:', e); }
+      }
+      sendPresenceUpdate();
+    });
+    room.on(L.RoomEvent.Disconnected, async (reason) => {
+      liveIndicator.style.display = 'none';
+      document.getElementById('liveAudioUnlock')?.remove();
+      if (roomDiscontinued) {
+        setStatus('🔴 Live broadcast has ended.', 'var(--accent-red)');
+        if (btnTuneIn) btnTuneIn.style.display = 'none';
+        return;
+      }
+      // If leaveLiveStage() was called intentionally it sets room=null before
+      // calling room.disconnect(); skip the retry loop in that case.
+      if (room === null) return;
+      // A transient network/token problem should not look like an expired room.
+      // Fetch a fresh token and reconnect the same LiveKit Room automatically.
+      if (reconnectTimer) return;
+      const reasonText = String(reason || 'unknown');
+      if (reasonText === 'DUPLICATE_IDENTITY' || reasonText === 'PARTICIPANT_REMOVED') {
+        setStatus(`Broadcast disconnected: ${reasonText}`, 'var(--accent-red)');
+        if (btnTuneIn) {
+          btnTuneIn.style.display = 'inline-block';
+          btnTuneIn.disabled = false;
+          btnTuneIn.textContent = '📻 Reconnect to Live Stage';
+        }
+        if (btnEnableMic) btnEnableMic.disabled = true;
+        if (btnToggleCamera) btnToggleCamera.disabled = true;
+        return;
+      }
+      const retry = async () => {
+        reconnectTimer = null;
+        reconnectAttempts += 1;
+        try {
+          setStatus(`LIVE • reconnecting (${reconnectAttempts}/8)…`, 'var(--accent-orange)');
+          const tokenPayload = { roomName: roomId, identity: participantIdentity, role: guestRole === 'participate' ? 'duet' : 'audience' };
+          let tokenData = null;
+          let tokenError = null;
+          for (const endpoint of ['/api/livekit/token', '/.netlify/functions/livekit-token']) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 8000);
+            try {
+              const tokenRes = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', signal: controller.signal, body: JSON.stringify(tokenPayload) });
+              const data = await tokenRes.json().catch(() => ({}));
+              if (tokenRes.status === 410 || tokenRes.status === 404 || data.roomEnded || data.discontinued) {
+                roomDiscontinued = true;
+                setStatus('🔴 This live broadcast has ended. Room discontinued.', 'var(--accent-red)');
+                if (btnTuneIn) btnTuneIn.style.display = 'none';
+                clearTimeout(timer);
+                await leaveLiveStage();
+                return;
+              }
+              if (tokenRes.ok && data.token && data.url) { tokenData = data; clearTimeout(timer); break; }
+              tokenError = new Error(data.error || `Token refresh failed (${tokenRes.status})`);
+              if (tokenRes.status === 503 || tokenRes.status === 400) { clearTimeout(timer); break; }
+            } catch (e) { tokenError = e?.name === 'AbortError' ? new Error(`LiveKit token endpoint timed out: ${endpoint}`) : e; }
+            finally { clearTimeout(timer); }
+          }
+          if (!tokenData) throw tokenError || new Error('Token refresh failed.');
+          await room.connect(tokenData.url, tokenData.token, { autoSubscribe: true });
+          try { await room.startAudio(); } catch (_) {}
+          updatePlaybackUnlock();
+          reconnectAttempts = 0;
+          liveIndicator.style.display = 'flex';
+          for (const participant of room.remoteParticipants.values()) {
+            for (const publication of participant.trackPublications.values()) await handlePublishedTrack(publication, participant);
+          }
+          sendPresenceUpdate();
+          setStatus('LIVE • reconnected with a fresh token', 'var(--accent-green)');
+        } catch (err) {
+          if (reconnectAttempts < 8 && !roomDiscontinued) {
+            reconnectTimer = setTimeout(retry, Math.min(30000, 1500 * Math.pow(2, reconnectAttempts - 1)));
+          } else {
+            setStatus(`Broadcast connection lost. ${err.message || 'Please tap Tune In again.'}`, 'var(--accent-red)');
+            lyricsContent.innerHTML = '<div class="lyric-line-aud" style="color:var(--accent-orange);">Connection lost. Tap Reconnect to try again.</div>';
+            if (btnTuneIn && !roomDiscontinued) {
+              btnTuneIn.style.display = 'inline-block';
+              btnTuneIn.disabled = false;
+              btnTuneIn.textContent = '📻 Reconnect to Live Stage';
+            }
+          }
+        }
+      };
+      reconnectTimer = setTimeout(retry, 1500);
+    });
+    room.on(L.RoomEvent.MediaDevicesError, err => {
+      console.warn('[Nirmal] LiveKit media device error', err);
+      setStatus(`Media device error: ${err?.message || err}`, 'var(--accent-orange)');
+    });
+
+    await room.connect(tokenData.url, tokenData.token, { autoSubscribe: true });
+    if (btnEnableMic) btnEnableMic.disabled = false;
+    if (btnToggleCamera) btnToggleCamera.disabled = false;
+    if (btnLeaveStage) btnLeaveStage.style.display = 'block';
+
+    // Must be attempted from the Tune In interaction; if the browser rejects
+    // autoplay, the explicit Enable Live Audio button below remains available.
+    try { await room.startAudio(); } catch (_) {}
+
+    // Attach every publication already present when we joined.
+    for (const participant of room.remoteParticipants.values()) {
+      for (const publication of participant.trackPublications.values()) {
+        await handlePublishedTrack(publication, participant);
+      }
+    }
+
+    updatePlaybackUnlock();
+    sendPresenceUpdate();
+    setStatus('LIVE • connected • audio/video subscriptions active', 'var(--accent-green)');
+    requestStageState();
+    setTimeout(() => { if (!parsedLyrics.length) requestStageState(); }, 1200);
+    setTimeout(() => { if (!parsedLyrics.length) requestStageState(); }, 2800);
+    startStatsMonitor();
+  }
+
+  function updatePlaybackUnlock() {
+    if (!room) return;
+    const audioElements = Array.from(remoteAudio.values()).map(i => i.audio).filter(Boolean);
+    const anyAudioPaused = audioElements.length > 0 && audioElements.some(el => el.paused);
+    const ctxBlocked = playbackCtx && playbackCtx.state !== 'running';
+    const lkBlocked = room.canPlaybackAudio === false;
+    const needsUnlock = anyAudioPaused || ctxBlocked || lkBlocked;
+
+    let unlock = document.getElementById('liveAudioUnlock');
+    if (!needsUnlock) {
+      unlock?.remove();
+      return;
+    }
+    setStatus('LIVE • Tap "Enable Live Audio" below to hear the broadcast', 'var(--accent-orange)');
+    if (!unlock) {
+      unlock = document.createElement('button');
+      unlock.id = 'liveAudioUnlock';
+      unlock.className = 'btn btn-primary';
+      unlock.textContent = '🔊 Tap to Enable Live Audio';
+      unlock.style.cssText = 'width:100%;margin-top:8px;padding:12px;font-size:1rem;font-weight:800;background:var(--accent-green,#00ff88);color:#000;border:none;border-radius:10px;cursor:pointer;animation:pulse 1.5s infinite;';
+      liveIndicator.parentElement?.appendChild(unlock);
+    }
+    unlock.onclick = async () => {
+      try { await ensurePlaybackAudio(); } catch (_) {}
+      try { await room.startAudio?.(); } catch (_) {}
+      try { await playbackCtx?.resume?.(); } catch (_) {}
+      if (liveAudio) {
+        liveAudio.muted = false;
+        try { await liveAudio.play(); } catch (_) {}
+      }
+      for (const item of remoteAudio.values()) {
+        if (item.audio) {
+          item.audio.muted = false;
+          try { item.track?.setVolume?.(audienceVolume); } catch (_) {}
+          try { await item.audio.play(); } catch (_) {}
+        }
+      }
+      updatePlaybackUnlock();
+      if (remoteAudio.size > 0) {
+        setStatus(`LIVE • ${remoteAudio.size} program audio track${remoteAudio.size === 1 ? '' : 's'} playing`, 'var(--accent-green)');
+      }
+    };
+  }
+
+  function removeAllParticipantMedia(identity) {
+    for (const [key, item] of remoteAudio) {
+      if (item.participant?.identity !== identity) continue;
+      try { item.track?.detach?.(item.audio); } catch (_) {}
+      remoteAudio.delete(key);
+    }
+    if (remoteAudio.size === 0 && liveAudio) { try { liveAudio.pause(); } catch (_) {} }
+    removeVideo({ identity });
+    document.querySelectorAll(`#liveVideoGrid [data-identity="${CSS.escape(identity)}"]`).forEach(el => el.remove());
+  }
+
+  function startStatsMonitor() {
+    if (statsTimer) clearInterval(statsTimer);
+    statsTimer = setInterval(async () => {
+      try {
+        let jitter = 0, intervalLossPct = 0, concealPct = 0, currentDelayMs = 0, minDelayMs = 0;
+        let anyAudio = false;
+        for (const item of remoteAudio.values()) {
+          tuneReceiver(item.track);
+          const report = await item.track.getRTCStatsReport?.();
+          if (!report) continue;
+          report.forEach(r => {
+            if (r.type !== 'inbound-rtp' || (r.kind !== 'audio' && r.mediaType !== 'audio')) return;
+            anyAudio = true;
+            const received = Number(r.packetsReceived || 0);
+            const lost = Number(r.packetsLost || 0);
+            const dRecv = Math.max(0, received - Number(item.__prevPackets || received));
+            const dLost = Math.max(0, lost - Number(item.__prevLost || lost));
+            const total = dRecv + dLost;
+            if (total) intervalLossPct = Math.max(intervalLossPct, dLost / total * 100);
+            item.__prevPackets = received; item.__prevLost = lost;
+            jitter = Math.max(jitter, Number(r.jitter || 0) * 1000);
+            const concealed = Number(r.concealedSamples || 0);
+            const samples = Number(r.totalSamplesReceived || 0);
+            const dConcealed = Math.max(0, concealed - Number(item.__prevConcealed || concealed));
+            const dSamples = Math.max(0, samples - Number(item.__prevSamples || samples));
+            if (dSamples) concealPct = Math.max(concealPct, dConcealed / dSamples * 100);
+            item.__prevConcealed = concealed; item.__prevSamples = samples;
+            const emitted = Number(r.jitterBufferEmittedCount || 0);
+            if (emitted > 0) {
+              if (Number.isFinite(r.jitterBufferTargetDelay)) currentDelayMs = Math.max(currentDelayMs, Number(r.jitterBufferTargetDelay) / emitted * 1000);
+              if (Number.isFinite(r.jitterBufferMinimumDelay)) minDelayMs = Math.max(minDelayMs, Number(r.jitterBufferMinimumDelay) / emitted * 1000);
+            }
+          });
+        }
+
+        const state = window.__nirmalAudioHealth || (window.__nirmalAudioHealth = { jitter:0, loss:0, conceal:0 });
+        state.jitter = state.jitter ? state.jitter * .75 + jitter * .25 : jitter;
+        state.loss = state.loss ? state.loss * .75 + intervalLossPct * .25 : intervalLossPct;
+        state.conceal = state.conceal ? state.conceal * .75 + concealPct * .25 : concealPct;
+
+        let desired = KARAOKE_AUDIO_LATENCY.healthy;
+        if (intervalLossPct >= 4 || jitter >= 35 || concealPct >= 3) desired = KARAOKE_AUDIO_LATENCY.critical;
+        else if (intervalLossPct >= 2 || jitter >= 22 || concealPct >= 1.5) desired = KARAOKE_AUDIO_LATENCY.severe;
+        else if (intervalLossPct >= 1 || jitter >= 14 || concealPct >= 0.8) desired = KARAOKE_AUDIO_LATENCY.bad;
+        else if (intervalLossPct >= 0.4 || jitter >= 8 || concealPct >= 0.3) desired = KARAOKE_AUDIO_LATENCY.moderate;
+
+        for (const item of remoteAudio.values()) {
+          const current = getAudioJitterTarget(item.track) || KARAOKE_AUDIO_LATENCY.healthy;
+          const recentStall = Date.now() - Number(item.__lastStallAt || 0) < 2000;
+          const target = recentStall ? Math.max(desired, KARAOKE_AUDIO_LATENCY.stallFloor) : desired;
+          if (target > current + 5) {
+            item.__stable = 0;
+            setAudioJitterTarget(item.track, Math.min(target, current + 15));
+          } else if (target < current - 2 && intervalLossPct < .2 && jitter < 8 && concealPct < .1) {
+            item.__stable = (item.__stable || 0) + 1;
+            if (item.__stable >= KARAOKE_AUDIO_LATENCY.recoverySteps) {
+              setAudioJitterTarget(item.track, Math.max(target, current - 10));
+              item.__stable = 0;
+            }
+          } else if (target >= current) item.__stable = 0;
+        }
+
+        // Protect audio by shedding only audience video when the connection is poor.
+        const shed = state.loss >= 1.5 || state.jitter >= 30 || state.conceal >= 1.5;
+        for (const participant of room?.remoteParticipants?.values?.() || []) {
+          if (String(participant.identity || '').startsWith('host-')) continue;
+          for (const publication of participant.trackPublications?.values?.() || []) {
+            if (publication.kind !== L.Track.Kind.Video || !publication.setSubscribed) continue;
+            try {
+              if (shed && publication.isSubscribed) await publication.setSubscribed(false);
+              else if (!shed && !publication.isSubscribed) await publication.setSubscribed(true);
+            } catch (_) {}
+          }
+        }
+
+        const effective = remoteAudio.size ? Math.max(...[...remoteAudio.values()].map(i => getAudioJitterTarget(i.track))) : 0;
+        setStatus(`LIVE • ${anyAudio ? 'audio' : 'waiting for audio'} • jitter ${state.jitter.toFixed(1)}ms • target ${effective.toFixed(0)}ms • current ${currentDelayMs.toFixed(0)}ms • min ${minDelayMs.toFixed(0)}ms • loss ${state.loss.toFixed(2)}%${shed ? ' • video reduced' : ''}`, (state.loss > 2 || state.jitter > 30) ? 'var(--accent-orange)' : 'var(--accent-green)');
+      } catch (e) {
+        console.warn('[Nirmal] audio stats monitor error:', e);
+      }
+    }, 500);
+  }
+
+  function requestStageState() {
+    if (!room?.localParticipant) return;
+    try {
+      const payload = new TextEncoder().encode(JSON.stringify({ type: 'REQUEST_STAGE_STATE' }));
+      room.localParticipant.publishData(payload, { reliable: true });
+    } catch (_) {}
+  }
+
+  btnTuneIn.addEventListener('click', async () => {
+    btnTuneIn.disabled = true;
+    try {
+      await ensurePlaybackAudio();
+      await connectLiveKit();
+      acquireWakeLock();
+      startBackgroundAudioKeepAlive();
+      updateMediaSession({
+        title: isDuetGuest ? 'Live Stage Duet' : 'Live Stage Broadcast',
+        artist: 'Nirmal Live Stage',
+        album: 'Nirmal Karaoke Live'
+      });
+      btnTuneIn.style.display = 'none';
+      liveIndicator.style.display = 'flex';
+      if (isDuetGuest) {
+        duetNotice.style.display = 'block';
+        if (btnRequestMic) btnRequestMic.style.display = 'none';
+      } else {
+        duetNotice.style.display = 'none';
+        if (btnRequestMic) btnRequestMic.style.display = 'block';
+      }
+    } catch (err) {
+      btnTuneIn.disabled = false;
+      lyricsContent.innerHTML = `<div class="lyric-line-aud" style="color:var(--accent-red);">${String(err.message || err).replace(/[<>]/g,'')}</div>`;
+      setStatus(err.message || 'Could not connect.', 'var(--accent-red)');
+    }
+  });
+
+  if (isDuetGuest) {
+    roleBadge.textContent = '🎤 Duet Singer Mode';
+    roleBadge.className = 'role-badge badge-duet';
+    if (btnRequestMic) btnRequestMic.style.display = 'none';
+  } else {
+    roleBadge.textContent = '🎧 Live Listener & Chat';
+    roleBadge.className = 'role-badge badge-listen';
+    duetNotice.style.display = 'none';
+  }
+
+  btnRequestMic?.addEventListener('click', async () => {
+    if (!room?.localParticipant) return;
+    try {
+      const myId = room.localParticipant.identity;
+      const myName = chatNickInput?.value?.trim() || presence.getUser()?.name || `Guest-${myId.slice(-4)}`;
+      const payload = new TextEncoder().encode(JSON.stringify({
+        type: 'REQUEST_MIC',
+        identity: myId,
+        name: myName
+      }));
+      await room.localParticipant.publishData(payload, { reliable: true });
+      btnRequestMic.textContent = '⏳ Duet Requested (Waiting for Host Approval...)';
+      btnRequestMic.disabled = true;
+    } catch (err) {
+      alert('Could not send duet request: ' + (err.message || err));
+    }
+  });
+
+  // Single-tap gesture activation for mobile autoplay & mic permissions (replaces failing setTimeout)
+  if (params.get('autoJoin') === '1' && roomId) {
+    const overlay = document.createElement('div');
+    overlay.id = 'autoJoinGestureModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(4,2,8,0.85);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;';
+    overlay.innerHTML = `
+      <div style="background:linear-gradient(145deg, #1c152b, #0f0b18); border:1px solid #ff007f; border-radius:20px; padding:28px 22px; max-width:380px; width:100%; box-shadow:0 0 35px rgba(255,0,127,0.35); text-align:center;">
+        <div style="font-size:3rem; margin-bottom:12px;">🎤</div>
+        <h2 style="color:#fff; font-size:1.25rem; font-weight:800; margin:0 0 8px;">Duet Invitation Accepted!</h2>
+        <p style="color:var(--text-dim, #a39cb5); font-size:0.85rem; line-height:1.4; margin:0 0 20px;">Tap below to connect your microphone and join the host on the live stage.</p>
+        <button id="btnTriggerGestureJoin" class="button button-live" style="width:100%; min-height:48px; font-size:1rem; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:#ff007f; border:none; border-radius:12px; color:#fff;">
+          ● Join Live Stage Now
+        </button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const btnTrigger = overlay.querySelector('#btnTriggerGestureJoin');
+    btnTrigger?.addEventListener('click', () => {
+      overlay.remove();
+      if (btnTuneIn && !btnTuneIn.disabled && btnTuneIn.style.display !== 'none') {
+        btnTuneIn.click();
+      }
+    });
+  }
+
+  chatNickInput.addEventListener('change', sendPresenceUpdate);
+
+  const btnToggleSideBySide = document.getElementById('btnToggleSideBySide');
+  btnToggleSideBySide?.addEventListener('click', () => {
+    const arena = document.getElementById('stageArena');
+    if (!arena) return;
+    const isSide = arena.classList.toggle('side-by-side');
+    btnToggleSideBySide.textContent = isSide ? '⧉ Side by Side' : '☰ Stacked View';
+  });
+
+  function updateMicButtons() {
+    if (btnEnableMic) {
+      btnEnableMic.textContent = isMicEnabled ? '⏹ Disable Mic' : '🎤 Enable Mic';
+      btnEnableMic.style.borderColor = isMicEnabled ? 'var(--accent-green)' : '';
+      btnEnableMic.style.color = isMicEnabled ? 'var(--accent-green)' : '';
+    }
+    if (btnToggleMute) {
+      btnToggleMute.style.display = isMicEnabled ? 'inline-flex' : 'none';
+      btnToggleMute.textContent = hostForcedMute ? '🔇 Muted by Admin' : (isMicMuted ? '🔇 Unmute Mic' : '🔊 Mute Mic');
+      btnToggleMute.className = isMicMuted ? 'btn btn-mute muted' : 'btn btn-mute';
+    }
+    if (btnToggleCamera) {
+      btnToggleCamera.textContent = isCameraEnabled ? '⏹ Disable Camera' : '📷 Enable Camera';
+      btnToggleCamera.style.borderColor = isCameraEnabled ? 'var(--accent-blue)' : '';
+      btnToggleCamera.style.color = isCameraEnabled ? 'var(--accent-blue)' : '';
+    }
+    updatePresetUi?.();
+  }
+
+  async function initGuestAudioDSP() {
+    if (!room?.localParticipant) {
+      alert('Please connect to the live room first by tapping Tune In.');
+      return;
+    }
+    await ensurePlaybackAudio();
+    // Separate mic/DSP context: the audience receive renderer is intentionally
+    // isolated so enabling voice effects cannot add latency or CPU contention to
+    // the incoming music stream.
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
+    }
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    rawMicStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: { ideal: 2 },
+        sampleRate: { ideal: 48000 },
+        sampleSize: { ideal: 16 },
+        latency: { ideal: 0.01 },
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: false
+      },
+      video: false
+    });
+
+    try {
+      if (!audioCtx.audioWorklet) throw new Error('AudioWorklet unavailable');
+      if (!dspNodes.loaded) {
+        const dataUri = 'data:application/javascript;base64,' + btoa(unescape(encodeURIComponent(dspWorkletCode)));
+        await audioCtx.audioWorklet.addModule(dataUri);
+        dspNodes.loaded = true;
+      }
+    } catch (workletError) {
+      // Do not make the singer lose their microphone just because the DSP layer
+      // is unavailable. Publish the real microphone track directly as a reliable
+      // LiveKit fallback. Karaoke effects can be re-enabled when a capable browser
+      // is used.
+      console.warn('[Nirmal] audience DSP unavailable; publishing raw microphone:', workletError);
+      try { await publishAudienceMicTrack(rawMicStream.getAudioTracks()[0], 'raw-fallback'); }
+      catch (publishError) { rawMicStream?.getTracks().forEach(t => { try { t.stop(); } catch (_) {} }); rawMicStream = null; throw publishError; }
+      guestVoiceModule.style.display = 'block';
+      return;
+    }
+
+    try { micSource?.disconnect?.(); } catch (_) {}
+    micSource = null;
+    try { micGain?.disconnect?.(); } catch (_) {}
+    micGain = null;
+    if (dspNodes) {
+      Object.keys(dspNodes).forEach(k => {
+        if (k !== 'loaded') {
+          try { dspNodes[k]?.port?.close?.(); } catch (_) {}
+          try { dspNodes[k]?.disconnect?.(); } catch (_) {}
+          delete dspNodes[k];
+        }
+      });
+    }
+
+    micSource = audioCtx.createMediaStreamSource(rawMicStream);
+    // Fix G/H: guest vocal mic is intentionally mono (single singer channel).
+    // Pin to 1-ch explicit to prevent phantom stereo issues in the DSP graph.
+    try { micSource.channelCount = 1; } catch (_) {}
+    try { micSource.channelCountMode = 'explicit'; } catch (_) {}
+    try { micSource.channelInterpretation = 'discrete'; } catch (_) {}
+    micGain = audioCtx.createGain();
+    micGain.gain.value = parseFloat(document.getElementById('sliderGuestMicVol').value || 1);
+    dspNodes.pitcher = new AudioWorkletNode(audioCtx, 'polyphonic-shifter', { outputChannelCount: [2] });
+    dspNodes.hp = audioCtx.createBiquadFilter(); dspNodes.hp.type = 'highpass'; dspNodes.hp.frequency.value = 40;
+    dspNodes.lp = audioCtx.createBiquadFilter(); dspNodes.lp.type = 'lowpass'; dspNodes.lp.frequency.value = 16000;
+    dspNodes.formantEq = audioCtx.createBiquadFilter(); dspNodes.formantEq.type = 'peaking'; dspNodes.formantEq.Q.value = .8;
+    dspNodes.waveshaper = audioCtx.createWaveShaper();
+    dspNodes.waveshaper.oversample = '4x';
+    dspNodes.fxBypassGain = audioCtx.createGain(); dspNodes.fxBypassGain.gain.value = 1;
+    dspNodes.fxActiveGain = audioCtx.createGain(); dspNodes.fxActiveGain.gain.value = 0;
+    dspNodes.dest = audioCtx.createMediaStreamDestination();
+    try {
+      dspNodes.dest.channelCount = 2;
+      dspNodes.dest.channelCountMode = 'explicit';
+      dspNodes.dest.channelInterpretation = 'speakers';
+    } catch (_) {}
+
+    micSource.connect(micGain);
+    micGain.connect(dspNodes.fxBypassGain).connect(dspNodes.dest);
+    micGain.connect(dspNodes.fxActiveGain).connect(dspNodes.pitcher).connect(dspNodes.hp).connect(dspNodes.lp).connect(dspNodes.formantEq).connect(dspNodes.waveshaper).connect(dspNodes.dest);
+
+    const processedTrack = dspNodes.dest.stream.getAudioTracks()[0];
+    if (!processedTrack) throw new Error('Could not create the processed microphone stream. Please reload and try again.');
+    try {
+      const preset = { maxBitrate: 64_000, priority: 'high' };
+      // Keep audience microphone transport modest but stereo-capable; prioritise
+      // it above camera video so the singer remains intelligible on mobile Wi-Fi.
+      processedTrack.enabled = true;
+      try { processedTrack.contentHint = 'speech'; } catch (_) {}
+      livekitMicTrack = L.LocalAudioTrack ? new L.LocalAudioTrack(processedTrack) : processedTrack;
+      livekitMicPublication = await room.localParticipant.publishTrack(livekitMicTrack, {
+        source: L.Track.Source.Microphone,
+        ...(preset ? { audioPreset: preset } : {}),
+        dtx: false,
+        red: true,
+        forceStereo: true,
+        name: 'nirmal-audience-mic',
+        stream: 'nirmal-audience-mic'
+      });
+      isMicEnabled = true;
+      isMicMuted = hostForcedMute;
+      if (isMicMuted) {
+        try { await livekitMicPublication.mute(); } catch (_) {}
+        rawMicStream?.getAudioTracks().forEach(t => { t.enabled = false; });
+        processedTrack.enabled = false;
+      }
+      updateMicButtons();
+      sendPresenceUpdate();
+      guestVoiceModule.style.display = 'block';
+    } catch (publishError) {
+      // If the processed MediaStreamDestination track is rejected, immediately
+      // republish the same physical microphone as a raw track so the LiveKit
+      // audience-monitor path never depends on the DSP graph being perfect.
+      console.warn('[Nirmal] processed mic publish failed; using raw mic fallback:', publishError);
+      try { await publishAudienceMicTrack(rawMicStream.getAudioTracks()[0], 'raw-publish-fallback'); guestVoiceModule.style.display = 'block'; }
+      catch (fallbackError) { throw fallbackError; }
+    }
+  }
+
+  async function disableGuestMic() {
+    if (!livekitMicPublication && !rawMicStream && !micSource) {
+      isMicEnabled = false;
+      updateMicButtons();
+      return;
+    }
+    try { await livekitMicPublication?.mute?.(); } catch (_) {}
+    try { await room?.localParticipant?.unpublishTrack(livekitMicTrack || livekitMicPublication?.track); } catch (_) {}
+    try { livekitMicTrack?.stop?.(); } catch (_) {}
+    rawMicStream?.getAudioTracks().forEach(t => { t.enabled = false; });
+    rawMicStream?.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
+    rawMicStream = null;
+
+    try { micSource?.disconnect?.(); } catch (_) {}
+    micSource = null;
+    try { micGain?.disconnect?.(); } catch (_) {}
+    micGain = null;
+    if (dspNodes) {
+      Object.keys(dspNodes).forEach(k => {
+        if (k !== 'loaded') {
+          try { dspNodes[k]?.port?.close?.(); } catch (_) {}
+          try { dspNodes[k]?.disconnect?.(); } catch (_) {}
+          delete dspNodes[k];
+        }
+      });
+    }
+
+    livekitMicPublication = null;
+    livekitMicTrack = null;
+    isMicEnabled = false;
+    isMicMuted = false;
+    updateMicButtons();
+    sendPresenceUpdate();
+  }
+
+  async function toggleGuestCamera() {
+    if (!room) throw new Error('Join the live room first.');
+    const lp = room.localParticipant;
+    const guestContainer = document.getElementById('guestSelfVideoContainer');
+    const guestBox = document.getElementById('guestSelfVideoBox');
+
+    if (!isCameraEnabled) {
+      try {
+        const camRes = await guestFilterEngine.startCamera({ facingMode: 'user' });
+        const cameraTrack = camRes.track;
+        livekitCameraPublication = await lp.publishTrack(cameraTrack, {
+          source: L.Track.Source.Camera,
+          simulcast: false,
+          degradationPreference: 'maintain-framerate',
+          videoEncoding: { maxBitrate: 120_000, maxFramerate: 15, priority: 'low' },
+          name: 'nirmal-audience-camera',
+          stream: 'nirmal-audience-camera'
+        });
+        isCameraEnabled = !!livekitCameraPublication;
+        if (isCameraEnabled && guestContainer && guestBox) {
+          guestContainer.innerHTML = '';
+          const video = cameraTrack.attach ? cameraTrack.attach() : document.createElement('video');
+          if (!cameraTrack.attach) video.srcObject = camRes.stream;
+          video.autoplay = true;
+          video.playsInline = true;
+          video.muted = true;
+          video.style.transform = 'none';
+          guestContainer.appendChild(video);
+          guestBox.style.display = 'flex';
+          renderGuestFilterToolbar();
+          if (btnAudienceSwitchCam) {
+            btnAudienceSwitchCam.style.display = 'inline-block';
+            btnAudienceSwitchCam.textContent = `🔄 Switch Cam (${guestFilterEngine.isFrontCamera() ? 'Front' : 'Rear'})`;
+          }
+          if (btnAudienceBottomSwitchCam) {
+            btnAudienceBottomSwitchCam.style.display = 'inline-block';
+            btnAudienceBottomSwitchCam.textContent = `🔄 Switch Cam (${guestFilterEngine.isFrontCamera() ? 'Front' : 'Rear'})`;
+          }
+        }
+      } catch (e) {
+        isCameraEnabled = false;
+        guestFilterEngine.stopCamera();
+        if (guestContainer) guestContainer.innerHTML = '';
+        if (guestBox) guestBox.style.display = 'none';
+        if (btnAudienceSwitchCam) btnAudienceSwitchCam.style.display = 'none';
+        if (btnAudienceBottomSwitchCam) btnAudienceBottomSwitchCam.style.display = 'none';
+        throw e;
+      }
+    } else {
+      if (livekitCameraPublication?.track) {
+        try { await lp.unpublishTrack(livekitCameraPublication.track); } catch (_) {}
+      }
+      guestFilterEngine.stopCamera();
+      if (guestContainer) {
+        const video = guestContainer.querySelector('video');
+        try { video?.pause?.(); } catch (_) {}
+        try { video?.remove?.(); } catch (_) {}
+        guestContainer.innerHTML = '';
+      }
+      if (guestBox) guestBox.style.display = 'none';
+      const toolbar = document.getElementById('guestCameraFilterToolbar');
+      if (toolbar) toolbar.style.display = 'none';
+      if (btnAudienceSwitchCam) btnAudienceSwitchCam.style.display = 'none';
+      if (btnAudienceBottomSwitchCam) btnAudienceBottomSwitchCam.style.display = 'none';
+      livekitCameraPublication = null;
+      isCameraEnabled = false;
+    }
+    updateAudienceStageVideoLayout();
+    updateMicButtons();
+    sendPresenceUpdate();
+  }
+
+  async function switchGuestCamera() {
+    if (!guestFilterEngine?.active) return;
+    try {
+      const res = await guestFilterEngine.switchCamera();
+      const guestContainer = document.getElementById('guestSelfVideoContainer');
+      const video = guestContainer?.querySelector('video');
+      if (video) {
+        video.style.transform = 'none';
+      }
+      const label = `🔄 Switch Cam (${guestFilterEngine.isFrontCamera() ? 'Front' : 'Rear'})`;
+      if (btnAudienceSwitchCam) btnAudienceSwitchCam.textContent = label;
+      if (btnAudienceBottomSwitchCam) btnAudienceBottomSwitchCam.textContent = label;
+      const toolbarBtn = document.getElementById('btnGuestToolbarSwitchCam');
+      if (toolbarBtn) toolbarBtn.textContent = label;
+      return res;
+    } catch (e) {
+      alert('Could not switch camera: ' + (e.message || e));
+    }
+  }
+
+  function renderGuestFilterToolbar() {
+    const toolbar = document.getElementById('guestCameraFilterToolbar');
+    if (!toolbar) return;
+    toolbar.style.display = 'flex';
+    const currentFilter = guestFilterEngine.getFilter();
+    toolbar.innerHTML = `
+      <div class="camera-filter-header">
+        <span>🎭 Face Filters (Snapchat Style)</span>
+        <button id="btnGuestToolbarSwitchCam" type="button" class="stage-layout-btn" style="cursor:pointer;font-size:10px;padding:3px 8px;border-radius:6px;">🔄 Switch Cam (${guestFilterEngine.isFrontCamera() ? 'Front' : 'Rear'})</button>
+      </div>
+      <div class="filter-strip" id="guestFilterStrip">
+        ${FACE_FILTERS.map(f => `
+          <button type="button" class="filter-pill ${f.id === currentFilter ? 'active' : ''}" data-filter="${f.id}" title="${f.title}">
+            <span class="filter-icon">${f.icon}</span>
+            <span class="filter-name">${f.label}</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+
+    const switchBtn = toolbar.querySelector('#btnGuestToolbarSwitchCam');
+    if (switchBtn) switchBtn.onclick = switchGuestCamera;
+
+    toolbar.querySelectorAll('.filter-pill').forEach(pill => {
+      pill.onclick = () => {
+        const fid = pill.dataset.filter;
+        guestFilterEngine.setFilter(fid);
+        toolbar.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+      };
+    });
+  }
+
+  btnAudienceSwitchCam?.addEventListener('click', switchGuestCamera);
+  btnAudienceBottomSwitchCam?.addEventListener('click', switchGuestCamera);
+
+  btnEnableMic?.addEventListener('click', async () => {
+    btnEnableMic.disabled = true;
+    try {
+      if (!isMicEnabled) {
+        await initGuestAudioDSP();
+      } else {
+        await disableGuestMic();
+      }
+    } catch (err) {
+      alert('Microphone error: ' + (err.message || err));
+    } finally {
+      btnEnableMic.disabled = false;
+      updateMicButtons();
+    }
+  });
+
+  btnToggleMute?.addEventListener('click', async () => {
+    if (!livekitMicPublication || !isMicEnabled || hostForcedMute) return;
+    try {
+      isMicMuted = !isMicMuted;
+      rawMicStream?.getAudioTracks().forEach(t => { t.enabled = !isMicMuted; });
+      if (isMicMuted) await livekitMicPublication.mute();
+      else await livekitMicPublication.unmute();
+      updateMicButtons();
+      sendPresenceUpdate();
+    } catch (e) {
+      console.warn('[Nirmal] mic mute toggle failed', e);
+    }
+  });
+
+  btnToggleCamera?.addEventListener('click', async () => {
+    btnToggleCamera.disabled = true;
+    try {
+      await toggleGuestCamera();
+    } catch (e) {
+      alert('Camera error: ' + (e.message || e));
+    } finally {
+      btnToggleCamera.disabled = false;
+      updateMicButtons();
+    }
+  });
+
+  updateMicButtons();
+  updatePresetUi();
+
+  const sliderAudienceVol = document.getElementById('sliderAudienceVol');
+  const lblAudienceVol = document.getElementById('lblAudienceVol');
+  if (sliderAudienceVol) {
+    sliderAudienceVol.addEventListener('input', e => {
+      audienceVolume = parseFloat(e.target.value);
+      if (lblAudienceVol) lblAudienceVol.textContent = `${Math.round(audienceVolume * 100)}%`;
+      for (const item of remoteAudio.values()) {
+        try { item.track?.setVolume?.(audienceVolume); } catch (_) {}
+      }
+      if (liveAudio) {
+        try { liveAudio.volume = Math.min(1.0, audienceVolume); } catch (_) {}
+      }
+    });
+  }
+
+  const lblAudSyncOffset = document.getElementById('lblAudSyncOffset');
+  document.getElementById('btnAudSyncMinus')?.addEventListener('click', () => {
+    clientSyncOffset = Math.max(-5, Math.round((clientSyncOffset - 0.2) * 10) / 10);
+    if (lblAudSyncOffset) lblAudSyncOffset.textContent = (clientSyncOffset > 0 ? '+' : '') + clientSyncOffset.toFixed(1) + 's';
+  });
+  document.getElementById('btnAudSyncPlus')?.addEventListener('click', () => {
+    clientSyncOffset = Math.min(5, Math.round((clientSyncOffset + 0.2) * 10) / 10);
+    if (lblAudSyncOffset) lblAudSyncOffset.textContent = (clientSyncOffset > 0 ? '+' : '') + clientSyncOffset.toFixed(1) + 's';
+  });
+  document.getElementById('btnAudSyncReset')?.addEventListener('click', () => {
+    clientSyncOffset = 0.0;
+    if (lblAudSyncOffset) lblAudSyncOffset.textContent = '0.0s';
+  });
+
+  document.getElementById('sliderGuestMicVol').addEventListener('input', e => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('lblGuestVol').textContent = `${Math.round(v * 100)}%`;
+    if (micGain && audioCtx) micGain.gain.setTargetAtTime(v, audioCtx.currentTime, .02);
+  });
+
+  function applyGuestPreset(key) {
+    if (!audioCtx || !dspNodes.pitcher) return false;
+    const p = PRESETS[key] || PRESETS.normal;
+    const t = audioCtx.currentTime;
+    dspNodes.fxBypassGain?.gain.setTargetAtTime(p.isBypass ? 1 : 0, t, .01);
+    dspNodes.fxActiveGain?.gain.setTargetAtTime(p.isBypass ? 0 : 1, t, .01);
+    if (dspNodes.pitcher && !p.isBypass) dspNodes.pitcher.parameters.get('pitch')?.setTargetAtTime(p.pitch, t, .01);
+    if (dspNodes.hp) dspNodes.hp.frequency.setTargetAtTime(p.lowCut, t, .01);
+    if (dspNodes.lp) dspNodes.lp.frequency.setTargetAtTime(p.highCut, t, .01);
+    if (dspNodes.formantEq) {
+      dspNodes.formantEq.frequency.setTargetAtTime(p.eqFreq, t, .01);
+      dspNodes.formantEq.gain.setTargetAtTime(p.eqGain, t, .01);
+    }
+    if (dspNodes.pitcher && p.isBypass) dspNodes.pitcher.parameters.get('pitch')?.setTargetAtTime(1, t, .01);
+    if (dspNodes.waveshaper) dspNodes.waveshaper.curve = p.drive > 0 ? makeGuestDistortionCurve(p.drive * 1.5) : null;
+    return true;
+  }
+
+  function makeGuestDistortionCurve(amount) {
+    const k = Number(amount || 0);
+    if (k <= 0) return null;
+    const n_samples = 4096;
+    const curve = new Float32Array(n_samples);
+    const drive = Math.max(0.1, Math.min(k, 8));
+    const norm = 1 / Math.sqrt(1 + drive);
+    for (let i = 0; i < n_samples; i++) {
+      const x = (i * 2) / n_samples - 1;
+      const y = x / Math.sqrt(1 + drive * x * x);
+      curve[i] = y / norm;
+    }
+    return curve;
+  }
+
+  function updatePresetUi() {
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.classList.toggle('is-disabled', !isMicEnabled);
+      btn.disabled = !isMicEnabled;
+    });
+    const hint = document.getElementById('presetHint');
+    if (hint) hint.textContent = isMicEnabled ? 'Choose a voice effect. Normal = clean/bypass.' : 'Enable mic to activate effects.';
+  }
+
+  document.querySelectorAll('.preset-btn').forEach(btn => btn.addEventListener('click', () => {
+    if (!isMicEnabled || !audioCtx || !dspNodes.pitcher) return;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyGuestPreset(btn.dataset.preset);
+  }));
+
+  function sendChat() {
+    const text = chatTextInput.value.trim();
+    if (!text) return;
+    if (!room?.localParticipant) {
+      alert('Please tap "Tune In" above to connect before sending chat messages.');
+      return;
+    }
+    const sender = chatNickInput.value.trim() || 'Audience Member';
+    room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type:'AUDIENCE_CHAT', sender, text, isSpecial:false })), { reliable:true }).catch(()=>{});
+    addChatMessage('You', text);
+    chatTextInput.value = '';
+  }
+  btnSendChat.addEventListener('click', sendChat);
+  chatTextInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+
+  async function searchAndSuggestSong() {
+    const q = songSearchRequestInput.value.trim(); if (!q) return;
+    songSearchSuggestions.style.display = 'block';
+    songSearchSuggestions.innerHTML = '<div style="color:var(--text-dim);font-size:.7rem;padding:4px">Searching…</div>';
+    let found = [];
+    for (const base of SAAVN_API_URLS) {
+      try { const r = await fetch(`${base}${encodeURIComponent(q)}`); if (!r.ok) continue; const j = await r.json(); const list = j.data?.results || j.data || j.results || j; if (Array.isArray(list) && list.length) { found=list.slice(0,4); break; } } catch (_) {}
+    }
+    songSearchSuggestions.innerHTML = '';
+    if (!found.length) { songSearchSuggestions.innerHTML='<div style="color:var(--accent-red);font-size:.7rem;padding:4px">Song not found.</div>'; return; }
+    found.forEach(t => {
+      const title=t.name||t.song||t.title||'Song'; const artist=t.primaryArtists||t.primary_artists||t.artist||'Artist';
+      const item=document.createElement('div'); item.className='search-pick-item';
+      item.innerHTML=`<span><strong>${escapeHtml(title)}</strong> (${escapeHtml(artist)})</span><button class="btn" style="width:auto;margin:0;padding:2px 6px;font-size:.65rem;border-color:var(--accent-purple);color:var(--accent-purple)">Send</button>`;
+      item.querySelector('button').onclick=()=>{
+        if (!room?.localParticipant) {
+          alert('Please tap "Tune In" above to connect before requesting a song.');
+          return;
+        }
+        const text=`${title} - ${artist}`;
+        const sender=chatNickInput.value.trim()||'Audience Guest';
+        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({type:'AUDIENCE_CHAT',sender,text,isSpecial:true})),{reliable:true}).catch(()=>{});
+        addChatMessage('You',text,true);
+        songSearchSuggestions.style.display='none';
+        songSearchRequestInput.value='';
+      };
+      songSearchSuggestions.appendChild(item);
+    });
+  }
+  btnSearchSongRequest.addEventListener('click', searchAndSuggestSong);
+  songSearchRequestInput.addEventListener('keydown', e => { if (e.key === 'Enter') searchAndSuggestSong(); });
+
+  const audienceLyricsBox = document.getElementById('audienceLyricsBox');
+  const btnAudienceFollowLyrics = document.getElementById('btnAudienceFollowLyrics');
+  let isAudienceUserScrolling = false;
+  let audienceUserScrollTimeout = null;
+
+  const onAudienceUserScroll = () => {
+    isAudienceUserScrolling = true;
+    if (btnAudienceFollowLyrics && currentLyricIndex >= 0) {
+      btnAudienceFollowLyrics.style.display = 'inline-flex';
+    }
+    if (audienceUserScrollTimeout) clearTimeout(audienceUserScrollTimeout);
+    audienceUserScrollTimeout = setTimeout(() => {
+      isAudienceUserScrolling = false;
+      if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
+      if (currentLyricIndex >= 0) {
+        scrollToAudienceLyric(currentLyricIndex, true);
+      }
+    }, 2800);
+  };
+
+  audienceLyricsBox?.addEventListener('wheel', onAudienceUserScroll, { passive: true });
+  audienceLyricsBox?.addEventListener('touchstart', onAudienceUserScroll, { passive: true });
+
+  btnAudienceFollowLyrics?.addEventListener('click', () => {
+    isAudienceUserScrolling = false;
+    btnAudienceFollowLyrics.style.display = 'none';
+    if (currentLyricIndex >= 0) {
+      scrollToAudienceLyric(currentLyricIndex, true);
+    }
+  });
+
+  function scrollToAudienceLyric(idx, smooth = true) {
+    const el = document.getElementById(`aud-lyric-${idx}`);
+    if (!el || !audienceLyricsBox) return;
+    const container = audienceLyricsBox;
+    let top = 0;
+    let curr = el;
+    while (curr && curr !== container) {
+      top += curr.offsetTop;
+      curr = curr.offsetParent;
+    }
+    const targetTop = top - (container.clientHeight / 2) + (el.clientHeight / 2);
+    container.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: smooth ? 'smooth' : 'auto'
+    });
+  }
+
+  function renderAudienceLyrics(lines) {
+    parsedLyrics = (Array.isArray(lines) ? lines : []).map((l) => ({
+      time: Number(l?.time ?? l?.timestamp ?? l?.startTime ?? 0),
+      text: String(l?.text ?? l?.line ?? '').trim()
+    })).filter(l => Number.isFinite(l.time) && l.text);
+    parsedLyrics.sort((a, b) => a.time - b.time);
+    currentLyricIndex = -1;
+    lyricsContent.innerHTML = '';
+    if (!parsedLyrics.length) {
+      lyricsContent.innerHTML = '<div class="lyric-line-aud" style="color:var(--text-dim)">No lyrics loaded for this track.</div>';
+      return;
+    }
+    parsedLyrics.forEach((lyric, i) => {
+      const d = document.createElement('div');
+      d.className = 'lyric-line-aud';
+      d.id = `aud-lyric-${i}`;
+      d.textContent = lyric.text;
+      lyricsContent.appendChild(d);
+    });
+    isAudienceUserScrolling = false;
+    if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
+    if (audienceLyricsBox) {
+      audienceLyricsBox.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    startLyricClock();
+  }
+
+  function updateAudienceScroll(t) {
+    if (!parsedLyrics.length) return;
+    let idx = -1;
+    for (let i = 0; i < parsedLyrics.length; i++) {
+      if (t >= parsedLyrics[i].time) idx = i; else break;
+    }
+    if (idx !== currentLyricIndex) {
+      if (currentLyricIndex >= 0) document.getElementById(`aud-lyric-${currentLyricIndex}`)?.classList.remove('active');
+      currentLyricIndex = idx;
+      if (idx >= 0) {
+        const el = document.getElementById(`aud-lyric-${idx}`);
+        if (el) {
+          el.classList.add('active');
+          // When lyric advances to next line, automatically scroll to that line!
+          isAudienceUserScrolling = false;
+          if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
+          scrollToAudienceLyric(idx, true);
+        }
+      }
+    }
+    if (idx >= 0) {
+      const el = document.getElementById(`aud-lyric-${idx}`);
+      if (el) {
+        const nextTime = idx < parsedLyrics.length - 1 ? Number(parsedLyrics[idx + 1].time) : Number(parsedLyrics[idx].time) + 4;
+        const span = Math.max(.2, nextTime - Number(parsedLyrics[idx].time));
+        const progress = Math.max(0, Math.min(100, ((t - Number(parsedLyrics[idx].time)) / span) * 100));
+        el.style.setProperty('--fill', `${progress}%`);
+      }
+    }
+  }
+
+  function startLyricClock() {
+    if (lyricRaf) cancelAnimationFrame(lyricRaf);
+    const loop = () => {
+      if (lyricClock.receivedPerf && lyricClock.playing) {
+        const estimate = Math.max(0, lyricClock.hostTime + Math.max(0, performance.now() - lyricClock.receivedPerf) / 1000 - clientSyncOffset);
+        updateAudienceScroll(estimate);
+      }
+      lyricRaf = requestAnimationFrame(loop);
+    };
+    lyricRaf = requestAnimationFrame(loop);
+  }
+  startLyricClock();
+
+  // Accidental reload & navigation protection
+  function shouldWarnAudienceOnReload() {
+    if (window.__bypassUnloadWarning) return false;
+    // 1. Room is connected or connecting
+    if (room && (room.state === 'connected' || room.state === 'connecting')) return true;
+    // 2. Guest mic or camera is active
+    if (isMicEnabled || isCameraEnabled) return true;
+    // 3. Live audio stream is currently playing
+    const liveAudio = document.getElementById('liveAudio');
+    if (liveAudio && !liveAudio.paused && liveAudio.currentTime > 0) return true;
+    // 4. Synced lyrics loaded and active
+    if (parsedLyrics && parsedLyrics.length > 0) return true;
+    return false;
+  }
+
+    window.addEventListener('beforeunload', (e) => {
+    if (shouldWarnAudienceOnReload()) {
+      e.preventDefault();
+      e.returnValue = 'You are currently connected to the live stage. Reloading will disconnect you.';
+      return e.returnValue;
+    }
+  });
+
+  // Mobile / Autoplay policy global unlocker for iOS Safari and mobile simulators
+  let audienceAudioHardwareUnlocked = false;
+  const unlockAudienceAudio = async () => {
+    if (playbackCtx?.state === 'suspended') {
+      try {
+        await playbackCtx.resume();
+      } catch (_) {}
+    }
+    if (playbackCtx && !audienceAudioHardwareUnlocked) {
+      try {
+        const buf = playbackCtx.createBuffer(1, 1, 22050);
+        const src = playbackCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(playbackCtx.destination);
+        src.start(0);
+        audienceAudioHardwareUnlocked = true;
+      } catch (_) {}
+    }
+    if (liveAudio?.paused) {
+      liveAudio.play().catch(() => {});
+    }
+    for (const item of remoteAudio.values()) {
+      if (item.audio?.paused) {
+        item.audio.play().catch(() => {});
+      }
+    }
+  };
+
+  ['touchstart', 'touchend', 'click', 'pointerdown'].forEach(ev => {
+    window.addEventListener(ev, unlockAudienceAudio, { passive: true });
+    document.addEventListener(ev, unlockAudienceAudio, { passive: true });
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      unlockAudienceAudio();
+    }
+  });
+
+  window.addEventListener('offline', () => {
+    setStatus('⚠️ Mobile network connection lost (offline). Reconnecting when back online…', 'var(--accent-orange)');
+  });
+
+  window.addEventListener('online', () => {
+    setStatus('📶 Internet connection restored. Reconnecting to live stage…', 'var(--accent-green)');
+    if (room && room.state !== 'connected' && !roomDiscontinued) {
+      if (btnTuneIn) btnTuneIn.click();
+    }
+  });
+
+
