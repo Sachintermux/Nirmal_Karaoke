@@ -53,6 +53,57 @@ export class BroadcastCompositor {
     this.loadSavedLayers();
   }
 
+  setQuality(quality) {
+    this.quality = quality || '480p';
+    if (this.quality === '720p') {
+      this.width = 1280;
+      this.height = 720;
+      this.targetFps = 30;
+    } else if (this.quality === '1080p') {
+      this.width = 1920;
+      this.height = 1080;
+      this.targetFps = 30;
+    } else if (this.quality === '360p') {
+      this.width = 640;
+      this.height = 360;
+      this.targetFps = 25;
+    } else {
+      // 480p default
+      this.width = 854;
+      this.height = 480;
+      this.targetFps = 25;
+    }
+    if (this.canvas) {
+      this.canvas.width = this.width;
+      this.canvas.height = this.height;
+    }
+    try { localStorage.setItem('nirmal_stream_quality', this.quality); } catch (_) {}
+  }
+
+  loadSavedLayers() {
+    try {
+      const raw = localStorage.getItem('nirmal_broadcast_layers');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          this.layers = Object.assign(this.layers, parsed);
+        }
+      }
+      const savedLayout = localStorage.getItem('nirmal_broadcast_layout');
+      if (savedLayout) this.layout = savedLayout;
+      const savedTheme = localStorage.getItem('nirmal_broadcast_theme');
+      if (savedTheme) this.theme = savedTheme;
+    } catch (_) {}
+  }
+
+  saveLayers() {
+    try {
+      localStorage.setItem('nirmal_broadcast_layers', JSON.stringify(this.layers));
+      localStorage.setItem('nirmal_broadcast_layout', this.layout);
+      localStorage.setItem('nirmal_broadcast_theme', this.theme);
+    } catch (_) {}
+  }
+
   getDefaultObsSources() {
     return {
       hostCamera: { id: 'hostCamera', name: '🎤 Host Camera', x: 0.04, y: 0.12, w: 0.44, h: 0.46, visible: true, zIndex: 2 },

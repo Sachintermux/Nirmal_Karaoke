@@ -641,11 +641,13 @@ export class LiveKitLiveStreamHost {
   }
 
   async toggleHostCamera() {
-    if (!this.room?.localParticipant) throw new Error('Start the live room first.');
+    const isLive = Boolean(this.room?.localParticipant && this.room.state === 'connected');
     const L = LK();
     if (this.hostCamera) {
-      try { await this.room.localParticipant.unpublishTrack(this.hostCamera); } catch (_) {}
-      this.removeVideoCard(this.room.localParticipant.identity);
+      if (isLive) {
+        try { await this.room.localParticipant.unpublishTrack(this.hostCamera); } catch (_) {}
+      }
+      this.removeVideoCard(isLive ? this.room.localParticipant.identity : 'local-host');
       if (this.filterManager) this.filterManager.stopCamera();
       try { this.hostCamera.stop(); } catch (_) {}
       this.hostCamera = null;
@@ -658,20 +660,25 @@ export class LiveKitLiveStreamHost {
 
     const camRes = await this.filterManager.startCamera({ facingMode: 'user' });
     const cameraTrack = camRes.track;
-    const publication = await this.room.localParticipant.publishTrack(cameraTrack, {
-      source: L.Track.Source.Camera,
-      simulcast: true,
-      degradationPreference: 'maintain-framerate',
-      videoEncoding: { maxBitrate: 160_000, maxFramerate: 15, priority: 'low' },
-      name: 'nirmal-host-camera',
-      stream: 'nirmal-host-camera'
-    });
-    this.hostCamera = publication?.track || this.room.localParticipant.getTrackPublication?.(L.Track.Source.Camera)?.track || cameraTrack;
+    if (isLive && L?.Track?.Source) {
+      const publication = await this.room.localParticipant.publishTrack(cameraTrack, {
+        source: L.Track.Source.Camera,
+        simulcast: true,
+        degradationPreference: 'maintain-framerate',
+        videoEncoding: { maxBitrate: 160_000, maxFramerate: 15, priority: 'low' },
+        name: 'nirmal-host-camera',
+        stream: 'nirmal-host-camera'
+      });
+      this.hostCamera = publication?.track || this.room.localParticipant.getTrackPublication?.(L.Track.Source.Camera)?.track || cameraTrack;
+    } else {
+      this.hostCamera = cameraTrack;
+    }
     if (!this.hostCamera) {
       try { cameraTrack.stop(); } catch (_) {}
-      throw new Error('LiveKit published the admin camera but returned no local camera track.');
+      throw new Error('Camera device failed to start.');
     }
-    this.renderVideoCard(this.hostCamera, this.room.localParticipant.identity, 'ADMIN', true);
+    const identity = isLive ? this.room.localParticipant.identity : 'local-host';
+    this.renderVideoCard(this.hostCamera, identity, 'ADMIN', true);
 
     const switchBtn = document.getElementById('btnAdminSwitchCamera');
     if (switchBtn) switchBtn.style.display = 'inline-block';

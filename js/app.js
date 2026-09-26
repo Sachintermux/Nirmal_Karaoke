@@ -500,7 +500,11 @@ function setupLiveShareUI() {
     // Open modal immediately to show connection status
     if (modal) modal.style.display = 'flex';
     if (status) status.textContent = 'Connecting to LiveKit SFU…';
-    renderShareLinks('connecting...');
+    const shareInput = document.getElementById('shareLinkInput');
+    if (shareInput) shareInput.value = 'Connecting to broadcast server…';
+    if (qrContainer) {
+      qrContainer.innerHTML = '<div style="color:var(--text-dim); font-size:0.8rem; text-align:center; padding:30px 10px;">Connecting to LiveKit…</div>';
+    }
 
     try {
       const audioBoot = audioEngine.boot().catch((e) => {
@@ -538,8 +542,18 @@ function setupLiveShareUI() {
       }
     } catch (e) {
       const errMsg = e?.message || e || 'Could not connect to LiveKit SFU.';
-      if (status) status.textContent = `Live setup failed: ${errMsg}`;
+      if (status) {
+        status.innerHTML = `<span style="color:var(--accent-red, #ff3366); font-weight:700;">⚠️ Live setup failed:</span> <span style="color:var(--text, #fff); font-size:0.75rem;">${errMsg}</span>`;
+      }
+      if (shareInput) shareInput.value = `⚠️ Error: ${errMsg}`;
+      if (qrContainer) {
+        qrContainer.innerHTML = `<div style="color:var(--accent-orange, #ff9900); font-size:0.75rem; text-align:center; padding:16px 8px; line-height:1.4;">
+          <strong>Live Broadcast Offline</strong><br><br>
+          <span style="font-size:0.7rem; color:var(--text-dim);">${errMsg.includes('not configured') ? 'Set LIVEKIT_URL, LIVEKIT_API_KEY & LIVEKIT_API_SECRET in your .env file to enable live audience broadcast.' : errMsg}</span>
+        </div>`;
+      }
       console.error('[Nirmal] Go Live failed:', e);
+      alert(`Go Live Notice:\n\n${errMsg}\n\nNote: All local karaoke studio features (mic, auto-tune, voice effects, stage master tools, recording, and YouTube streaming) are still fully active!`);
     } finally {
       liveStarting = false;
       btnOpen.disabled = false;
@@ -556,12 +570,6 @@ function setupLiveShareUI() {
   const btnModalSwitchCamera = document.getElementById('btnModalSwitchCamera');
 
   async function handleHostCameraToggle() {
-    const room = liveHost.room || liveHost.impl?.room;
-    if (!room?.localParticipant || room.state !== 'connected') {
-      if (modal) modal.style.display = 'flex';
-      alert('Please click "Go live" to start the broadcast first, then share camera.');
-      return;
-    }
     try {
       const active = await liveHost.toggleHostCamera();
       const label = active ? '⏹ Stop camera' : '📹 Share camera';
@@ -2113,7 +2121,7 @@ function setupEventListeners() {
   document.getElementById('btnRefreshTrending')?.addEventListener('click', () => {
     const input = document.getElementById('musicSearchInput');
     if (input) input.value = '';
-    searchManager.searchMusic();
+    searchManager.renderTrending();
   });
 
   // Direct Audio Player events for LRC Auto-scrolling
@@ -2430,12 +2438,18 @@ function setupEventListeners() {
   navigator.mediaDevices?.addEventListener('devicechange', scanHardware);
 }
 
-window.addEventListener('DOMContentLoaded', () => {
+function initApp() {
   visualizer.init();
   scanHardware();
   setupEventListeners();
   setupLiveShareUI();
-});
+}
+
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
 // Accidental reload & navigation protection
 function shouldWarnOnReload() {

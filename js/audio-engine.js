@@ -1079,6 +1079,79 @@ export class AudioEngine {
     }
   }
 
+  updateAutoTune(cfg) {
+    return this.updateAutoTuneSettings(cfg);
+  }
+
+  updateVocalRemover(enabled) {
+    if (!this.ctx || !this.engine) return;
+    const t = this.ctx.currentTime;
+    if (this.engine.mediaVrDry?.gain) {
+      this.engine.mediaVrDry.gain.setTargetAtTime(enabled ? 0.0 : 1.0, t, 0.02);
+    }
+    if (this.engine.mediaVrWet?.gain) {
+      this.engine.mediaVrWet.gain.setTargetAtTime(enabled ? 1.0 : 0.0, t, 0.02);
+    }
+  }
+
+  updateMediaVolume(val) {
+    if (!this.ctx || !this.engine) return;
+    const v = parseFloat(val);
+    if (Number.isFinite(v) && this.engine.mediaGain?.gain) {
+      this.engine.mediaGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  updateMicVolume(val) {
+    if (!this.ctx || !this.engine) return;
+    const v = parseFloat(val);
+    if (Number.isFinite(v) && this.engine.micGain?.gain) {
+      this.engine.micGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  updateMasterVolume(val) {
+    return this.setMasterVolume(val);
+  }
+
+  updateReverbMix(val) {
+    if (!this.ctx || !this.engine) return;
+    const v = parseFloat(val);
+    if (Number.isFinite(v) && this.engine.reverbGain?.gain) {
+      this.engine.reverbGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  updateEchoMix(val) {
+    if (!this.ctx || !this.engine) return;
+    const v = parseFloat(val);
+    if (Number.isFinite(v) && this.engine.delayWet?.gain) {
+      this.engine.delayWet.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  updateAirEq(val) {
+    if (!this.ctx || !this.engine) return;
+    const v = parseFloat(val);
+    if (Number.isFinite(v) && this.engine.airEq?.gain) {
+      this.engine.airEq.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  updateWarmth(val) {
+    if (!this.ctx || !this.engine) return;
+    const v = parseFloat(val);
+    if (Number.isFinite(v) && this.engine.warmthEq?.gain) {
+      this.engine.warmthEq.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  setMonitorVocal(enabled) {
+    const toggle = document.getElementById('monitorToggle');
+    if (toggle) toggle.checked = !!enabled;
+    this.updateMonitorRouting();
+  }
+
   getRecordingStream() {
     if (this.engine?.recDest?.stream && this.engine.recDest.stream.getAudioTracks().length > 0) {
       return this.engine.recDest.stream;

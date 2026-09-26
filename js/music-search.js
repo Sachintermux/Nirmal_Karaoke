@@ -351,4 +351,24 @@ export class MusicSearchManager {
       }
     }
   }
+
+  async renderTrending() {
+    if (this.musicListTitle) this.musicListTitle.textContent = '🔥 TOP KARAOKE TRACKS';
+    if (this.musicSearchResults) this.musicSearchResults.innerHTML = '<span style="color:var(--text-dim); font-size: 0.8rem;">Loading trending tracks...</span>';
+    try {
+      const data = await this.fetchTracksFromQuery('top hindi 50');
+      const tracks = this.extractTracks(data);
+      if (tracks && tracks.length > 0) {
+        this.renderSearchResults(tracks);
+      } else {
+        if (this.musicSearchResults) {
+          this.musicSearchResults.innerHTML = '<span style="color:var(--text-dim); font-size: 0.8rem;">Type a song or artist name above and press Enter to search millions of tracks.</span>';
+        }
+      }
+    } catch (_) {
+      if (this.musicSearchResults) {
+        this.musicSearchResults.innerHTML = '<span style="color:var(--text-dim); font-size: 0.8rem;">Type a song or artist name above to search.</span>';
+      }
+    }
+  }
 }

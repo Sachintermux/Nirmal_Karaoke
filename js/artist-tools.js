@@ -229,18 +229,37 @@ export class ArtistToolsManager {
     };
   }
 
-  stopPitch() {
-    if (this._activePitchOsc) {
-      try {
-        const ctx = this.audioEngine.ctx;
-        if (ctx && this._activePitchGain) {
-          this._activePitchGain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.03);
-        }
-        this._activePitchOsc.stop(ctx ? ctx.currentTime + 0.05 : 0);
-      } catch (_) {}
-      this._activePitchOsc = null;
-      this._activePitchGain = null;
+  setConcertReference(refHz) {
+    this.concertReference = parseFloat(refHz) || 440;
+    return this.concertReference;
+  }
+
+  playPitchTone(noteStr, duration = 2.5) {
+    const ref = this.concertReference || 440;
+    let freq = 440;
+    if (typeof noteStr === 'number') {
+      freq = noteStr;
+    } else if (typeof noteStr === 'string') {
+      const match = noteStr.trim().match(/^([A-Ga-g])(#|b)?(\d)?$/);
+      if (match) {
+        const noteLetter = match[1].toUpperCase();
+        const accidental = match[2] || '';
+        const octave = match[3] !== undefined ? parseInt(match[3], 10) : 4;
+        const semitoneMap = { 'C': 0, 'C#': 1, 'DB': 1, 'D': 2, 'D#': 3, 'EB': 3, 'E': 4, 'F': 5, 'F#': 6, 'GB': 6, 'G': 7, 'G#': 8, 'AB': 8, 'A': 9, 'A#': 10, 'BB': 10, 'B': 11 };
+        const key = noteLetter + (accidental === '#' ? '#' : (accidental.toLowerCase() === 'b' ? 'B' : ''));
+        const semitonesFromC0 = (octave * 12) + (semitoneMap[key] ?? 9);
+        const semitonesFromA4 = semitonesFromC0 - 57;
+        freq = ref * Math.pow(2, semitonesFromA4 / 12);
+      } else {
+        const parsed = parseFloat(noteStr);
+        if (!isNaN(parsed) && parsed > 0) freq = parsed;
+      }
     }
+    return this.playPitch(freq, duration);
+  }
+
+  stopPitchTone() {
+    return this.stopPitch();
   }
 
   // ─── Auto-Ducking / DJ Talkover Engine ────────────────────────────────────
