@@ -529,8 +529,28 @@ export class AudioEngine {
       e.stereoMerge.channelInterpretation = 'discrete';
       e.stereoSplit.connect(e.stereoMerge, 0, 0);
       e.stereoSplit.connect(e.stereoMerge, 1, 1);
-      e.monitorGain = this.ctx.createGain();
-      e.monitorGain.gain.value = monitorToggle?.checked ? 1.0 : 0.0;
+
+      // Local Monitoring Architecture:
+      // 1. Music/Backing Track Monitor (Always audible to host so they can sing along!)
+      e.mediaMonitorGain = this.ctx.createGain();
+      e.mediaMonitorGain.gain.value = parseFloat(sliderMediaVol?.value || 1.0);
+      e.mediaOutBus.connect(e.mediaMonitorGain);
+      e.mediaMonitorGain.connect(this.ctx.destination);
+
+      // 2. Microphone Sidetone/Monitor (Headphones only! Controlled by monitorToggle to prevent speaker screech)
+      e.micMonitorGain = this.ctx.createGain();
+      e.micMonitorGain.gain.value = monitorToggle?.checked ? 1.0 : 0.0;
+      e.proOutput.connect(e.micMonitorGain);
+      e.micMonitorGain.connect(this.ctx.destination);
+
+      // 3. System/Tab Audio Monitor (Desktop audio audible locally)
+      e.systemAudioMonitorGain = this.ctx.createGain();
+      e.systemAudioMonitorGain.gain.value = 1.0;
+      e.systemAudioGain.connect(e.systemAudioMonitorGain);
+      e.systemAudioMonitorGain.connect(this.ctx.destination);
+
+      // Backward compatibility reference for monitorGain
+      e.monitorGain = e.micMonitorGain;
 
       e.programOut.connect(e.stereoOutputBus);
 
@@ -548,8 +568,6 @@ export class AudioEngine {
       e.stereoOutputBus.connect(e.stereoSplit);
       e.stereoMerge.connect(e.analyser);
       e.stereoMerge.connect(e.dest);
-      e.stereoMerge.connect(e.monitorGain);
-      e.monitorGain.connect(this.ctx.destination);
 
       [
         e.mediaGain, e.micGain, e.micAnalyser,
@@ -570,7 +588,8 @@ export class AudioEngine {
         e.reverbConvolver, e.reverbGain,
         e.echoTap, e.echoDelay, e.echoFeed, e.echoDamp,
         e.masterGain, e.limiter, e.analyser,
-        e.programOut, e.stereoOutputBus, e.guestMixBus, e.monitorGain
+        e.programOut, e.stereoOutputBus, e.guestMixBus,
+        e.mediaMonitorGain, e.micMonitorGain, e.systemAudioMonitorGain
       ].forEach(n => { if (n) setStereo(n); });
 
       const dspLed = document.getElementById('led-dsp');

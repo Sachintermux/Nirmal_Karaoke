@@ -572,24 +572,28 @@ export class MultiStreamManager {
     }
     console.info('[MultiStream STEP 2/8] Audio Engine & AudioContext verified and ready.');
 
-    // 2. Ensure LiveKit Room is created & Program Audio Published
+    // 2. Ensure LiveKit Room is created & Program Audio Published (with robust standalone fallback)
     let roomName = this.liveHost?.roomId;
-    if (!roomName || this.liveHost?.room?.state !== 'connected') {
-      try {
-        this.setStatus('Connecting Stage…');
-        roomName = await this.liveHost.createRoom(true);
-        await new Promise(r => setTimeout(r, 1000));
-        await this.liveHost.ensureProgramAudioPublished?.();
-      } catch (err) {
-        console.error('[MultiStream ERROR at STEP 3] Could not start live stage:', err);
-        this.showError('Could not start live stage: ' + (err.message || err));
-        this.resetStartButton();
-        return;
+    if (this.liveHost) {
+      if (!roomName || this.liveHost?.room?.state !== 'connected') {
+        try {
+          this.setStatus('Connecting Stage…');
+          roomName = await this.liveHost.createRoom(true);
+          await new Promise(r => setTimeout(r, 1000));
+          await this.liveHost.ensureProgramAudioPublished?.();
+        } catch (err) {
+          console.warn('[MultiStream NOTICE at STEP 3] LiveKit stage unavailable, proceeding in Standalone Stream mode:', err);
+          roomName = 'standalone_stream_' + Date.now();
+          this.setStatus('LiveKit offline • Standalone mode');
+        }
+      } else {
+        try { await this.liveHost.ensureProgramAudioPublished?.(); } catch (_) {}
       }
+      try { await this.liveHost.reconcileAudienceMicPublications?.(); } catch (_) {}
     } else {
-      try { await this.liveHost.ensureProgramAudioPublished?.(); } catch (_) {}
+      roomName = 'standalone_stream_' + Date.now();
     }
-    try { await this.liveHost.reconcileAudienceMicPublications?.(); } catch (_) {}
+    this.broadcastRoomName = roomName;
     console.info(`[MultiStream STEP 3/8] Live Stage room verified: ${roomName}`);
 
     // 3. Extract dedicated mixed stereo audio stream from AudioEngine
@@ -1037,7 +1041,7 @@ export class MultiStreamManager {
     releaseWakeLock();
     stopBackgroundAudioKeepAlive();
 
-    const roomName  = this.liveHost?.roomId;
+    const roomName  = this.liveHost?.roomId || this.broadcastRoomName || 'standalone_stage';
     const sessionId = this.sessionId;
     const targetHost = this.getCloudRelayUrl().replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
     const httpProto = location.protocol === 'https:' ? 'https:' : 'http:';

@@ -661,13 +661,13 @@
   // RTCRtpReceiver.jitterBufferTarget is in milliseconds; LiveKit's
   // setPlayoutDelay fallback takes seconds.
   const KARAOKE_AUDIO_LATENCY = {
-    healthy: 0,
-    moderate: 15,
-    bad: 30,
-    severe: 50,
-    critical: 80,
-    stallFloor: 20,
-    max: 100,
+    healthy: 30,
+    moderate: 45,
+    bad: 60,
+    severe: 80,
+    critical: 120,
+    stallFloor: 35,
+    max: 180,
     recoverySteps: 3
   };
 
@@ -753,10 +753,12 @@
 
       try { await audioEl.play(); } catch (_) {}
       updatePlaybackUnlock();
-      setStatus(`LIVE • ${remoteAudio.size} active audio • low-latency WebAudio`, 'var(--accent-green)');
+      if (remoteAudio.size > 0) {
+        setStatus(`LIVE • ${remoteAudio.size} active audio • low-latency WebAudio`, 'var(--accent-green)');
+      }
     } catch (e) {
-      console.error('[Nirmal] Failed to attach program audio:', e);
-      setStatus(`LIVE • program audio attach failed: ${e?.message || e}`, 'var(--accent-red)');
+      console.warn('[Nirmal] Notice during program audio attach:', e);
+      updatePlaybackUnlock();
     }
   }
 
@@ -1320,7 +1322,10 @@
       try { await room.startAudio?.(); } catch (_) {}
       try { await playbackCtx?.resume?.(); } catch (_) {}
       try { await liveAudio?.play?.(); } catch (_) {}
-      if (playbackCtx?.state === 'running') {
+      for (const item of remoteAudio.values()) {
+        try { await item.audio?.play?.(); } catch (_) {}
+      }
+      if (playbackCtx?.state === 'running' || room.canPlaybackAudio !== false) {
         unlock.remove();
         setStatus(`LIVE • ${remoteAudio.size} program audio track${remoteAudio.size === 1 ? '' : 's'} playing`, 'var(--accent-green)');
       }

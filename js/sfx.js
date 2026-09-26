@@ -31,7 +31,15 @@ export async function playSFX(type, audioEngine) {
       await ctx.resume().catch(() => {});
     }
 
-    const bus = audioEngine.engine?.mixBus || ctx.destination;
+    const mixBus = audioEngine.engine?.mixBus;
+    const sfxOut = ctx.createGain();
+    sfxOut.gain.value = 1.0;
+    if (mixBus) {
+      sfxOut.connect(mixBus);
+    }
+    // Also connect to local audio output so the host hears their soundboard triggers
+    sfxOut.connect(ctx.destination);
+    const bus = sfxOut;
     const t = ctx.currentTime;
 
     switch (type) {

@@ -341,15 +341,41 @@ export class BroadcastCompositor {
         };
       });
 
-      const activeEl = document.querySelector('.lyric-line.active');
-      if (activeEl) {
-        this._cachedCurrentLine = activeEl.textContent?.trim() || '';
-        const nextEl = activeEl.nextElementSibling;
-        this._cachedNextLine = (nextEl && nextEl.classList.contains('lyric-line')) ? (nextEl.textContent?.trim() || '') : '';
-      } else {
-        this._cachedCurrentLine = '♪ ♫ ♪ Nirmal Karaoke Live ♪ ♫ ♪';
-        this._cachedNextLine = 'Sing along with your favorite tracks';
+      // High-precision lyrics reading: directly from parsedLyrics using current audio time
+      let currentLine = '';
+      let nextLine = '';
+      if (this.lyricsManager && Array.isArray(this.lyricsManager.parsedLyrics) && this.lyricsManager.parsedLyrics.length > 0) {
+        const filePlayer = this.lyricsManager.filePlayer || document.getElementById('filePlayer');
+        if (filePlayer && !filePlayer.paused && Number.isFinite(filePlayer.currentTime)) {
+          const t = filePlayer.currentTime - (this.lyricsManager.lyricSyncOffset || 0);
+          const lyrics = this.lyricsManager.parsedLyrics;
+          let idx = -1;
+          for (let i = 0; i < lyrics.length; i++) {
+            if (t >= lyrics[i].time) {
+              idx = i;
+            } else {
+              break;
+            }
+          }
+          if (idx !== -1) {
+            currentLine = lyrics[idx]?.text?.trim() || '';
+            nextLine = (idx < lyrics.length - 1) ? (lyrics[idx + 1]?.text?.trim() || '') : '';
+          }
+        }
       }
+
+      // DOM fallback if lyricsManager not populated or tab active
+      if (!currentLine) {
+        const activeEl = document.querySelector('.lyric-line.active');
+        if (activeEl) {
+          currentLine = activeEl.textContent?.trim() || '';
+          const nextEl = activeEl.nextElementSibling;
+          nextLine = (nextEl && nextEl.classList.contains('lyric-line')) ? (nextEl.textContent?.trim() || '') : '';
+        }
+      }
+
+      this._cachedCurrentLine = currentLine || '♪ ♫ ♪ Nirmal Karaoke Live ♪ ♫ ♪';
+      this._cachedNextLine = nextLine || 'Sing along with your favorite tracks';
 
       const titleEl = document.getElementById('nowPlayingTitle') || document.querySelector('.now-playing .title');
       this._cachedSongName = titleEl?.textContent?.trim() || 'Live Karaoke Session';

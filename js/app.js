@@ -1163,8 +1163,12 @@ function setupEventListeners() {
   });
 
   document.getElementById('monitorToggle')?.addEventListener('change', (e) => {
+    const val = e.target.checked ? 1.0 : 0.0;
+    if (audioEngine.engine.micMonitorGain && audioEngine.ctx) {
+      audioEngine.engine.micMonitorGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.02);
+    }
     if (audioEngine.engine.monitorGain && audioEngine.ctx) {
-      audioEngine.engine.monitorGain.gain.setTargetAtTime(e.target.checked ? 1.0 : 0.0, audioEngine.ctx.currentTime, 0.02);
+      audioEngine.engine.monitorGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.02);
     }
   });
 
@@ -1327,6 +1331,9 @@ function setupEventListeners() {
     await audioEngine.boot();
     if (audioEngine.engine.mediaGain && audioEngine.ctx) {
       audioEngine.engine.mediaGain.gain.setTargetAtTime(v, audioEngine.ctx.currentTime, 0.02);
+    }
+    if (audioEngine.engine.mediaMonitorGain && audioEngine.ctx) {
+      audioEngine.engine.mediaMonitorGain.gain.setTargetAtTime(v, audioEngine.ctx.currentTime, 0.02);
     }
   });
 
