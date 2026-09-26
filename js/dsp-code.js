@@ -120,15 +120,16 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
     this.delayBufL = new Float32Array(this.bufferSize);
     this.delayBufR = new Float32Array(this.bufferSize);
     this.writePos = 0;
-    this.windowSize = 512;
-    this.halfWindow = 256;
+    this.grainSize = 2048;
+    this.halfGrain = 1024;
+    this.baseOffset = 512;
     this.phase0 = 0;
-    this.phase1 = 256;
+    this.phase1 = 1024;
 
     // Pre-calculate Hann window table
-    this.hann = new Float32Array(this.windowSize);
-    for (let i = 0; i < this.windowSize; i++) {
-      this.hann[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (this.windowSize - 1)));
+    this.hann = new Float32Array(this.grainSize);
+    for (let i = 0; i < this.grainSize; i++) {
+      this.hann[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (this.grainSize - 1)));
     }
 
     // Auto-Tune Pro X Parameters
@@ -143,7 +144,12 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
     this.formant = true;
     this.throat = 1.0; // 0.80 to 1.40
     this.mix = 1.0;
+    this.speed = 20;
+    this.flex = 0;
+    this.humanize = 0;
     this.enabled = true;
+    this.unvoicedFrames = 0;
+    this.linearBuf = new Float32Array(this.analysisSize);
 
     // Vibrato
     this.vibrato = false;
@@ -167,7 +173,6 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
     this.lastStablePitch = 220;
     this.driftPhase = 0;
     this.lastNoteMidi = -1;
-    this.fadeFactor = 0.0;
 
     // Formant filter state (Biquad)
     this.fX1_L = 0; this.fX2_L = 0; this.fY1_L = 0; this.fY2_L = 0;
@@ -193,6 +198,9 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
       if (data.formant !== undefined) this.formant = !!data.formant;
       if (data.throat !== undefined) this.throat = Math.max(0.75, Math.min(1.5, data.throat));
       if (data.mix !== undefined) this.mix = Math.max(0, Math.min(1, data.mix));
+      if (data.speed !== undefined) this.speed = Math.max(0, Math.min(400, data.speed));
+      if (data.flex !== undefined) this.flex = Math.max(0, Math.min(100, data.flex));
+      if (data.humanize !== undefined) this.humanize = Math.max(0, Math.min(100, data.humanize));
       if (data.enabled !== undefined) this.enabled = !!data.enabled;
       if (data.vibrato !== undefined) this.vibrato = !!data.vibrato;
       if (data.vibShape !== undefined) this.vibShape = data.vibShape;
@@ -228,15 +236,22 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
     const W = this.windowLen;
     const { minLag, maxLag } = this.getPitchBounds();
 
+    const maxRead = Math.min(len, W + maxLag + 2);
+    const linear = this.linearBuf;
+    for (let i = 0; i < maxRead; i++) {
+      linear[i] = buf[(writeIdx - 1 - i + len) % len];
+    }
+
     // Check RMS energy
     let sumSquares = 0;
     for (let i = 0; i < W; i++) {
-      const idx = (writeIdx - 1 - i + len) % len;
-      const s = buf[idx];
+      const s = linear[i];
       sumSquares += s * s;
     }
     const rms = Math.sqrt(sumSquares / W);
-    if (rms < 0.005) {
+    if (rms < 0.002) {
+      this.unvoicedFrames++;
+      if (this.unvoicedFrames > 5) this.lastStablePitch = 0;
       return { freq: 0, voiced: false, confidence: 0 };
     }
 
@@ -250,10 +265,8 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
       let r = 0;
       let m = 0;
       for (let i = 0; i < W; i += 2) {
-        const i0 = (writeIdx - 1 - i + len) % len;
-        const iTau = (writeIdx - 1 - (i + tau) + len) % len;
-        const s0 = buf[i0];
-        const sT = buf[iTau];
+        const s0 = linear[i];
+        const sT = linear[i + tau];
         r += s0 * sT;
         m += s0 * s0 + sT * sT;
       }
@@ -285,6 +298,8 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
 
     const voicingThreshold = 0.42 * this.tracking;
     if (bestLag < minLag || maxNsdf < voicingThreshold) {
+      this.unvoicedFrames++;
+      if (this.unvoicedFrames > 5) this.lastStablePitch = 0;
       return { freq: 0, voiced: false, confidence: maxNsdf };
     }
 
@@ -292,11 +307,10 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
     let r0 = 0, r1 = 0, r2 = 0;
     let m0 = 0, m1 = 0, m2 = 0;
     for (let i = 0; i < W; i += 2) {
-      const i0 = (writeIdx - 1 - i + len) % len;
-      const s0 = buf[i0];
-      const sT0 = buf[(writeIdx - 1 - (i + bestLag - 1) + len) % len];
-      const sT1 = buf[(writeIdx - 1 - (i + bestLag) + len) % len];
-      const sT2 = buf[(writeIdx - 1 - (i + bestLag + 1) + len) % len];
+      const s0 = linear[i];
+      const sT0 = linear[i + bestLag - 1];
+      const sT1 = linear[i + bestLag];
+      const sT2 = linear[i + bestLag + 1];
       r0 += s0 * sT0; m0 += s0 * s0 + sT0 * sT0;
       r1 += s0 * sT1; m1 += s0 * s0 + sT1 * sT1;
       r2 += s0 * sT2; m2 += s0 * s0 + sT2 * sT2;
@@ -319,13 +333,13 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
     if (this.lastStablePitch > 50 && freq > 0) {
       const ratio = freq / this.lastStablePitch;
       if (Math.abs(ratio - 2.0) < 0.08 || Math.abs(ratio - 0.5) < 0.08) {
-        // Octave jump check: keep continuity
         if (maxNsdf < 0.75) {
           freq = this.lastStablePitch;
         }
       }
     }
     this.lastStablePitch = freq;
+    this.unvoicedFrames = 0;
 
     return { freq, voiced: true, confidence: maxNsdf };
   }
@@ -474,16 +488,18 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
   }
 
   // Read tap with cubic Hermite interpolation for pristine pitch shifting
-  readTapHermite(buf, dist) {
+  readTapHermite(buf, offset) {
     const cap = this.bufferSize;
-    const safeDist = Number.isFinite(dist) ? Math.max(0, dist) : 0;
-    const i1 = Math.floor(safeDist);
-    const frac = safeDist - i1;
+    let readIdx = this.writePos - offset;
+    while (readIdx < 0) readIdx += cap;
+    readIdx %= cap;
 
-    const idx0 = (this.writePos - i1 + 1 + cap) % cap;
-    const idx1 = (this.writePos - i1 + cap) % cap;
-    const idx2 = (this.writePos - i1 - 1 + cap) % cap;
-    const idx3 = (this.writePos - i1 - 2 + cap) % cap;
+    const i1 = Math.floor(readIdx);
+    const frac = readIdx - i1;
+    const idx0 = (i1 - 1 + cap) % cap;
+    const idx1 = i1;
+    const idx2 = (i1 + 1) % cap;
+    const idx3 = (i1 + 2) % cap;
 
     const y0 = buf[idx0], y1 = buf[idx1], y2 = buf[idx2], y3 = buf[idx3];
     const c0 = y1;
@@ -504,19 +520,13 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
     const outL = output[0];
     const outR = output.length > 1 ? output[1] : null;
 
-    if (!this.enabled) {
-      outL.set(inL);
-      if (outR) outR.set(inR);
-      return true;
-    }
-
-    const speedParam = (params.speed && Number.isFinite(params.speed[0])) ? params.speed[0] : 20;
-    const flexParam = (params.flex && Number.isFinite(params.flex[0])) ? params.flex[0] : 0;
-    const humanizeParam = (params.humanize && Number.isFinite(params.humanize[0])) ? params.humanize[0] : 0;
+    const speedParam = (params.speed && Number.isFinite(params.speed[0])) ? params.speed[0] : (this.speed ?? 20);
+    const flexParam = (params.flex && Number.isFinite(params.flex[0])) ? params.flex[0] : (this.flex ?? 0);
+    const humanizeParam = (params.humanize && Number.isFinite(params.humanize[0])) ? params.humanize[0] : (this.humanize ?? 0);
     const mixParam = (params.mix && Number.isFinite(params.mix[0])) ? params.mix[0] : this.mix;
 
     const sr = sampleRate || 48000;
-    const grain = this.windowSize;
+    const grain = this.grainSize;
 
     // Slew rate coefficient based on Retune Speed (ms)
     let retuneAlpha = 1.0;
@@ -554,11 +564,11 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
             this.lastNoteMidi = quant.noteIdx;
           }
 
-          if (quant.bypassed) {
+          if (quant.bypassed || !this.enabled) {
             this.targetRatio = 1.0;
           } else {
             const rawRatio = this.targetFreq / this.detectedFreq;
-            this.targetRatio = Math.max(0.5, Math.min(2.0, rawRatio));
+            this.targetRatio = Math.max(0.4, Math.min(2.5, rawRatio));
           }
         } else {
           this.isVoiced = false;
@@ -576,24 +586,17 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
         this.smoothedRatio += (this.targetRatio - this.smoothedRatio) * retuneAlpha;
       }
 
-      // Check if pitch shift is needed (in-tune or unvoiced bypasses delay line)
-      const needShift = this.isVoiced && Math.abs(this.smoothedRatio - 1.0) >= 0.003;
-      const targetFade = needShift ? 1.0 : 0.0;
-      this.fadeFactor += (targetFade - this.fadeFactor) * 0.05;
+      // Continuous pitch-shifting through overlap-add delay line
+      this.delayBufL[this.writePos] = sL;
+      this.delayBufR[this.writePos] = sR;
 
-      let wetSampleL = sL;
-      let wetSampleR = sR;
-
-      if (this.fadeFactor > 0.001) {
-        const shift = 1.0 - this.smoothedRatio;
-
-        // Write into pitch delay buffer
-        this.delayBufL[this.writePos] = sL;
-        this.delayBufR[this.writePos] = sR;
-
-        // Dual windowed phase pointer
-        this.phase0 += shift;
-        this.phase1 += shift;
+      if (!this.enabled) {
+        outL[i] = sL;
+        if (outR) outR[i] = sR;
+      } else {
+        const rateDiff = 1.0 - this.smoothedRatio;
+        this.phase0 += rateDiff;
+        this.phase1 += rateDiff;
 
         while (this.phase0 >= grain) this.phase0 -= grain;
         while (this.phase0 < 0) this.phase0 += grain;
@@ -603,14 +606,14 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
         const w0 = this.hann[Math.floor(this.phase0)];
         const w1 = this.hann[Math.floor(this.phase1)];
 
-        const s0L = this.readTapHermite(this.delayBufL, this.phase0);
-        const s1L = this.readTapHermite(this.delayBufL, this.phase1);
+        const s0L = this.readTapHermite(this.delayBufL, this.phase0 + this.baseOffset);
+        const s1L = this.readTapHermite(this.delayBufL, this.phase1 + this.baseOffset);
         let shiftedL = (s0L * w0) + (s1L * w1);
 
         let shiftedR = shiftedL;
         if (outR) {
-          const s0R = this.readTapHermite(this.delayBufR, this.phase0);
-          const s1R = this.readTapHermite(this.delayBufR, this.phase1);
+          const s0R = this.readTapHermite(this.delayBufR, this.phase0 + this.baseOffset);
+          const s1R = this.readTapHermite(this.delayBufR, this.phase1 + this.baseOffset);
           shiftedR = (s0R * w0) + (s1R * w1);
         }
 
@@ -627,26 +630,16 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
           }
         }
 
-        // Crossfade pristine direct input with tuned pitch
-        wetSampleL = (sL * (1.0 - this.fadeFactor)) + (shiftedL * this.fadeFactor);
-        wetSampleR = (sR * (1.0 - this.fadeFactor)) + (shiftedR * this.fadeFactor);
-      } else {
-        // Keep delay buffer populated and reset phase heads
-        this.delayBufL[this.writePos] = sL;
-        this.delayBufR[this.writePos] = sR;
-        this.phase0 = 0;
-        this.phase1 = grain / 2;
-      }
-
-      // Mix: at 1.0 output tuned signal directly without dry leakage
-      if (mixParam >= 0.999) {
-        outL[i] = wetSampleL;
-        if (outR) outR[i] = wetSampleR;
-      } else {
-        const dryGain = Math.cos(mixParam * 0.5 * Math.PI);
-        const wetGain = Math.sin(mixParam * 0.5 * Math.PI);
-        outL[i] = (sL * dryGain) + (wetSampleL * wetGain);
-        if (outR) outR[i] = (sR * dryGain) + (wetSampleR * wetGain);
+        // Mix: at 1.0 output tuned signal directly without dry leakage
+        if (mixParam >= 0.999) {
+          outL[i] = shiftedL;
+          if (outR) outR[i] = shiftedR;
+        } else {
+          const dryGain = Math.cos(mixParam * 0.5 * Math.PI);
+          const wetGain = Math.sin(mixParam * 0.5 * Math.PI);
+          outL[i] = (sL * dryGain) + (shiftedL * wetGain);
+          if (outR) outR[i] = (sR * dryGain) + (shiftedR * wetGain);
+        }
       }
 
       this.writePos = (this.writePos + 1) % this.bufferSize;
@@ -655,17 +648,21 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
       this.telemetrySamples++;
       if (this.telemetrySamples >= 1370) {
         this.telemetrySamples = 0;
+        const oct = this.isVoiced && this.detectedFreq > 0
+          ? Math.floor((69 + 12 * Math.log2(this.detectedFreq / 440)) / 12) - 1
+          : null;
         this.port.postMessage({
           detectedFreq: this.isVoiced ? Math.round(this.detectedFreq * 10) / 10 : 0,
           targetFreq: this.isVoiced ? Math.round(this.targetFreq * 10) / 10 : 0,
           correctedFreq: this.isVoiced ? Math.round(this.detectedFreq * this.smoothedRatio * 10) / 10 : 0,
           cents: this.isVoiced ? this.currentCents : 0,
-          noteIndex: this.currentNoteIndex,
-          noteName: this.noteNames[this.currentNoteIndex],
-          octave: Math.floor((69 + 12 * Math.log2(Math.max(1, this.detectedFreq) / 440)) / 12) - 1,
+          noteIndex: this.isVoiced ? this.currentNoteIndex : -1,
+          noteName: this.isVoiced ? this.noteNames[this.currentNoteIndex] : '--',
+          octave: oct !== null ? oct : '',
           voiced: this.isVoiced,
           inTune: this.isVoiced && Math.abs(this.currentCents) < 5,
-          ratio: this.smoothedRatio
+          ratio: this.smoothedRatio,
+          enabled: this.enabled
         });
       }
     }

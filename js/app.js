@@ -1872,7 +1872,7 @@ function setupEventListeners() {
       const isEnabled = atToggle?.checked;
 
       pitchHistory.push({
-        voiced: isEnabled && data.voiced,
+        voiced: data.voiced,
         cents: data.cents || 0,
         rawFreq: data.detectedFreq || 0,
         targetFreq: data.targetFreq || 0,
@@ -1881,8 +1881,6 @@ function setupEventListeners() {
       if (pitchHistory.length > MAX_HISTORY) pitchHistory.shift();
 
       renderPitchGraph();
-
-      if (!isEnabled) return;
 
       if (data.voiced && data.detectedFreq > 0) {
         // Update needle position: cents (-50 to +50) mapped to 2% - 98%
@@ -1897,12 +1895,14 @@ function setupEventListeners() {
         }
         if (atTargetReadout) {
           const sign = data.cents > 0 ? '+' : '';
-          atTargetReadout.textContent = `${data.targetFreq.toFixed(1)}Hz (${sign}${data.cents}¢)`;
+          atTargetReadout.textContent = data.targetFreq ? `${data.targetFreq.toFixed(1)}Hz (${sign}${data.cents}¢)` : '--';
         }
 
         if (atStatusBadge) {
           atStatusBadge.className = 'at-status-badge';
-          if (Math.abs(data.cents) <= 3) {
+          if (!isEnabled) {
+            atStatusBadge.textContent = 'TRACKING';
+          } else if (Math.abs(data.cents) <= 3) {
             atStatusBadge.classList.add('status-perfect');
             atStatusBadge.textContent = 'PERFECT';
           } else if (data.cents < 0) {
@@ -1928,7 +1928,7 @@ function setupEventListeners() {
         if (atTargetReadout) atTargetReadout.textContent = '--';
         if (atStatusBadge) {
           atStatusBadge.className = 'at-status-badge';
-          atStatusBadge.textContent = 'TRACKING';
+          atStatusBadge.textContent = isEnabled ? 'LOCKING' : 'READY';
         }
         if (atPianoStrip) {
           atPianoStrip.querySelectorAll('.current-sung').forEach((k) => k.classList.remove('current-sung'));

@@ -80,7 +80,9 @@ export class AudioEngine {
       }
       this._guestAudioNodes.clear();
     }
-    this._autoTuneTelemetryListeners = [];
+    if (!this._autoTuneTelemetryListeners) {
+      this._autoTuneTelemetryListeners = [];
+    }
 
     const e = this.engine;
     if (e && typeof e === 'object') {
@@ -242,7 +244,7 @@ export class AudioEngine {
       e.autoTuneWet.gain.value = autoTuneToggle?.checked ? 1.0 : 0.0;
 
       const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-      this._autoTuneTelemetryListeners = [];
+      if (!this._autoTuneTelemetryListeners) this._autoTuneTelemetryListeners = [];
       if (e.autoTuneNode.port) {
         e.autoTuneNode.port.onmessage = (msg) => {
           const data = msg.data;
@@ -331,18 +333,45 @@ export class AudioEngine {
       e.mediaVrWet.connect(e.mediaOutBus);
       e.guideVocalGain.connect(e.mediaOutBus);
 
-      // Voice Changer Matrix
-      e.mediaToFx = this.ctx.createGain();
-      e.mediaToFx.gain.value = fxRouteMedia?.checked ? 1.0 : 0.0;
-      e.mediaToDry = this.ctx.createGain();
-      e.mediaToDry.gain.value = fxRouteMedia?.checked ? 0.0 : 1.0;
+      // Dedicated Backing Track Voice Effects & Routing
+      e.mediaFxGain = this.ctx.createGain();
+      e.mediaFxGain.gain.value = fxRouteMedia?.checked ? 1.0 : 0.0;
+      e.mediaDryGain = this.ctx.createGain();
+      e.mediaDryGain.gain.value = fxRouteMedia?.checked ? 0.0 : 1.0;
+
+      // Backward-compatibility aliases
+      e.mediaToFx = e.mediaFxGain;
+      e.mediaToDry = e.mediaDryGain;
+
+      e.mediaHp = this.ctx.createBiquadFilter();
+      e.mediaHp.type = 'highpass';
+      e.mediaHp.frequency.value = 20;
+      e.mediaLp = this.ctx.createBiquadFilter();
+      e.mediaLp.type = 'lowpass';
+      e.mediaLp.frequency.value = 20000;
+      e.mediaFormantEq = this.ctx.createBiquadFilter();
+      e.mediaFormantEq.type = 'peaking';
+      e.mediaFormantEq.Q.value = 0.8;
+      e.mediaWaveshaper = this.ctx.createWaveShaper();
+      e.mediaWaveshaper.oversample = '4x';
+
+      e.mediaPostBus = this.ctx.createGain();
+
+      e.mediaOutBus.connect(e.mediaDryGain);
+      e.mediaDryGain.connect(e.mediaPostBus);
+
+      e.mediaOutBus.connect(e.mediaFxGain);
+      e.mediaFxGain.connect(e.mediaHp);
+      e.mediaHp.connect(e.mediaLp);
+      e.mediaLp.connect(e.mediaFormantEq);
+      e.mediaFormantEq.connect(e.mediaWaveshaper);
+      e.mediaWaveshaper.connect(e.mediaPostBus);
+
+      // Microphone Voice Effects & Routing
       e.micToFx = this.ctx.createGain();
       e.micToFx.gain.value = fxRouteMic?.checked ? 1.0 : 0.0;
       e.micToDry = this.ctx.createGain();
       e.micToDry.gain.value = fxRouteMic?.checked ? 0.0 : 1.0;
-
-      e.mediaOutBus.connect(e.mediaToFx);
-      e.mediaOutBus.connect(e.mediaToDry);
 
       // Pro vocal channel: clean, low-latency processing applied to the microphone only.
       e.proInput = this.ctx.createGain();
@@ -389,9 +418,7 @@ export class AudioEngine {
 
       e.fxInBus = this.ctx.createGain();
       e.dryInBus = this.ctx.createGain();
-      e.mediaToFx.connect(e.fxInBus);
       e.micToFx.connect(e.fxInBus);
-      e.mediaToDry.connect(e.dryInBus);
       e.micToDry.connect(e.dryInBus);
 
       e.fxBypassGain = this.ctx.createGain();
@@ -433,8 +460,9 @@ export class AudioEngine {
       e.waveshaper.connect(e.fxOutBus);
       e.fxBypassGain.connect(e.fxOutBus);
 
-      // Mix Bus
+      // Mix Bus: sums processed media track + vocal FX + dry vocal
       e.mixBus = this.ctx.createGain();
+      e.mediaPostBus.connect(e.mixBus);
       e.fxOutBus.connect(e.mixBus);
       e.dryInBus.connect(e.mixBus);
 
@@ -588,7 +616,7 @@ export class AudioEngine {
       // 1. Backing track monitor (audible when monitorToggle is OFF, so speaker playback doesn't have mic)
       e.mediaMonitorGain = this.ctx.createGain();
       e.mediaMonitorGain.gain.value = isHeadphones ? 0.0 : parseFloat(sliderMediaVol?.value || 1.0);
-      e.mediaOutBus.connect(e.mediaMonitorGain);
+      e.mediaPostBus.connect(e.mediaMonitorGain);
       e.mediaMonitorGain.connect(e.monitorBus);
 
       // 2. System audio monitor
@@ -620,6 +648,7 @@ export class AudioEngine {
         e.mediaVrDry, e.mediaVrWet, e.guideVocalGain,
         e.vrInvert, e.vrMix,
         e.mediaToFx, e.mediaToDry, e.micToFx, e.micToDry,
+        e.mediaFxGain, e.mediaDryGain, e.mediaHp, e.mediaLp, e.mediaFormantEq, e.mediaWaveshaper, e.mediaPostBus,
         e.mediaOutBus,
         e.proInput, e.proComp, e.deEsser, e.proPresence,
         e.proSaturator, e.proWet, e.proDry, e.proOutput,
@@ -833,36 +862,86 @@ export class AudioEngine {
   applyPreset(presetKey) {
     this.currentPreset = presetKey;
     const p = PRESETS[presetKey];
-    if (!p || !this.engine?.pitcher || !this.ctx) return;
+    if (!p || !this.ctx || !this.engine) return;
+    const t = this.ctx.currentTime;
 
-    if (p.isBypass) {
-      if (this.engine.fxBypassGain?.gain) {
-        this.engine.fxBypassGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.02);
-      }
-      if (this.engine.fxActiveGain?.gain) {
-        this.engine.fxActiveGain.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.02);
-      }
-    } else {
-      if (this.engine.fxBypassGain?.gain) {
-        this.engine.fxBypassGain.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.02);
-      }
-      if (this.engine.fxActiveGain?.gain) {
-        this.engine.fxActiveGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.02);
-      }
+    // 1. Microphone FX Chain
+    if (this.engine.pitcher && this.engine.fxBypassGain && this.engine.fxActiveGain) {
+      const setParam = (audioParam, val) => {
+        if (!audioParam) return;
+        if (t > 0.05) {
+          try { audioParam.cancelScheduledValues(t); } catch (_) {}
+          try { audioParam.setTargetAtTime(val, t, 0.02); } catch (_) {}
+        } else {
+          audioParam.value = val;
+        }
+      };
 
+      if (p.isBypass) {
+        setParam(this.engine.fxBypassGain.gain, 1.0);
+        setParam(this.engine.fxActiveGain.gain, 0.0);
+      } else {
+        setParam(this.engine.fxBypassGain.gain, 0.0);
+        setParam(this.engine.fxActiveGain.gain, 1.0);
+
+        try {
+          const pPitch = this.engine.pitcher.parameters?.get?.('pitch');
+          setParam(pPitch, p.pitch);
+        } catch (_) {}
+
+        try {
+          setParam(this.engine.hp?.frequency, p.lowCut);
+          setParam(this.engine.lp?.frequency, p.highCut);
+          setParam(this.engine.formantEq?.frequency, p.eqFreq);
+          setParam(this.engine.formantEq?.gain, p.eqGain);
+          if (this.engine.waveshaper) this.engine.waveshaper.curve = p.drive > 0 ? this.makeDistortionCurve(p.drive * 1.5) : null;
+        } catch (_) {}
+      }
+    }
+
+    // 2. Backing Track FX Chain
+    this._updateMediaPitchAndFx(p);
+  }
+
+  _updateMediaPitchAndFx(preset = null) {
+    if (!this.ctx || !this.engine) return;
+    const t = this.ctx.currentTime;
+    const p = preset || PRESETS[this.currentPreset] || PRESETS.normal;
+    const isFxMedia = !!document.getElementById('fxRouteMedia')?.checked;
+
+    // Calculate total pitch for mediaPitcher: Key Transpose * (isFxMedia && !p.isBypass ? p.pitch : 1.0)
+    const baseTranspose = Math.pow(2, (this.currentKey || 0) / 12);
+    const fxPitch = (isFxMedia && !p.isBypass && p.pitch) ? p.pitch : 1.0;
+    const totalMediaPitch = Math.max(0.25, Math.min(4.0, baseTranspose * fxPitch));
+
+    const setParam = (audioParam, val, timeConstant = 0.02) => {
+      if (!audioParam) return;
+      if (t > 0.05) {
+        try { audioParam.cancelScheduledValues(t); } catch (_) {}
+        try { audioParam.setTargetAtTime(val, t, timeConstant); } catch (_) {}
+      } else {
+        audioParam.value = val;
+      }
+    };
+
+    if (this.engine.mediaPitcher) {
       try {
-        const pPitch = this.engine.pitcher.parameters?.get?.('pitch');
-        if (pPitch) pPitch.setTargetAtTime(p.pitch, this.ctx.currentTime, 0.02);
-      } catch (_) {}
-
-      try {
-        if (this.engine.hp?.frequency) this.engine.hp.frequency.setTargetAtTime(p.lowCut, this.ctx.currentTime, 0.02);
-        if (this.engine.lp?.frequency) this.engine.lp.frequency.setTargetAtTime(p.highCut, this.ctx.currentTime, 0.02);
-        if (this.engine.formantEq?.frequency) this.engine.formantEq.frequency.setTargetAtTime(p.eqFreq, this.ctx.currentTime, 0.02);
-        if (this.engine.formantEq?.gain) this.engine.formantEq.gain.setTargetAtTime(p.eqGain, this.ctx.currentTime, 0.02);
-        if (this.engine.waveshaper) this.engine.waveshaper.curve = p.drive > 0 ? this.makeDistortionCurve(p.drive * 1.5) : null;
+        const param = this.engine.mediaPitcher.parameters?.get?.('pitch');
+        setParam(param, totalMediaPitch, 0.03);
       } catch (_) {}
     }
+
+    const mediaHasFx = isFxMedia && !p.isBypass;
+    setParam(this.engine.mediaFxGain?.gain, mediaHasFx ? 1.0 : 0.0);
+    setParam(this.engine.mediaDryGain?.gain, mediaHasFx ? 0.0 : 1.0);
+
+    try {
+      setParam(this.engine.mediaHp?.frequency, p.lowCut || 20);
+      setParam(this.engine.mediaLp?.frequency, p.highCut || 20000);
+      setParam(this.engine.mediaFormantEq?.frequency, p.eqFreq || 1000);
+      setParam(this.engine.mediaFormantEq?.gain, p.eqGain || 0);
+      if (this.engine.mediaWaveshaper) this.engine.mediaWaveshaper.curve = (mediaHasFx && p.drive > 0) ? this.makeDistortionCurve(p.drive * 1.5) : null;
+    } catch (_) {}
   }
 
   startGateAndVoiceAssists() {
@@ -1051,29 +1130,12 @@ export class AudioEngine {
       pill.classList.toggle('active', st === this.currentKey);
     });
     await this.boot();
-    if (this.engine?.mediaPitcher && this.ctx) {
-      try {
-        const p = this.engine.mediaPitcher.parameters?.get?.('pitch');
-        if (p) {
-          p.setTargetAtTime(Math.pow(2, this.currentKey / 12), this.ctx.currentTime, 0.05);
-        }
-      } catch (_) {}
-    }
+    this._updateMediaPitchAndFx();
   }
 
   updateMediaFxRouting(enabled) {
     if (!this.ctx || !this.engine) return;
-    const isFx = !!enabled;
-    const t = this.ctx.currentTime;
-    if (this.engine.mediaToFx?.gain) {
-      this.engine.mediaToFx.gain.setTargetAtTime(isFx ? 1.0 : 0.0, t, 0.02);
-    }
-    if (this.engine.mediaToDry?.gain) {
-      this.engine.mediaToDry.gain.setTargetAtTime(isFx ? 0.0 : 1.0, t, 0.02);
-    }
-    if (this.currentPreset) {
-      this.applyPreset(this.currentPreset);
-    }
+    this._updateMediaPitchAndFx();
   }
 
   updateMicFxRouting(enabled) {
