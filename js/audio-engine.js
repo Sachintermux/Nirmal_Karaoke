@@ -22,6 +22,7 @@ export class AudioEngine {
     this.activeMicNode = null;
     this.recorder = null;
     this.recChunks = [];
+    this.currentPreset = 'normal';
     this._broadcastDest = null;
     this._clockKeepAlive = null;
     this._guestAudioNodes = new Map();
@@ -642,6 +643,9 @@ export class AudioEngine {
 
       this.startGateAndVoiceAssists();
       this.updateAutoTuneSettings();
+      if (this.currentPreset) {
+        this.applyPreset(this.currentPreset);
+      }
 
       // 1. Automatically connect filePlayer so karaoke backing tracks are always in the mix
       const filePlayer = typeof document !== 'undefined' ? document.getElementById('filePlayer') : null;
@@ -827,6 +831,7 @@ export class AudioEngine {
   }
 
   applyPreset(presetKey) {
+    this.currentPreset = presetKey;
     const p = PRESETS[presetKey];
     if (!p || !this.engine?.pitcher || !this.ctx) return;
 
@@ -1037,6 +1042,14 @@ export class AudioEngine {
     this.currentKey = val;
     const lblKey = document.getElementById('lblKey');
     if (lblKey) lblKey.textContent = this.currentKey > 0 ? `+${this.currentKey}` : this.currentKey;
+    const quickShiftLbl = document.getElementById('lblQuickKeyShift');
+    if (quickShiftLbl) {
+      quickShiftLbl.textContent = this.currentKey === 0 ? 'Original (0)' : (this.currentKey > 0 ? `+${this.currentKey} Semitones` : `${this.currentKey} Semitones`);
+    }
+    document.querySelectorAll('.transpose-pill').forEach(pill => {
+      const st = parseInt(pill.getAttribute('data-semitone'), 10);
+      pill.classList.toggle('active', st === this.currentKey);
+    });
     await this.boot();
     if (this.engine?.mediaPitcher && this.ctx) {
       try {
@@ -1045,6 +1058,36 @@ export class AudioEngine {
           p.setTargetAtTime(Math.pow(2, this.currentKey / 12), this.ctx.currentTime, 0.05);
         }
       } catch (_) {}
+    }
+  }
+
+  updateMediaFxRouting(enabled) {
+    if (!this.ctx || !this.engine) return;
+    const isFx = !!enabled;
+    const t = this.ctx.currentTime;
+    if (this.engine.mediaToFx?.gain) {
+      this.engine.mediaToFx.gain.setTargetAtTime(isFx ? 1.0 : 0.0, t, 0.02);
+    }
+    if (this.engine.mediaToDry?.gain) {
+      this.engine.mediaToDry.gain.setTargetAtTime(isFx ? 0.0 : 1.0, t, 0.02);
+    }
+    if (this.currentPreset) {
+      this.applyPreset(this.currentPreset);
+    }
+  }
+
+  updateMicFxRouting(enabled) {
+    if (!this.ctx || !this.engine) return;
+    const isFx = !!enabled;
+    const t = this.ctx.currentTime;
+    if (this.engine.micToFx?.gain) {
+      this.engine.micToFx.gain.setTargetAtTime(isFx ? 1.0 : 0.0, t, 0.02);
+    }
+    if (this.engine.micToDry?.gain) {
+      this.engine.micToDry.gain.setTargetAtTime(isFx ? 0.0 : 1.0, t, 0.02);
+    }
+    if (this.currentPreset) {
+      this.applyPreset(this.currentPreset);
     }
   }
 

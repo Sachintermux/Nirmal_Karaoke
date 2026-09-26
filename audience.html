@@ -5,6 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" name="viewport"/>
 <title>Live Karaoke Broadcast, Chat &amp; Duet</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎤</text></svg>">
 <link href="./css/style.css?v=29" rel="stylesheet"/>
 <link href="./css/game-invite.css?v=29" rel="stylesheet"/>
 <style>
@@ -551,6 +552,87 @@
   let audienceVolume = 1.25;
   let clientSyncOffset = 0.0;
 
+  // Cached High-Performance Visualizer State
+  const audVisWrap = document.getElementById('audienceVisualizerWrap');
+  const audVisCvs = document.getElementById('audienceVisualizer');
+  const audVisCtx = audVisCvs ? audVisCvs.getContext('2d') : null;
+  let audVisWidth = 0;
+  let audVisHeight = 0;
+  let audVisGrad = null;
+  let latestVisualBars = null;
+  let visualDirty = false;
+  let visualIsActive = false;
+
+  function updateAudienceVisualizerSize() {
+    if (!audVisCvs || !audVisWrap) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cw = audVisWrap.clientWidth || 320;
+    const ch = 48;
+    const targetW = Math.round(cw * dpr);
+    const targetH = Math.round(ch * dpr);
+    if (audVisCvs.width !== targetW || audVisCvs.height !== targetH) {
+      audVisCvs.width = targetW;
+      audVisCvs.height = targetH;
+      audVisWidth = targetW;
+      audVisHeight = targetH;
+      if (audVisCtx) {
+        const baseLine = audVisHeight * 0.92;
+        audVisGrad = audVisCtx.createLinearGradient(0, audVisHeight * 0.05, 0, baseLine);
+        audVisGrad.addColorStop(0, '#00e5ff');
+        audVisGrad.addColorStop(0.5, '#a855f7');
+        audVisGrad.addColorStop(1, '#ff007f');
+      }
+    }
+  }
+  window.addEventListener('resize', updateAudienceVisualizerSize, { passive: true });
+
+  function drawAudienceVisualizer() {
+    if (!audVisCtx || !audVisWidth || !audVisHeight) return;
+    const bars = latestVisualBars;
+    if (!bars || !Array.isArray(bars) || !bars.length) {
+      audVisCtx.clearRect(0, 0, audVisWidth, audVisHeight);
+      if (audVisWrap && visualIsActive) {
+        audVisWrap.style.display = 'none';
+        visualIsActive = false;
+      }
+      return;
+    }
+
+    if (audVisWrap && !visualIsActive) {
+      audVisWrap.style.display = '';
+      visualIsActive = true;
+    }
+
+    audVisCtx.clearRect(0, 0, audVisWidth, audVisHeight);
+    const numBars = bars.length;
+    const barSpacing = audVisWidth / numBars;
+    const barWidth = barSpacing * 0.65;
+    const baseLine = audVisHeight * 0.92;
+
+    if (!audVisGrad) {
+      audVisGrad = audVisCtx.createLinearGradient(0, audVisHeight * 0.05, 0, baseLine);
+      audVisGrad.addColorStop(0, '#00e5ff');
+      audVisGrad.addColorStop(0.5, '#a855f7');
+      audVisGrad.addColorStop(1, '#ff007f');
+    }
+    audVisCtx.fillStyle = audVisGrad;
+
+    for (let i = 0; i < numBars; i++) {
+      const pct = (bars[i] || 0) / 255;
+      const barH = Math.pow(pct, 1.4) * (audVisHeight * 0.85);
+      if (barH < 1) continue;
+      const barX = i * barSpacing + (barSpacing - barWidth) / 2;
+      const barY = baseLine - barH;
+      if (typeof audVisCtx.roundRect === 'function') {
+        audVisCtx.beginPath();
+        audVisCtx.roundRect(barX, barY, barWidth, barH, [3, 3, 0, 0]);
+        audVisCtx.fill();
+      } else {
+        audVisCtx.fillRect(barX, barY, barWidth, barH);
+      }
+    }
+  }
+
   function setStatus(text, tone = 'var(--text-dim)') {
     let box = document.getElementById('liveQualityStatus');
     if (!box) {
@@ -623,12 +705,16 @@
   }
 
   function addChatMessage(sender, text, isSpecial = false, isHost = false) {
+    if (!chatMessages) return;
     const msg = document.createElement('div');
     msg.className = isSpecial ? 'chat-msg-req' : isHost ? 'chat-msg-host' : 'chat-msg-user';
     const safeSender = escapeHtml(sender);
     const safeText = escapeHtml(text);
     msg.innerHTML = isSpecial ? `🎵 <strong>${safeSender}</strong> requested: <em>${safeText}</em>` : isHost ? `⭐ <strong>${safeSender}</strong>: ${safeText}` : `<strong>${safeSender}</strong>: ${safeText}`;
     chatMessages.appendChild(msg);
+    while (chatMessages.children.length > 100) {
+      chatMessages.removeChild(chatMessages.firstChild);
+    }
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
@@ -1155,53 +1241,9 @@
           updateAudienceScroll(lyricClock.hostTime);
         }
         else if (data.type === 'VISUAL_DATA') {
-          const wrap = document.getElementById('audienceVisualizerWrap');
-          const cvs  = document.getElementById('audienceVisualizer');
-          if (!cvs || !wrap) return;
-          const bars = data.bars;
-          // Hide wrap and clear on silence/null
-          if (!bars || !Array.isArray(bars)) {
-            wrap.style.display = 'none';
-            const ctx2d = cvs.getContext('2d');
-            if (ctx2d) ctx2d.clearRect(0, 0, cvs.width, cvs.height);
-            return;
-          }
-          // Ensure canvas pixel size matches CSS layout size
-          const dpr = window.devicePixelRatio || 1;
-          const cw = wrap.clientWidth || 320;
-          const ch = 48;
-          if (cvs.width !== Math.round(cw * dpr) || cvs.height !== Math.round(ch * dpr)) {
-            cvs.width  = Math.round(cw * dpr);
-            cvs.height = Math.round(ch * dpr);
-          }
-          wrap.style.display = '';
-          const ctx2d = cvs.getContext('2d');
-          const w = cvs.width, h = cvs.height;
-          ctx2d.clearRect(0, 0, w, h);
-          const numBars = bars.length;
-          const barSpacing = w / numBars;
-          const barWidth = barSpacing * 0.65;
-          const baseLine = h * 0.92;
-          // Match host visualizer gradient: cyan → purple → pink
-          const grad = ctx2d.createLinearGradient(0, h * 0.05, 0, baseLine);
-          grad.addColorStop(0, '#00e5ff');
-          grad.addColorStop(0.5, '#a855f7');
-          grad.addColorStop(1, '#ff007f');
-          ctx2d.fillStyle = grad;
-          for (let i = 0; i < numBars; i++) {
-            const pct = (bars[i] || 0) / 255;
-            const barH = Math.pow(pct, 1.4) * (h * 0.85);
-            if (barH < 1) continue;
-            const barX = i * barSpacing + (barSpacing - barWidth) / 2;
-            const barY = baseLine - barH;
-            if (typeof ctx2d.roundRect === 'function') {
-              ctx2d.beginPath();
-              ctx2d.roundRect(barX, barY, barWidth, barH, [3, 3, 0, 0]);
-              ctx2d.fill();
-            } else {
-              ctx2d.fillRect(barX, barY, barWidth, barH);
-            }
-          }
+          latestVisualBars = data.bars;
+          visualDirty = true;
+          if (!audVisWidth) updateAudienceVisualizerSize();
         }
         else if (data.type === 'CHAT_BROADCAST') addChatMessage(data.sender, data.text, data.isSpecial, data.isHost);
         else if (data.type === 'FORCE_MUTE') {
@@ -1488,7 +1530,7 @@
       } catch (e) {
         console.warn('[Nirmal] audio stats monitor error:', e);
       }
-    }, 500);
+    }, 2000);
   }
 
   function requestStageState() {
@@ -2104,17 +2146,14 @@
     }
   });
 
+  let cachedLyricEls = [];
+  let lastLyricFillInt = -1;
+
   function scrollToAudienceLyric(idx, smooth = true) {
-    const el = document.getElementById(`aud-lyric-${idx}`);
+    const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
     if (!el || !audienceLyricsBox) return;
     const container = audienceLyricsBox;
-    let top = 0;
-    let curr = el;
-    while (curr && curr !== container) {
-      top += curr.offsetTop;
-      curr = curr.offsetParent;
-    }
-    const targetTop = top - (container.clientHeight / 2) + (el.clientHeight / 2);
+    const targetTop = el.offsetTop - (container.clientHeight / 2) + (el.clientHeight / 2);
     container.scrollTo({
       top: Math.max(0, targetTop),
       behavior: smooth ? 'smooth' : 'auto'
@@ -2128,18 +2167,23 @@
     })).filter(l => Number.isFinite(l.time) && l.text);
     parsedLyrics.sort((a, b) => a.time - b.time);
     currentLyricIndex = -1;
+    lastLyricFillInt = -1;
+    cachedLyricEls = [];
     lyricsContent.innerHTML = '';
     if (!parsedLyrics.length) {
       lyricsContent.innerHTML = '<div class="lyric-line-aud" style="color:var(--text-dim)">No lyrics loaded for this track.</div>';
       return;
     }
+    const frag = document.createDocumentFragment();
     parsedLyrics.forEach((lyric, i) => {
       const d = document.createElement('div');
       d.className = 'lyric-line-aud';
       d.id = `aud-lyric-${i}`;
       d.textContent = lyric.text;
-      lyricsContent.appendChild(d);
+      frag.appendChild(d);
+      cachedLyricEls.push(d);
     });
+    lyricsContent.appendChild(frag);
     isAudienceUserScrolling = false;
     if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
     if (audienceLyricsBox) {
@@ -2155,13 +2199,19 @@
       if (t >= parsedLyrics[i].time) idx = i; else break;
     }
     if (idx !== currentLyricIndex) {
-      if (currentLyricIndex >= 0) document.getElementById(`aud-lyric-${currentLyricIndex}`)?.classList.remove('active');
+      if (currentLyricIndex >= 0) {
+        const oldEl = cachedLyricEls[currentLyricIndex] || document.getElementById(`aud-lyric-${currentLyricIndex}`);
+        if (oldEl) {
+          oldEl.classList.remove('active');
+          oldEl.style.removeProperty('--fill');
+        }
+      }
       currentLyricIndex = idx;
+      lastLyricFillInt = -1;
       if (idx >= 0) {
-        const el = document.getElementById(`aud-lyric-${idx}`);
+        const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
         if (el) {
           el.classList.add('active');
-          // When lyric advances to next line, automatically scroll to that line!
           isAudienceUserScrolling = false;
           if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
           scrollToAudienceLyric(idx, true);
@@ -2169,12 +2219,16 @@
       }
     }
     if (idx >= 0) {
-      const el = document.getElementById(`aud-lyric-${idx}`);
+      const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
       if (el) {
         const nextTime = idx < parsedLyrics.length - 1 ? Number(parsedLyrics[idx + 1].time) : Number(parsedLyrics[idx].time) + 4;
         const span = Math.max(.2, nextTime - Number(parsedLyrics[idx].time));
         const progress = Math.max(0, Math.min(100, ((t - Number(parsedLyrics[idx].time)) / span) * 100));
-        el.style.setProperty('--fill', `${progress}%`);
+        const progressInt = Math.round(progress);
+        if (progressInt !== lastLyricFillInt) {
+          lastLyricFillInt = progressInt;
+          el.style.setProperty('--fill', `${progressInt}%`);
+        }
       }
     }
   }
@@ -2186,11 +2240,20 @@
         const estimate = Math.max(0, lyricClock.hostTime + Math.max(0, performance.now() - lyricClock.receivedPerf) / 1000 - clientSyncOffset);
         updateAudienceScroll(estimate);
       }
+      if (visualDirty) {
+        visualDirty = false;
+        drawAudienceVisualizer();
+      }
       lyricRaf = requestAnimationFrame(loop);
     };
     lyricRaf = requestAnimationFrame(loop);
   }
   startLyricClock();
+
+  window.renderAudienceLyrics = renderAudienceLyrics;
+  window.updateAudienceScroll = updateAudienceScroll;
+  window.drawAudienceVisualizer = drawAudienceVisualizer;
+  window.addChatMessage = addChatMessage;
 
   // Accidental reload & navigation protection
   function shouldWarnAudienceOnReload() {

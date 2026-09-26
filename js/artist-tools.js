@@ -24,25 +24,33 @@ export class ArtistToolsManager {
     this._scheduleAheadTime = 0.1;
     this._tapTimestamps = [];
     this._onBeatCallbacks = [];
+    this.onMetronomeTick = null;
 
     // ─── 2. Auto-Ducking State ───────────────────────────────────────────────
     this.isAutoDuckingEnabled = false;
     this._duckingTimer = null;
     this._isDucked = false;
     this._userMediaGain = 1.0;
-    this._duckThreshold = 0.045; // ~ -27dBFS
+    this._duckThreshold = 0.02; // ~ -34dBFS (responsive to singing and speech)
     this._duckReleaseTimeout = null;
 
     // ─── 3. Pitch Reference State ────────────────────────────────────────────
+    this.concertReference = 440;
+    this.quickKeyShift = 0;
     this._activePitchOsc = null;
     this._activePitchGain = null;
 
     // ─── 4. Peak Meter State ─────────────────────────────────────────────────
     this._peakTimer = null;
     this._onPeakCallbacks = [];
+    this._onPeakUpdateHandler = null;
   }
 
   // ─── Metronome Engine ─────────────────────────────────────────────────────
+
+  get isMetronomeRunning() {
+    return this.isPlayingMetronome;
+  }
 
   setBpm(newBpm) {
     this.bpm = Math.max(40, Math.min(240, Math.round(newBpm)));
@@ -57,6 +65,10 @@ export class ArtistToolsManager {
   setMetronomeRouting(route) {
     this.metronomeRouting = route === 'broadcast' ? 'broadcast' : 'inEar';
     return this.metronomeRouting;
+  }
+
+  setMetronomeBroadcast(enable) {
+    return this.setMetronomeRouting(enable ? 'broadcast' : 'inEar');
   }
 
   onBeat(callback) {
@@ -151,6 +163,9 @@ export class ArtistToolsManager {
   }
 
   _emitBeatEvent(beat, isAccent) {
+    if (typeof this.onMetronomeTick === 'function') {
+      try { this.onMetronomeTick(beat, isAccent); } catch (_) {}
+    }
     for (const cb of this._onBeatCallbacks) {
       try { cb(beat, isAccent, this.bpm); } catch (_) {}
     }
@@ -180,6 +195,11 @@ export class ArtistToolsManager {
       return { bpm: calculatedBpm, tapsCount: this._tapTimestamps.length };
     }
     return { bpm: this.bpm, tapsCount: this._tapTimestamps.length };
+  }
+
+  tapTempo() {
+    const res = this.recordTap();
+    return res.bpm;
   }
 
   // ─── Pitch Pipe & Concert Reference ───────────────────────────────────────
@@ -229,6 +249,24 @@ export class ArtistToolsManager {
     };
   }
 
+  stopPitch() {
+    if (this._activePitchOsc) {
+      try {
+        const ctx = this.audioEngine?.ctx;
+        const t = ctx ? ctx.currentTime : 0;
+        if (this._activePitchGain && ctx) {
+          this._activePitchGain.gain.setValueAtTime(this._activePitchGain.gain.value, t);
+          this._activePitchGain.gain.linearRampToValueAtTime(0.0001, t + 0.05);
+        }
+        this._activePitchOsc.stop(t + 0.05);
+      } catch (_) {
+        try { this._activePitchOsc.stop(); } catch (_) {}
+      }
+      this._activePitchOsc = null;
+      this._activePitchGain = null;
+    }
+  }
+
   setConcertReference(refHz) {
     this.concertReference = parseFloat(refHz) || 440;
     return this.concertReference;
@@ -262,11 +300,17 @@ export class ArtistToolsManager {
     return this.stopPitch();
   }
 
+  setQuickKeyShift(semitones) {
+    this.quickKeyShift = parseInt(semitones, 10) || 0;
+    return this.quickKeyShift;
+  }
+
   // ─── Auto-Ducking / DJ Talkover Engine ────────────────────────────────────
 
-  enableAutoDucking(enable = true) {
+  async enableAutoDucking(enable = true) {
     this.isAutoDuckingEnabled = !!enable;
     if (this.isAutoDuckingEnabled) {
+      await this.audioEngine.boot();
       this._startAutoDuckingLoop();
     } else {
       this._stopAutoDuckingLoop();
@@ -276,8 +320,9 @@ export class ArtistToolsManager {
 
   _startAutoDuckingLoop() {
     if (this._duckingTimer) return;
-    const checkIntervalMs = 60;
+    const checkIntervalMs = 50;
     const sampleBuffer = new Float32Array(256);
+    const statusEl = document.getElementById('lblDuckingStatus');
 
     const loop = () => {
       if (!this.isAutoDuckingEnabled) {
@@ -296,29 +341,36 @@ export class ArtistToolsManager {
         const rms = Math.sqrt(sum / sampleBuffer.length);
 
         if (rms > this._duckThreshold) {
-          // Vocal detected: Duck music smoothly by 7dB (gain ~ 0.45)
+          // Vocal detected: Duck music smoothly by ~10dB (gain ~ 0.30)
           if (!this._isDucked) {
             const slider = document.getElementById('sliderMediaVol');
             this._userMediaGain = parseFloat(slider?.value || 1.0);
-            const duckedGain = this._userMediaGain * 0.35;
-            engine.mediaGain.gain.setTargetAtTime(duckedGain, ctx.currentTime, 0.08);
+            const duckedGain = this._userMediaGain * 0.30;
+            engine.mediaGain.gain.setTargetAtTime(duckedGain, ctx.currentTime, 0.06);
             this._isDucked = true;
+            if (statusEl) {
+              statusEl.style.display = 'block';
+              statusEl.textContent = '⚡ Auto-Ducking: Music ducked (-10dB) for vocal clarity';
+            }
           }
           if (this._duckReleaseTimeout) {
             clearTimeout(this._duckReleaseTimeout);
             this._duckReleaseTimeout = null;
           }
         } else if (this._isDucked && !this._duckReleaseTimeout) {
-          // Singer finished talking: hold for 800ms then restore music smoothly
+          // Singer finished talking: hold for 650ms then restore music smoothly
           this._duckReleaseTimeout = setTimeout(() => {
             this._duckReleaseTimeout = null;
             if (this.isAutoDuckingEnabled && engine.mediaGain && ctx) {
               const slider = document.getElementById('sliderMediaVol');
               const targetGain = parseFloat(slider?.value || this._userMediaGain || 1.0);
-              engine.mediaGain.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.25);
+              engine.mediaGain.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.22);
               this._isDucked = false;
+              if (statusEl) {
+                statusEl.textContent = '⚡ Auto-Ducking Active: Music ducks dynamically with vocals';
+              }
             }
-          }, 800);
+          }, 650);
         }
       }
       this._duckingTimer = setTimeout(loop, checkIntervalMs);
@@ -349,6 +401,17 @@ export class ArtistToolsManager {
 
   // ─── Broadcast Peak & Clip Meter ──────────────────────────────────────────
 
+  set onPeakUpdate(callback) {
+    this._onPeakUpdateHandler = callback;
+    if (callback && !this._peakTimer) {
+      this._startPeakMeter();
+    }
+  }
+
+  get onPeakUpdate() {
+    return this._onPeakUpdateHandler;
+  }
+
   onPeak(callback) {
     if (typeof callback === 'function') {
       this._onPeakCallbacks.push(callback);
@@ -359,7 +422,7 @@ export class ArtistToolsManager {
   _startPeakMeter() {
     const data = new Float32Array(512);
     const meterLoop = () => {
-      if (!this._onPeakCallbacks.length) {
+      if (!this._onPeakCallbacks.length && !this._onPeakUpdateHandler) {
         this._peakTimer = null;
         return;
       }
@@ -371,7 +434,14 @@ export class ArtistToolsManager {
           const abs = Math.abs(data[i]);
           if (abs > peak) peak = abs;
         }
-        const isClipping = peak >= 0.98;
+        const peakDb = peak > 0.00001 ? 20 * Math.log10(peak) : -60;
+        const isClipping = peak >= 0.98 || peakDb >= -0.5;
+
+        if (typeof this._onPeakUpdateHandler === 'function') {
+          try {
+            this._onPeakUpdateHandler({ peak, peakDb, isClipping });
+          } catch (_) {}
+        }
         for (const cb of this._onPeakCallbacks) {
           try { cb(peak, isClipping); } catch (_) {}
         }

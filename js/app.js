@@ -2080,20 +2080,26 @@ function setupEventListeners() {
 
   document.getElementById('fxRouteMedia')?.addEventListener('change', async (e) => {
     await audioEngine.boot();
-    audioEngine.engine.mediaToFx.gain.setTargetAtTime(e.target.checked ? 1.0 : 0.0, audioEngine.ctx.currentTime, 0.02);
-    audioEngine.engine.mediaToDry.gain.setTargetAtTime(e.target.checked ? 0.0 : 1.0, audioEngine.ctx.currentTime, 0.02);
+    audioEngine.updateMediaFxRouting(e.target.checked);
   });
 
   document.getElementById('fxRouteMic')?.addEventListener('change', async (e) => {
     await audioEngine.boot();
-    audioEngine.engine.micToFx.gain.setTargetAtTime(e.target.checked ? 1.0 : 0.0, audioEngine.ctx.currentTime, 0.02);
-    audioEngine.engine.micToDry.gain.setTargetAtTime(e.target.checked ? 0.0 : 1.0, audioEngine.ctx.currentTime, 0.02);
+    audioEngine.updateMicFxRouting(e.target.checked);
   });
 
   document.getElementById('vocalRemoverToggle')?.addEventListener('change', async (e) => {
     await audioEngine.boot();
-    audioEngine.engine.mediaVrDry.gain.setTargetAtTime(e.target.checked ? 0.0 : 1.0, audioEngine.ctx.currentTime, 0.02);
-    audioEngine.engine.mediaVrWet.gain.setTargetAtTime(e.target.checked ? 1.0 : 0.0, audioEngine.ctx.currentTime, 0.02);
+    audioEngine.updateVocalRemover(e.target.checked);
+  });
+
+  document.getElementById('guideDuckingToggle')?.addEventListener('change', async (e) => {
+    await audioEngine.boot();
+    if (audioEngine.engine?.guideVocalGain && !e.target.checked && audioEngine.ctx) {
+      const slider = document.getElementById('sliderGuideVol');
+      const val = parseFloat(slider?.value || 0);
+      audioEngine.engine.guideVocalGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.02);
+    }
   });
 
   document.getElementById('btnKeyFlat')?.addEventListener('click', () => {

@@ -39,6 +39,8 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 app.use(express.static(path.join(__dirname), {
   dotfiles: 'deny',
   index: ['index.html']
