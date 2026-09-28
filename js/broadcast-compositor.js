@@ -893,7 +893,11 @@ export class BroadcastCompositor {
     const isVisMode = mode === 'visualizer';
     const isKaraokeMode = mode === 'karaoke';
     const numBars = isVisMode ? 64 : 48;
-    const step = this._visDataArray ? Math.max(1, Math.floor(this._visDataArray.length / (numBars * 2))) : 1;
+    if (!this._visPeaks || this._visPeaks.length !== numBars) {
+      this._visPeaks = new Float32Array(numBars);
+      this._visPeakHold = new Int16Array(numBars);
+      this._visPeakSpeed = new Float32Array(numBars);
+    }
     
     let baseY = hasCameras ? Math.round(h * 0.68) : Math.round(h * 0.60);
     let maxBarHeight = Math.round(h * 0.17);
@@ -913,28 +917,81 @@ export class BroadcastCompositor {
     const barWidth = Math.max(3, barSpacing * 0.72);
     const startX = (w - (numBars * barSpacing)) / 2;
     const time = performance.now() * 0.001;
+    const capRadius = Math.max(1.5, Math.min(barWidth / 2, 4));
 
     ctx.save();
     const grad = ctx.createLinearGradient(0, baseY - maxBarHeight, 0, baseY);
     grad.addColorStop(0, colors?.accent1 || '#00e5ff');
-    grad.addColorStop(0.5, '#a855f7');
-    grad.addColorStop(1, colors?.accent2 || '#ff007f');
-    ctx.fillStyle = grad;
+    grad.addColorStop(0.35, '#a855f7');
+    grad.addColorStop(0.75, colors?.accent2 || '#ff007f');
+    grad.addColorStop(1, '#ff3366');
 
-    // Single-pass batched rectangle drawing (massively faster than 64 separate fills)
-    ctx.beginPath();
+    // 1. Draw mirrored reflection below baseline
+    const reflGrad = ctx.createLinearGradient(0, baseY, 0, baseY + Math.round(maxBarHeight * 0.25));
+    reflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.20)');
+    reflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+    ctx.fillStyle = reflGrad;
     for (let i = 0; i < numBars; i++) {
-      let val = (this._visDataArray && hasSignal) ? (this._visDataArray[i * step] || 0) : 0;
-      if (!hasSignal) {
+      let val = 0;
+      if (this._visDataArray && hasSignal) {
+        const norm = i / (numBars - 1);
+        const bin = Math.floor(Math.pow(norm, 1.4) * (this._visDataArray.length * 0.72));
+        val = this._visDataArray[bin] || 0;
+      }
+      if (val < 10) continue;
+      const barH = (val / 255) * maxBarHeight;
+      const x = Math.round(startX + (i * barSpacing));
+      const reflH = Math.min(Math.round(barH * 0.28), Math.round(maxBarHeight * 0.22));
+      ctx.beginPath();
+      ctx.roundRect(x, baseY + 1, barWidth, reflH, [1, 1, capRadius, capRadius]);
+      ctx.fill();
+    }
+
+    // 2. Draw Main Equalizer Capsule Bars
+    ctx.fillStyle = grad;
+    for (let i = 0; i < numBars; i++) {
+      let val = 0;
+      if (this._visDataArray && hasSignal) {
+        const norm = i / (numBars - 1);
+        const bin = Math.floor(Math.pow(norm, 1.4) * (this._visDataArray.length * 0.72));
+        val = this._visDataArray[bin] || 0;
+      } else {
         val = Math.floor((Math.sin(i * 0.22 + time * 2.8) * 0.5 + 0.5) * 55 + 12);
       }
-      const barHeight = Math.max(3, (val / 255) * maxBarHeight);
-      const x = startX + (i * barSpacing);
-      const y = baseY - barHeight;
+      const barHeight = Math.max(3, Math.pow(val / 255, 1.35) * maxBarHeight);
+      const x = Math.round(startX + (i * barSpacing));
+      const y = Math.round(baseY - barHeight);
 
-      ctx.roundRect(x, y, barWidth, barHeight, 2);
+      // Peak physics
+      if (barHeight >= this._visPeaks[i]) {
+        this._visPeaks[i] = barHeight;
+        this._visPeakHold[i] = 5;
+        this._visPeakSpeed[i] = 0;
+      } else if (this._visPeakHold[i] > 0) {
+        this._visPeakHold[i]--;
+      } else {
+        this._visPeakSpeed[i] += 0.3;
+        this._visPeaks[i] = Math.max(0, this._visPeaks[i] - this._visPeakSpeed[i]);
+      }
+
+      ctx.beginPath();
+      ctx.roundRect(x, y, barWidth, barHeight, [capRadius, capRadius, 2, 2]);
+      ctx.fill();
     }
-    ctx.fill();
+
+    // 3. Draw Floating Peak Caps
+    ctx.fillStyle = '#00ffff';
+    const peakDotH = Math.max(2, Math.min(barWidth * 0.4, 4));
+    for (let i = 0; i < numBars; i++) {
+      const pH = this._visPeaks[i];
+      if (pH < 4) continue;
+      const x = Math.round(startX + (i * barSpacing));
+      const y = Math.round(baseY - pH - peakDotH - 2);
+      ctx.beginPath();
+      ctx.roundRect(x, y, barWidth, peakDotH, capRadius);
+      ctx.fill();
+    }
+
     ctx.restore();
   }
 

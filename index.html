@@ -57,7 +57,12 @@
             <div class="muted" style="margin-top:-2px">Sing, remix, add effects and share your stage — all in one place.</div>
             <div class="stage-visual">
                 <canvas id="visualizer"></canvas>
-                <div class="hud-overlay"><span id="hudNote">PITCH: --</span><span id="hudCoach">COACH: READY</span>
+                <div class="hud-overlay">
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <span id="hudNote">PITCH: --</span>
+                        <span id="hudAccel">⚡ ACCEL: ON</span>
+                    </div>
+                    <span id="hudCoach">COACH: READY</span>
                 </div>
             </div>
             <div class="stage-video-arena" id="adminStageVideoArena" style="display:none;">

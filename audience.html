@@ -391,7 +391,7 @@
 </div>
 
 <!-- AUDIENCE MUSIC VISUALIZER (mirrored from host's spectrum) -->
-<div id="audienceVisualizerWrap" style="display:none; width:100%; margin:6px 0; border-radius:8px; overflow:hidden; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06);">
+<div id="audienceVisualizerWrap" style="display:none; width:100%; margin:6px 0; border-radius:12px; overflow:hidden; background:radial-gradient(ellipse 70% 60% at 50% 80%, rgba(0, 240, 255, 0.06), transparent 75%), linear-gradient(180deg, rgba(8, 5, 16, 0.4), rgba(4, 2, 8, 0.7)); border:1px solid rgba(0, 240, 255, 0.15); box-shadow:0 4px 15px rgba(0, 0, 0, 0.4);">
   <canvas id="audienceVisualizer" style="display:block; width:100%; height:48px;"></canvas>
 </div>
 
@@ -554,20 +554,24 @@
   let audienceVolume = 1.25;
   let clientSyncOffset = 0.0;
 
-  // Cached High-Performance Visualizer State
+  // Cached High-Performance Gen-Z Visualizer State
   const audVisWrap = document.getElementById('audienceVisualizerWrap');
   const audVisCvs = document.getElementById('audienceVisualizer');
   const audVisCtx = audVisCvs ? audVisCvs.getContext('2d') : null;
   let audVisWidth = 0;
   let audVisHeight = 0;
   let audVisGrad = null;
+  let audVisReflGrad = null;
   let latestVisualBars = null;
   let visualDirty = false;
   let visualIsActive = false;
+  let audVisPeaks = new Float32Array(64);
+  let audVisPeakHold = new Int16Array(64);
+  let audVisPeakSpeed = new Float32Array(64);
 
   function updateAudienceVisualizerSize() {
     if (!audVisCvs || !audVisWrap) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     const cw = audVisWrap.clientWidth || 320;
     const ch = 48;
     const targetW = Math.round(cw * dpr);
@@ -577,13 +581,8 @@
       audVisCvs.height = targetH;
       audVisWidth = targetW;
       audVisHeight = targetH;
-      if (audVisCtx) {
-        const baseLine = audVisHeight * 0.92;
-        audVisGrad = audVisCtx.createLinearGradient(0, audVisHeight * 0.05, 0, baseLine);
-        audVisGrad.addColorStop(0, '#00e5ff');
-        audVisGrad.addColorStop(0.5, '#a855f7');
-        audVisGrad.addColorStop(1, '#ff007f');
-      }
+      audVisGrad = null;
+      audVisReflGrad = null;
     }
   }
   window.addEventListener('resize', updateAudienceVisualizerSize, { passive: true });
@@ -608,29 +607,92 @@
     audVisCtx.clearRect(0, 0, audVisWidth, audVisHeight);
     const numBars = bars.length;
     const barSpacing = audVisWidth / numBars;
-    const barWidth = barSpacing * 0.65;
-    const baseLine = audVisHeight * 0.92;
+    const barWidth = Math.max(2.5, barSpacing * 0.70);
+    const baseLine = Math.round(audVisHeight * 0.82);
+    const maxBarH = Math.round(audVisHeight * 0.72);
+    const capRadius = Math.max(1.5, Math.min(barWidth / 2, 3));
 
     if (!audVisGrad) {
-      audVisGrad = audVisCtx.createLinearGradient(0, audVisHeight * 0.05, 0, baseLine);
-      audVisGrad.addColorStop(0, '#00e5ff');
-      audVisGrad.addColorStop(0.5, '#a855f7');
-      audVisGrad.addColorStop(1, '#ff007f');
-    }
-    audVisCtx.fillStyle = audVisGrad;
+      audVisGrad = audVisCtx.createLinearGradient(0, baseLine - maxBarH, 0, baseLine);
+      audVisGrad.addColorStop(0, '#00f0ff');
+      audVisGrad.addColorStop(0.35, '#a855f7');
+      audVisGrad.addColorStop(0.75, '#ff007f');
+      audVisGrad.addColorStop(1, '#ff3366');
 
+      audVisReflGrad = audVisCtx.createLinearGradient(0, baseLine, 0, baseLine + Math.round(maxBarH * 0.25));
+      audVisReflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.20)');
+      audVisReflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+    }
+
+    // Baseline line
+    audVisCtx.strokeStyle = 'rgba(0, 240, 255, 0.2)';
+    audVisCtx.lineWidth = 1;
+    audVisCtx.beginPath();
+    audVisCtx.moveTo(0, baseLine);
+    audVisCtx.lineTo(audVisWidth, baseLine);
+    audVisCtx.stroke();
+
+    // 1. Draw reflected baseline bars
+    audVisCtx.fillStyle = audVisReflGrad;
     for (let i = 0; i < numBars; i++) {
       const pct = (bars[i] || 0) / 255;
-      const barH = Math.pow(pct, 1.4) * (audVisHeight * 0.85);
-      if (barH < 1) continue;
-      const barX = i * barSpacing + (barSpacing - barWidth) / 2;
-      const barY = baseLine - barH;
+      const bH = Math.pow(pct, 1.35) * maxBarH;
+      if (bH < 2) continue;
+      const x = Math.round(i * barSpacing + (barSpacing - barWidth) / 2);
+      const reflH = Math.min(Math.round(bH * 0.26), Math.round(maxBarH * 0.22));
       if (typeof audVisCtx.roundRect === 'function') {
         audVisCtx.beginPath();
-        audVisCtx.roundRect(barX, barY, barWidth, barH, [3, 3, 0, 0]);
+        audVisCtx.roundRect(x, baseLine + 1, barWidth, reflH, [1, 1, capRadius, capRadius]);
         audVisCtx.fill();
       } else {
-        audVisCtx.fillRect(barX, barY, barWidth, barH);
+        audVisCtx.fillRect(x, baseLine + 1, barWidth, reflH);
+      }
+    }
+
+    // 2. Draw Main Bars
+    audVisCtx.fillStyle = audVisGrad;
+    for (let i = 0; i < numBars; i++) {
+      const pct = (bars[i] || 0) / 255;
+      const bH = Math.max(0, Math.pow(pct, 1.35) * maxBarH);
+
+      // Peak physics
+      if (bH >= audVisPeaks[i]) {
+        audVisPeaks[i] = bH;
+        audVisPeakHold[i] = 5;
+        audVisPeakSpeed[i] = 0;
+      } else if (audVisPeakHold[i] > 0) {
+        audVisPeakHold[i]--;
+      } else {
+        audVisPeakSpeed[i] += 0.3;
+        audVisPeaks[i] = Math.max(0, audVisPeaks[i] - audVisPeakSpeed[i]);
+      }
+
+      if (bH < 1.5) continue;
+      const x = Math.round(i * barSpacing + (barSpacing - barWidth) / 2);
+      const y = Math.round(baseLine - bH);
+      if (typeof audVisCtx.roundRect === 'function') {
+        audVisCtx.beginPath();
+        audVisCtx.roundRect(x, y, barWidth, bH, [capRadius, capRadius, 1, 1]);
+        audVisCtx.fill();
+      } else {
+        audVisCtx.fillRect(x, y, barWidth, bH);
+      }
+    }
+
+    // 3. Draw Floating Peak Dots
+    audVisCtx.fillStyle = '#00ffff';
+    const peakDotH = Math.max(2, Math.min(barWidth * 0.4, 3));
+    for (let i = 0; i < numBars; i++) {
+      const pH = audVisPeaks[i];
+      if (pH < 3) continue;
+      const x = Math.round(i * barSpacing + (barSpacing - barWidth) / 2);
+      const y = Math.round(baseLine - pH - peakDotH - 1.5);
+      if (typeof audVisCtx.roundRect === 'function') {
+        audVisCtx.beginPath();
+        audVisCtx.roundRect(x, y, barWidth, peakDotH, capRadius);
+        audVisCtx.fill();
+      } else {
+        audVisCtx.fillRect(x, y, barWidth, peakDotH);
       }
     }
   }
