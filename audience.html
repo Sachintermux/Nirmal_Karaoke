@@ -22,6 +22,10 @@
         }
         @media (max-width: 850px) {
           input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px !important; }
+          *, *:before, *:after {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+          }
         }
         .broadcast-card {
           background: var(--bg-panel);
@@ -475,12 +479,12 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.min.js?v=24"></script>
 <script type="module">
-  import { dspWorkletCode } from './js/dsp-code.js?v=29';
-  import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=29';
-  import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=29';
-  import { PresenceManager } from './js/presence-manager.js?v=29';
-  import { acquireWakeLock, releaseWakeLock } from './js/wake-lock.js?v=29';
-  import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './js/media-session.js?v=29';
+  import { dspWorkletCode } from './js/dsp-code.js?v=31';
+  import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=31';
+  import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=31';
+  import { PresenceManager } from './js/presence-manager.js?v=31';
+  import { acquireWakeLock, releaseWakeLock } from './js/wake-lock.js?v=31';
+  import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './js/media-session.js?v=31';
 
   const params = new URLSearchParams(location.search);
   const roomId = params.get('room');
@@ -2322,7 +2326,17 @@
 
   function startLyricClock() {
     if (lyricRaf) cancelAnimationFrame(lyricRaf);
-    const loop = () => {
+    let lastTs = 0;
+    const isMobile = typeof window !== 'undefined' && (window.innerWidth <= 850 || /Android|iPhone|iPad/i.test(navigator.userAgent));
+    const targetInterval = isMobile ? 35 : 20;
+
+    const loop = (ts) => {
+      lyricRaf = requestAnimationFrame(loop);
+      if (typeof document !== 'undefined' && document.hidden) return;
+
+      if (ts - lastTs < targetInterval) return;
+      lastTs = ts;
+
       if (lyricClock.receivedPerf && lyricClock.playing) {
         const estimate = Math.max(0, lyricClock.hostTime + Math.max(0, performance.now() - lyricClock.receivedPerf) / 1000 - clientSyncOffset);
         updateAudienceScroll(estimate);
@@ -2331,7 +2345,6 @@
         visualDirty = false;
         drawAudienceVisualizer();
       }
-      lyricRaf = requestAnimationFrame(loop);
     };
     lyricRaf = requestAnimationFrame(loop);
   }

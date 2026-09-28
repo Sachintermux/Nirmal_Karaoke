@@ -421,11 +421,30 @@ export class ArtistToolsManager {
 
   _startPeakMeter() {
     const data = new Float32Array(512);
-    const meterLoop = () => {
+    let lastTime = 0;
+    const isMobile = typeof window !== 'undefined' && (
+      window.innerWidth <= 850 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    );
+    const interval = isMobile ? 50 : 30;
+
+    const meterLoop = (ts) => {
       if (!this._onPeakCallbacks.length && !this._onPeakUpdateHandler) {
         this._peakTimer = null;
         return;
       }
+      this._peakTimer = requestAnimationFrame(meterLoop);
+
+      if (typeof document !== 'undefined' && document.hidden) return;
+
+      // Throttle rate (20 FPS on mobile saves substantial CPU)
+      if (ts - lastTime < interval) return;
+      lastTime = ts;
+
+      // Lazy check: skip all processing if artistSuiteCard is hidden on mobile
+      const vuCard = document.getElementById('artistSuiteCard');
+      if (vuCard && vuCard.offsetParent === null) return;
+
       const analyser = this.audioEngine?.engine?.analyser;
       if (analyser) {
         analyser.getFloatTimeDomainData(data);
@@ -446,7 +465,6 @@ export class ArtistToolsManager {
           try { cb(peak, isClipping); } catch (_) {}
         }
       }
-      this._peakTimer = requestAnimationFrame(meterLoop);
     };
     this._peakTimer = requestAnimationFrame(meterLoop);
   }

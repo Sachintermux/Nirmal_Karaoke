@@ -225,16 +225,26 @@ export class BroadcastCompositor {
       this._workerUrl = URL.createObjectURL(workerBlob);
       this._worker = new Worker(this._workerUrl);
       this._worker.onmessage = () => {
-        if (this._isRunning) {
-          this.drawScene();
+        if (this._isRunning && !this._isDrawing) {
+          this._isDrawing = true;
+          try {
+            this.drawScene();
+          } finally {
+            this._isDrawing = false;
+          }
         }
       };
       this._worker.postMessage({ type: 'start', ms: tickMs });
     } catch (workerErr) {
       console.warn('[BroadcastCompositor] Web Worker clock fallback to setInterval:', workerErr);
       this._timer = setInterval(() => {
-        if (this._isRunning) {
-          this.drawScene();
+        if (this._isRunning && !this._isDrawing) {
+          this._isDrawing = true;
+          try {
+            this.drawScene();
+          } finally {
+            this._isDrawing = false;
+          }
         }
       }, tickMs);
     }
@@ -382,7 +392,8 @@ export class BroadcastCompositor {
     }
 
     // ─── 2. Camera Feeds & DOM Metadata Cache (Throttled to 800ms) ───────────
-    const scanInterval = this._isMobile ? 1000 : 600;
+    // ─── 2. Camera Feeds & DOM Metadata Cache (Throttled to 1200ms on mobile) ─
+    const scanInterval = this._isMobile ? 1200 : 700;
     if (!this._lastDomScan || performance.now() - this._lastDomScan > scanInterval) {
       this._lastDomScan = performance.now();
 
@@ -405,45 +416,34 @@ export class BroadcastCompositor {
         };
       });
 
-      // High-precision lyrics reading: directly from parsedLyrics using current audio time
-      let currentLine = '';
-      let nextLine = '';
-      if (this.lyricsManager && Array.isArray(this.lyricsManager.parsedLyrics) && this.lyricsManager.parsedLyrics.length > 0) {
-        const filePlayer = this.lyricsManager.filePlayer || document.getElementById('filePlayer');
-        if (filePlayer && !filePlayer.paused && Number.isFinite(filePlayer.currentTime)) {
-          const t = filePlayer.currentTime - (this.lyricsManager.lyricSyncOffset || 0);
-          const lyrics = this.lyricsManager.parsedLyrics;
-          let idx = -1;
-          for (let i = 0; i < lyrics.length; i++) {
-            if (t >= lyrics[i].time) {
-              idx = i;
-            } else {
-              break;
-            }
-          }
-          if (idx !== -1) {
-            currentLine = lyrics[idx]?.text?.trim() || '';
-            nextLine = (idx < lyrics.length - 1) ? (lyrics[idx + 1]?.text?.trim() || '') : '';
-          }
-        }
-      }
-
-      // DOM fallback if lyricsManager not populated or tab active
-      if (!currentLine) {
-        const activeEl = document.querySelector('.lyric-line.active');
-        if (activeEl) {
-          currentLine = activeEl.textContent?.trim() || '';
-          const nextEl = activeEl.nextElementSibling;
-          nextLine = (nextEl && nextEl.classList.contains('lyric-line')) ? (nextEl.textContent?.trim() || '') : '';
-        }
-      }
-
-      this._cachedCurrentLine = currentLine || '♪ ♫ ♪ Nirmal Karaoke Live ♪ ♫ ♪';
-      this._cachedNextLine = nextLine || 'Sing along with your favorite tracks';
-
       const titleEl = document.getElementById('nowPlayingTitle') || document.querySelector('.now-playing .title');
       this._cachedSongName = titleEl?.textContent?.trim() || 'Live Karaoke Session';
     }
+
+    // High-precision lyrics reading: directly from parsedLyrics using current audio time (0ms DOM overhead)
+    let currentLine = '';
+    let nextLine = '';
+    if (this.lyricsManager && Array.isArray(this.lyricsManager.parsedLyrics) && this.lyricsManager.parsedLyrics.length > 0) {
+      const filePlayer = this.lyricsManager.filePlayer || document.getElementById('filePlayer');
+      if (filePlayer && !filePlayer.paused && Number.isFinite(filePlayer.currentTime)) {
+        const t = filePlayer.currentTime - (this.lyricsManager.lyricSyncOffset || 0);
+        const lyrics = this.lyricsManager.parsedLyrics;
+        let idx = -1;
+        for (let i = 0; i < lyrics.length; i++) {
+          if (t >= lyrics[i].time) {
+            idx = i;
+          } else {
+            break;
+          }
+        }
+        if (idx !== -1) {
+          currentLine = lyrics[idx]?.text?.trim() || '';
+          nextLine = (idx < lyrics.length - 1) ? (lyrics[idx + 1]?.text?.trim() || '') : '';
+        }
+      }
+    }
+    this._cachedCurrentLine = currentLine || this._cachedCurrentLine || '♪ ♫ ♪ Nirmal Karaoke Live ♪ ♫ ♪';
+    this._cachedNextLine = nextLine || this._cachedNextLine || 'Sing along with your favorite tracks';
 
     const activeBoxes = [];
     if (this.layers.hostCamera && this._cachedHost?.video) {
@@ -656,7 +656,8 @@ export class BroadcastCompositor {
         this._visDataArray = new Uint8Array(engine.analyser.frequencyBinCount);
       }
       engine.analyser.getByteFrequencyData(this._visDataArray);
-      for (let i = 0; i < Math.min(32, this._visDataArray.length); i++) {
+      const len = this._visDataArray.length;
+      for (let i = 0; i < len; i += 3) {
         if (this._visDataArray[i] > 2) { hasSignal = true; break; }
       }
     }
@@ -885,7 +886,8 @@ export class BroadcastCompositor {
         this._visDataArray = new Uint8Array(engine.analyser.frequencyBinCount);
       }
       engine.analyser.getByteFrequencyData(this._visDataArray);
-      for (let i = 0; i < Math.min(32, this._visDataArray.length); i++) {
+      const len = this._visDataArray.length;
+      for (let i = 0; i < len; i += 3) {
         if (this._visDataArray[i] > 2) { hasSignal = true; break; }
       }
     }

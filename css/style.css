@@ -35,6 +35,20 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}a{color:inherit}
  body[data-mobile-screen="effects"] .mobile-screen:not([data-screen-group="effects"]){display:none!important}
  body[data-mobile-screen="audience"] .mobile-screen:not([data-screen-group="audience"]){display:none!important}
  .control-rail{margin-top:0!important}
+ /* Mobile GPU Acceleration: Eliminate multi-pass blur & simplify fragment shaders */
+ *, *:before, *:after {
+   backdrop-filter: none !important;
+   -webkit-backdrop-filter: none !important;
+ }
+ .mobile-nav { background: rgba(13, 9, 22, 0.98) !important; }
+ .modal { background: rgba(4, 2, 8, 0.94) !important; }
+ .camera-filter-toolbar, .artist-suite-card, .modal-card {
+   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+ }
+ .mobile-screen {
+   content-visibility: auto;
+   contain-intrinsic-size: 200px;
+ }
 }
 @media(max-width:850px){
  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), select, textarea, .expand-box input, .search-row input { font-size:16px!important; }

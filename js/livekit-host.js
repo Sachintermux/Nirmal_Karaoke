@@ -295,22 +295,20 @@ export class LiveKitLiveStreamHost {
   }
 
   startVisualBroadcast() {
+    if (this._visualTimer) return;
     const isMobile = typeof window !== 'undefined' && (window.innerWidth <= 850 || /Android|iPhone|iPad/i.test(navigator.userAgent));
     const BARS = isMobile ? 32 : 40;
-    const TARGET_FPS = isMobile ? 10 : 12;
-    const FRAME_MS = 1000 / TARGET_FPS;
+    const FRAME_MS = isMobile ? 100 : 80;
     let lastHadSignal = false;
 
-    const loop = (ts) => {
-      if (!this.isConnected()) { this.visualBroadcastRaf = null; return; }
-      this.visualBroadcastRaf = requestAnimationFrame(loop);
-
-      // Only broadcast if there are actual audience connections
+    const tick = () => {
+      if (!this.isConnected()) {
+        this.stopVisualBroadcast();
+        return;
+      }
+      if (typeof document !== 'undefined' && document.hidden) return;
+      // Skip processing when no audience connections are present
       if (!this.connections || this.connections.size === 0) return;
-
-      // Throttle to TARGET_FPS
-      if (ts - this._lastVisualTs < FRAME_MS) return;
-      this._lastVisualTs = ts;
 
       const analyser = this.audioEngine?.engine?.analyser;
       if (!analyser) return;
@@ -335,12 +333,14 @@ export class LiveKitLiveStreamHost {
       }
     };
 
-    if (!this.visualBroadcastRaf) {
-      this.visualBroadcastRaf = requestAnimationFrame(loop);
-    }
+    this._visualTimer = setInterval(tick, FRAME_MS);
   }
 
   stopVisualBroadcast() {
+    if (this._visualTimer) {
+      clearInterval(this._visualTimer);
+      this._visualTimer = null;
+    }
     if (this.visualBroadcastRaf) {
       cancelAnimationFrame(this.visualBroadcastRaf);
       this.visualBroadcastRaf = null;
@@ -473,7 +473,7 @@ export class LiveKitLiveStreamHost {
           } catch (_) {}
         }
       }
-    }, 3000);
+    }, 8000);
   }
 
   stopAudioPublishWatchdog() {

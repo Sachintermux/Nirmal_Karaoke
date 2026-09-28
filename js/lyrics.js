@@ -52,9 +52,21 @@ export class LyricsManager {
 
   startSmoothAnimation() {
     if (this._rafId) cancelAnimationFrame(this._rafId);
-    const loop = () => {
+    let lastTime = 0;
+    const isMobile = typeof window !== 'undefined' && (
+      window.innerWidth <= 850 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    );
+    const interval = isMobile ? 35 : 20;
+
+    const loop = (ts) => {
       if (this.filePlayer && !this.filePlayer.paused && !this.filePlayer.ended) {
-        this.updateLyricScrollPosition();
+        if (typeof document !== 'undefined' && !document.hidden) {
+          if (ts - lastTime >= interval) {
+            lastTime = ts;
+            this.updateLyricScrollPosition();
+          }
+        }
         this._rafId = requestAnimationFrame(loop);
       } else {
         this._rafId = null;
@@ -231,8 +243,10 @@ export class LyricsManager {
 
     if (idx !== this.currentLyricIndex) {
       this.currentLyricIndex = idx;
+      this._lastFillInt = -1;
       if (this.currentActiveLyricEl) {
         this.currentActiveLyricEl.classList.remove('active');
+        this.currentActiveLyricEl.style.removeProperty('--fill');
         this.currentActiveLyricEl = null;
       }
       if (idx !== -1) {
@@ -248,13 +262,17 @@ export class LyricsManager {
       }
     }
 
-    // Dynamic gradient progress fill for active lyric line
+    // Dynamic gradient progress fill for active lyric line (throttled to integer changes)
     if (idx !== -1 && this.currentActiveLyricEl) {
       const current = this.parsedLyrics[idx];
       const nextTime = (idx < this.parsedLyrics.length - 1) ? this.parsedLyrics[idx + 1].time : (current.time + 4.0);
       const span = Math.max(0.2, nextTime - current.time);
       const progress = Math.max(0, Math.min(100, ((t - current.time) / span) * 100));
-      this.currentActiveLyricEl.style.setProperty('--fill', `${progress}%`);
+      const progressInt = Math.round(progress);
+      if (progressInt !== this._lastFillInt) {
+        this._lastFillInt = progressInt;
+        this.currentActiveLyricEl.style.setProperty('--fill', `${progressInt}%`);
+      }
     }
   }
 

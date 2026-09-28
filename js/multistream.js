@@ -13,7 +13,7 @@
  *             → RTMP → YouTube Live
  */
 
-import { BroadcastCompositor } from './broadcast-compositor.js?v=29';
+import { BroadcastCompositor } from './broadcast-compositor.js?v=31';
 import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=29';
 import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=29';
 

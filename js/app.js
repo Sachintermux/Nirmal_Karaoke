@@ -1,15 +1,15 @@
-import { AudioEngine } from './audio-engine.js?v=30';
-import { LyricsManager } from './lyrics.js?v=30';
-import { MusicSearchManager } from './music-search.js?v=30';
-import { VisualizerRenderer } from './visualizer.js?v=30';
-import { playSFX } from './sfx.js?v=30';
-import { LiveStreamHost } from './live-stream.js?v=30';
-import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=30';
-import { PresenceManager } from './presence-manager.js?v=30';
-import { MultiStreamManager } from './multistream.js?v=30';
-import { ArtistToolsManager } from './artist-tools.js?v=30';
-import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=30';
-import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=30';
+import { AudioEngine } from './audio-engine.js?v=31';
+import { LyricsManager } from './lyrics.js?v=31';
+import { MusicSearchManager } from './music-search.js?v=31';
+import { VisualizerRenderer } from './visualizer.js?v=31';
+import { playSFX } from './sfx.js?v=31';
+import { LiveStreamHost } from './live-stream.js?v=31';
+import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=31';
+import { PresenceManager } from './presence-manager.js?v=31';
+import { MultiStreamManager } from './multistream.js?v=31';
+import { ArtistToolsManager } from './artist-tools.js?v=31';
+import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=31';
+import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=31';
 
 const audioEngine = new AudioEngine();
 if (typeof window !== 'undefined') window.audioEngine = audioEngine;
@@ -1419,17 +1419,29 @@ function setupEventListeners() {
   const vuBar = document.getElementById('vuMeterBar');
   const lblPeak = document.getElementById('lblVuPeakDb');
   const lblClip = document.getElementById('lblVuClipWarning');
+  let lastVuPct = -1;
+  let lastPeakText = '';
+  let lastClipState = false;
 
   artistTools.onPeakUpdate = ({ peak, peakDb, isClipping }) => {
     if (vuBar) {
       const pct = Math.min(100, Math.max(0, ((peakDb + 60) / 60) * 100));
-      vuBar.style.width = `${pct.toFixed(1)}%`;
+      const roundedPct = Math.round(pct);
+      if (roundedPct !== lastVuPct) {
+        lastVuPct = roundedPct;
+        vuBar.style.width = `${roundedPct}%`;
+      }
     }
     if (lblPeak) {
-      lblPeak.textContent = `${peakDb.toFixed(1)} dB`;
-      lblPeak.style.color = isClipping ? '#ef4444' : (peakDb > -6 ? '#eab308' : '#00e5ff');
+      const peakText = `${peakDb.toFixed(1)} dB`;
+      if (peakText !== lastPeakText) {
+        lastPeakText = peakText;
+        lblPeak.textContent = peakText;
+        lblPeak.style.color = isClipping ? '#ef4444' : (peakDb > -6 ? '#eab308' : '#00e5ff');
+      }
     }
-    if (lblClip) {
+    if (lblClip && isClipping !== lastClipState) {
+      lastClipState = isClipping;
       lblClip.style.opacity = isClipping ? '1' : '0';
     }
   };

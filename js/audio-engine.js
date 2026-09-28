@@ -967,15 +967,48 @@ export class AudioEngine {
     const guideDuckingToggle = document.getElementById('guideDuckingToggle');
     const sliderGuideVol = document.getElementById('sliderGuideVol');
 
+    const isMobile = typeof window !== 'undefined' && (
+      window.innerWidth <= 850 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    );
+    // 50ms (20 FPS) on mobile saves 40% CPU cycles while keeping gate ultra-responsive
+    const intervalMs = isMobile ? 50 : 30;
+
     const mainDspLoop = () => {
       if (!this.ctx || this.ctx.state === 'closed') return;
+      if (typeof document !== 'undefined' && document.hidden) return;
 
-      // Vocal Noise Gate
-      if (gateToggle?.checked && this.engine.gateGain) {
-        this.engine.micAnalyser.getFloatTimeDomainData(micBuf);
-        let sum = 0;
-        for (let i = 0; i < micBuf.length; i++) sum += micBuf[i] * micBuf[i];
-        const rms = Math.sqrt(sum / micBuf.length);
+      const isMicLive = Boolean(this.activeMicStream && this.activeMicStream.active);
+      const isGateOn = Boolean(gateToggle?.checked && this.engine.gateGain);
+      const isDuckingOn = Boolean(guideDuckingToggle?.checked && this.engine.guideVocalGain);
+
+      // Idle bypass: if mic is off or assists are disabled, skip all buffer math
+      if (!isMicLive || (!isGateOn && !isDuckingOn)) {
+        if (this.engine.gateGain && lastGateTarget !== 1.0) {
+          lastGateTarget = 1.0;
+          this.engine.gateGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.02);
+        }
+        if (this.engine.guideVocalGain) {
+          const maxGuide = parseFloat(sliderGuideVol?.value || 0);
+          if (Math.abs(maxGuide - lastGuideTarget) > 0.01) {
+            lastGuideTarget = maxGuide;
+            this.engine.guideVocalGain.gain.setTargetAtTime(maxGuide, this.ctx.currentTime, 0.05);
+          }
+        }
+        return;
+      }
+
+      // Single-pass RMS computation shared between Noise Gate and Auto-Ducking
+      this.engine.micAnalyser.getFloatTimeDomainData(micBuf);
+      let sum = 0;
+      const len = micBuf.length;
+      for (let i = 0; i < len; i++) {
+        sum += micBuf[i] * micBuf[i];
+      }
+      const rms = Math.sqrt(sum / len);
+
+      // 1. Vocal Noise Gate
+      if (isGateOn) {
         const db = 20 * Math.log10(Math.max(rms, 1e-5));
         const thresh = parseFloat(gateSlider?.value || -50);
         const targetGain = db < thresh ? 0.0 : 1.0;
@@ -988,15 +1021,11 @@ export class AudioEngine {
         this.engine.gateGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.02);
       }
 
-      // Guide Vocal Ducking
+      // 2. Guide Vocal Ducking
       if (this.engine.guideVocalGain) {
         const maxGuide = parseFloat(sliderGuideVol?.value || 0);
-        if (guideDuckingToggle?.checked) {
-          this.engine.micAnalyser.getFloatTimeDomainData(micBuf);
-          let micSum = 0;
-          for (let i = 0; i < micBuf.length; i++) micSum += micBuf[i] * micBuf[i];
-          const micRms = Math.sqrt(micSum / micBuf.length);
-          const isUserSinging = micRms > 0.018;
+        if (isDuckingOn) {
+          const isUserSinging = rms > 0.018;
           const targetGuideGain = isUserSinging ? (maxGuide * 0.12) : maxGuide;
           if (Math.abs(targetGuideGain - lastGuideTarget) > 0.01) {
             lastGuideTarget = targetGuideGain;
@@ -1010,7 +1039,7 @@ export class AudioEngine {
     };
 
     if (this._dspAssistTimer) clearInterval(this._dspAssistTimer);
-    this._dspAssistTimer = setInterval(mainDspLoop, 30);
+    this._dspAssistTimer = setInterval(mainDspLoop, intervalMs);
   }
 
   async connectNativeSystemAudio(arrayBuffer) {

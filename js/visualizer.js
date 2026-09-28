@@ -69,7 +69,7 @@ export class VisualizerRenderer {
         this.peakSpeed = new Float32Array(this.numBars);
       }
 
-      const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.5 : 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 2);
       const parent = this.cvs.parentElement;
       const targetW = Math.max(10, Math.round(parent.clientWidth * dpr));
       const targetH = Math.max(10, Math.round(parent.clientHeight * dpr));
@@ -99,13 +99,14 @@ export class VisualizerRenderer {
     const pumpLoop = (ts) => {
       this._rafId = requestAnimationFrame(pumpLoop);
 
-      // Do not consume GPU / CPU cycles when tab is hidden
+      // Do not consume GPU / CPU cycles when tab is hidden or canvas is not in viewport
       if (typeof document !== 'undefined' && document.hidden) return;
+      if (this.cvs && this.cvs.offsetParent === null) return;
 
       // Frame throttle:
-      // Mobile: ~30-33 FPS (interval ~30ms) for high efficiency & battery preservation
+      // Mobile: ~30 FPS (interval ~33ms) for optimal battery and thermals
       // Desktop: ~60 FPS (interval ~16ms) for ultra-fluid rendering
-      const targetInterval = this._isMobile ? 30 : 16;
+      const targetInterval = this._isMobile ? 33 : 16;
       if (ts - this._lastDrawTs < targetInterval) return;
       this._lastDrawTs = ts;
 

@@ -1,4 +1,4 @@
-import { LiveKitLiveStreamHost } from './livekit-host.js';
+import { LiveKitLiveStreamHost } from './livekit-host.js?v=31';
 
 // Nirmal Karaoke is now deliberately SFU-first for web broadcasts. There is no
 // PeerJS fallback because peer-to-peer fan-out is the source of upload spikes,
