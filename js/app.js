@@ -222,14 +222,42 @@ function setupLiveShareUI() {
         : '<span style="color:var(--text-dim); font-size:0.65rem;">CAM OFF</span>';
 
       row.innerHTML = `
-        <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:58%;">
+        <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:54%;">
           <strong>${g.name}</strong><br>${micStatus} &nbsp; ${camStatus}
         </div>
         <div style="display:flex;gap:4px;align-items:center;">
           ${g.hasMic ? `<button class="btn-listen-guest" data-id="${g.id}" style="background:var(--accent-blue); color:#fff; border:none; border-radius:3px; padding:3px 7px; font-size:0.65rem; cursor:pointer;">Listen</button>` : ''}
           ${g.hasMic ? `<button class="btn-mute-guest" data-id="${g.id}" style="background:var(--accent-red); color:#fff; border:none; border-radius:3px; padding:3px 8px; font-size:0.65rem; cursor:pointer;">Mute Mic</button>` : ''}
+          ${!g.hasMic ? `<button class="btn-invite-guest-stage" data-id="${g.id}" style="background:linear-gradient(135deg,#ff007f,#a855f7); color:#fff; border:none; border-radius:4px; padding:3px 8px; font-size:0.65rem; font-weight:700; cursor:pointer;" title="Invite this listener to sing onstage">🎤 Invite Duet</button>` : ''}
         </div>
       `;
+
+      // Invite connected listener onstage to duet
+      const btnInviteDuet = row.querySelector('.btn-invite-guest-stage');
+      if (btnInviteDuet) {
+        btnInviteDuet.addEventListener('click', async () => {
+          btnInviteDuet.disabled = true;
+          btnInviteDuet.textContent = 'Inviting…';
+          try {
+            await liveHost.inviteAudienceToDuet(g.id, g.name);
+            btnInviteDuet.textContent = '✓ Invited!';
+            btnInviteDuet.style.background = 'var(--accent-green)';
+            btnInviteDuet.style.color = '#000';
+            setTimeout(() => {
+              if (btnInviteDuet.isConnected) {
+                btnInviteDuet.disabled = false;
+                btnInviteDuet.textContent = '🎤 Invite Duet';
+                btnInviteDuet.style.background = 'linear-gradient(135deg,#ff007f,#a855f7)';
+                btnInviteDuet.style.color = '#fff';
+              }
+            }, 6000);
+          } catch (err) {
+            alert('Failed to send invite: ' + (err.message || err));
+            btnInviteDuet.disabled = false;
+            btnInviteDuet.textContent = '🎤 Invite Duet';
+          }
+        });
+      }
 
       // Per-singer listen is a direct user gesture. It is useful on mobile/
       // browsers that require an explicit interaction even after global unlock.

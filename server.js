@@ -468,9 +468,8 @@ app.get('/api/presence/stream', (req, res) => {
   req.on('close', () => {
     clearInterval(pingInterval);
     const user = activeUsers.get(userId);
-    if (user?.sseRes === res) {
-      activeUsers.delete(userId);
-      broadcastUserList();
+    if (user && user.sseRes === res) {
+      user.sseRes = null; // Do not delete user immediately; keep them online within the heartbeat window
     }
   });
 });
@@ -1197,11 +1196,11 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '480p', hasAudio = true)
     '-loglevel', 'info',
 
     // Input 0: continuous WebM/Matroska from browser MediaRecorder with generous thread queue.
-    '-thread_queue_size', '1024',
+    '-thread_queue_size', '4096',
     '-err_detect', 'ignore_err',
-    '-fflags', '+genpts+discardcorrupt',
-    '-probesize', '1M',
-    '-analyzeduration', '1000000',
+    '-fflags', '+genpts+discardcorrupt+nobuffer',
+    '-probesize', '2M',
+    '-analyzeduration', '2000000',
     '-f', 'matroska,webm',
     '-i', 'pipe:0'
   ];
@@ -1253,11 +1252,12 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '480p', hasAudio = true)
     '-ac', '2',
     '-af', 'asetpts=PTS-STARTPTS,aresample=async=1000:first_pts=0',
 
-    '-max_muxing_queue_size', '4096',
+    '-max_muxing_queue_size', '8192',
+    '-max_interleave_delta', '0',
 
     // FLV/RTMP(S) output with transmission buffer.
     '-flvflags', 'no_duration_filesize',
-    '-rtmp_buffer', '3000',
+    '-rtmp_buffer', '5000',
     '-rtmp_live', 'live',
     '-f', 'flv',
     rtmpUrl
@@ -1286,14 +1286,17 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '480p', hasAudio = true)
 
     const lower = line.toLowerCase();
 
-    // Ignore non-fatal input decoder warnings (e.g. discarding initial interframe before keyframe, transient packet drop)
-    if (/discarding interframe|dec:vp8|dec:h264|decoding error|packet corrupt|non-existing pps|corrupt frame|missing picture|skipping frame|invalid data found when processing input/i.test(lower)) {
+    // Ignore non-fatal input decoder warnings (e.g. discarding initial interframe before keyframe, transient packet drop, timestamps)
+    if (/discarding interframe|dec:vp8|dec:h264|decoding error|packet corrupt|non-existing pps|corrupt frame|missing picture|skipping frame|invalid data found when processing input|non-monotonous dts|dts out of order|timestamp discontinuity/i.test(lower)) {
       return;
     }
 
-    // Definitive failures that should immediately surface to the UI.
-    if (/server error|error publishing|could not write header to rtmp|connection refused|connection timed out|timed out|broken pipe|connection reset|ssl error|tls error|handshake failed|error in the pull function|cannot open connection|end of file/i.test(lower)) {
-      // Ensure this is an RTMP output failure, not a transient input/decoder notice
+    // Definitive failures before streaming is established that should surface to the UI.
+    // Once streamingReported is true, do not treat temporary network buffer notices as fatal stream kills.
+    const isFatalPreConnect = /server error|error publishing|could not write header to rtmp|connection refused|ssl error|tls error|handshake failed|cannot open connection|invalid data found when processing/i.test(lower);
+    const isFatalAlways = /end of file|error in the pull function/i.test(lower);
+
+    if ((!streamingReported && isFatalPreConnect) || isFatalAlways) {
       if (!/pipe:0|stdin|dec:|vist#/i.test(lower)) {
         let msg = line.trim() || 'FFmpeg/RTMP(S) publish error';
         if (/end of file|error in the pull function|cannot open connection/i.test(lower)) {

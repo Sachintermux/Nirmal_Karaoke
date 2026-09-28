@@ -419,6 +419,7 @@
         </button>
 <button class="btn danger" id="btnLeaveStage" style="display:none; margin-top:8px; border-color:var(--accent-red); color:var(--accent-red); width:100%;">⏹ Leave Live Stage</button>
 <button class="btn" id="btnRequestMic" style="display:none; width:100%; margin-top:8px; border-color:var(--accent-pink); color:var(--accent-pink); font-size:0.9rem; padding:10px; font-weight:700;">🎤 Request Duet Mic to Sing</button>
+<button class="btn" id="btnAudienceShareStage" style="display:none; width:100%; margin-top:8px; border-color:var(--accent-blue); color:var(--accent-blue); font-size:0.85rem; padding:8px; font-weight:600;">👥 Invite Friends / Share Stage</button>
 <div id="duetNotice" style="display:none; margin-top: 10px;">
 <div class="guest-voice-panel" id="guestVoiceModule" style="display:block;">
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -503,6 +504,7 @@
   const btnTuneIn = document.getElementById('btnTuneIn');
   const btnLeaveStage = document.getElementById('btnLeaveStage');
   const btnRequestMic = document.getElementById('btnRequestMic');
+  const btnAudienceShareStage = document.getElementById('btnAudienceShareStage');
   const btnEnableMic = document.getElementById('btnEnableMic');
   const btnToggleMute = document.getElementById('btnToggleMute');
   const btnToggleCamera = document.getElementById('btnToggleCamera');
@@ -648,6 +650,7 @@
   }
 
   async function leaveLiveStage() {
+    window.__bypassUnloadWarning = true;
     // Cancel any pending auto-reconnect timers first
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
@@ -685,6 +688,7 @@
       }
     }
     if (btnLeaveStage) btnLeaveStage.style.display = 'none';
+    if (btnAudienceShareStage) btnAudienceShareStage.style.display = 'none';
     if (liveIndicator) liveIndicator.style.display = 'none';
     if (duetNotice) duetNotice.style.display = 'none';
     if (btnEnableMic) btnEnableMic.disabled = true;
@@ -1185,22 +1189,17 @@
           alert('The host has ended this live broadcast. The live stage is now closed.');
           return;
         }
+        if (data.type === 'INVITE_DUET') {
+          if (!data.targetIdentity || data.targetIdentity === room?.localParticipant?.identity) {
+            console.info('[Nirmal] Received INVITE_DUET from host:', data.hostName);
+            showHostDuetInvitationModal(data.hostName);
+          }
+          return;
+        }
         if (data.type === 'APPROVE_MIC') {
           if (data.targetIdentity && data.targetIdentity === room?.localParticipant?.identity) {
             console.info('[Nirmal] Host approved duet mic request!');
-            isDuetGuest = true;
-            const reqBtn = document.getElementById('btnRequestMic');
-            if (reqBtn) reqBtn.style.display = 'none';
-            const duetBox = document.getElementById('duetNotice');
-            if (duetBox) duetBox.style.display = 'block';
-            if (btnEnableMic) {
-              btnEnableMic.style.display = 'inline-flex';
-              btnEnableMic.disabled = false;
-            }
-            if (roleBadge) {
-              roleBadge.textContent = '🎤 Duet Singer Mode';
-              roleBadge.className = 'role-badge badge-duet';
-            }
+            await promoteToDuet(false);
             alert('🎉 The Host accepted your duet request! Tap "Enable Mic" below to sing along!');
           }
           return;
@@ -1374,6 +1373,7 @@
     if (btnEnableMic) btnEnableMic.disabled = false;
     if (btnToggleCamera) btnToggleCamera.disabled = false;
     if (btnLeaveStage) btnLeaveStage.style.display = 'block';
+    if (btnAudienceShareStage) btnAudienceShareStage.style.display = 'block';
 
     // Must be attempted from the Tune In interaction; if the browser rejects
     // autoplay, the explicit Enable Live Audio button below remains available.
@@ -2254,6 +2254,114 @@
   window.updateAudienceScroll = updateAudienceScroll;
   window.drawAudienceVisualizer = drawAudienceVisualizer;
   window.addChatMessage = addChatMessage;
+
+  async function promoteToDuet(autoEnableMic = false) {
+    isDuetGuest = true;
+    guestRole = 'duet';
+    if (presence) {
+      try { presence.updateStatus({ role: 'duet' }); } catch (_) {}
+    }
+    const reqBtn = document.getElementById('btnRequestMic');
+    if (reqBtn) reqBtn.style.display = 'none';
+    const duetBox = document.getElementById('duetNotice');
+    if (duetBox) duetBox.style.display = 'block';
+    if (btnEnableMic) {
+      btnEnableMic.style.display = 'inline-flex';
+      btnEnableMic.disabled = false;
+    }
+    if (btnToggleCamera) {
+      btnToggleCamera.disabled = false;
+    }
+    if (roleBadge) {
+      roleBadge.textContent = '🎤 Duet Singer Mode';
+      roleBadge.className = 'role-badge badge-duet';
+    }
+    updateMediaSession({
+      title: 'Live Stage Duet',
+      artist: 'Nirmal Live Stage',
+      album: 'Nirmal Karaoke Live'
+    });
+    sendPresenceUpdate();
+    if (autoEnableMic && !isMicEnabled) {
+      try {
+        await initGuestAudioDSP();
+      } catch (err) {
+        console.warn('[Nirmal] Auto-enable mic after duet promotion failed:', err);
+      }
+    }
+    updateMicButtons();
+  }
+  window.promoteToDuet = promoteToDuet;
+
+  function showHostDuetInvitationModal(hostName) {
+    const existing = document.getElementById('hostDuetInviteModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'hostDuetInviteModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(4,2,8,0.85);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;';
+    overlay.innerHTML = `
+      <div style="background:linear-gradient(145deg, #1c152b, #0f0b18); border:1px solid #ff007f; border-radius:20px; padding:28px 22px; max-width:380px; width:100%; box-shadow:0 0 35px rgba(255,0,127,0.4); text-align:center;">
+        <div style="font-size:3rem; margin-bottom:12px;">🎤</div>
+        <h2 style="color:#fff; font-size:1.25rem; font-weight:800; margin:0 0 8px;">Duet Stage Invitation!</h2>
+        <p style="color:var(--text-dim, #a39cb5); font-size:0.88rem; line-height:1.45; margin:0 0 20px;">
+          <strong style="color:#00e5ff;">${escapeHtml(hostName || 'The Host')}</strong> has invited you to join the stage as a duet singer!
+        </p>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button id="btnAcceptDuetInvite" style="width:100%; min-height:46px; font-size:0.95rem; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:linear-gradient(135deg, #ff007f, #9b51e0); border:none; border-radius:12px; color:#fff; box-shadow:0 4px 15px rgba(255,0,127,0.3);">
+            🎤 Accept & Sing Now
+          </button>
+          <button id="btnDeclineDuetInvite" style="width:100%; min-height:40px; font-size:0.85rem; font-weight:600; cursor:pointer; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:12px; color:#cbd5e1;">
+            Maybe Later
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#btnAcceptDuetInvite')?.addEventListener('click', async () => {
+      overlay.remove();
+      window.__bypassUnloadWarning = true;
+      await promoteToDuet(true);
+      if (room?.localParticipant) {
+        const reply = new TextEncoder().encode(JSON.stringify({
+          type: 'ACCEPT_DUET',
+          identity: room.localParticipant.identity,
+          name: chatNickInput?.value?.trim() || presence?.getUser()?.name || room.localParticipant.identity
+        }));
+        try { await room.localParticipant.publishData(reply, { reliable: true }); } catch (_) {}
+      }
+    });
+
+    overlay.querySelector('#btnDeclineDuetInvite')?.addEventListener('click', () => {
+      overlay.remove();
+    });
+  }
+
+  btnAudienceShareStage?.addEventListener('click', async () => {
+    const shareUrl = window.location.href;
+    const shareData = {
+      title: 'Join me on Nirmal Karaoke Live!',
+      text: 'Come listen and sing live with us on Nirmal Karaoke!',
+      url: shareUrl
+    };
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (err) {
+        if (err.name !== 'AbortError') console.warn('Share error:', err);
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      const origText = btnAudienceShareStage.textContent;
+      btnAudienceShareStage.textContent = '✅ Link Copied to Clipboard!';
+      setTimeout(() => { btnAudienceShareStage.textContent = origText; }, 2500);
+    } catch (e) {
+      prompt('Copy this stage link to invite friends:', shareUrl);
+    }
+  });
 
   // Accidental reload & navigation protection
   function shouldWarnAudienceOnReload() {

@@ -854,8 +854,14 @@ export class MultiStreamManager {
             }
             this.updateStateUI();
           } else if (msg.type === 'error') {
-            this.hasConfirmedLive = false;
             console.error(`[MultiStream ERROR from Relay]: ${msg.message}`);
+            // If already confirmed live, do not aggressively abort on non-fatal transient warnings
+            const isFatalAuthOrDisconnect = /inactive stream key|refused|Server error: 403|unauthorized|invalid stream key|cannot open connection/i.test(msg.message);
+            if (this.hasConfirmedLive && !isFatalAuthOrDisconnect) {
+              console.warn('[MultiStream] Transient relay warning during live stream, continuing broadcast:', msg.message);
+              return;
+            }
+            this.hasConfirmedLive = false;
             let friendlyMsg = 'Stream error: ' + msg.message;
             if (/I\/O error|End of file|Broken pipe|refused|failed to connect|cannot open connection|error in the pull function|inactive stream key/i.test(msg.message)) {
               friendlyMsg = '⚠️ YouTube connection failed: ' + msg.message + '\n\n💡 Fixes in YouTube Studio:\n1. Make sure your live stream in YouTube Studio (studio.youtube.com) is in "Ready" or "Stream" mode.\n2. If you previously started or stopped a stream, YouTube marks that broadcast as finished. Click "Reset" next to your stream key in Stream Settings, copy the new key, and paste it here.\n3. Make sure you select "YouTube Live (RTMPS Secure)" which uses port 443.';
@@ -967,9 +973,10 @@ export class MultiStreamManager {
       if (isSending || ws.readyState !== WebSocket.OPEN) return;
       isSending = true;
       while (chunkQueue.length > 0 && ws.readyState === WebSocket.OPEN) {
-        // Pacing & backpressure: if browser's internal WebSocket buffer has > 3MB, let TCP drain
-        if (ws.bufferedAmount > 3 * 1024 * 1024) {
-          setTimeout(sendChunks, 80);
+        // Pacing & backpressure: if browser's internal WebSocket buffer has > 1.5-2.5MB, let TCP drain smoothly
+        const maxWsBuffer = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? (1.5 * 1024 * 1024) : (2.5 * 1024 * 1024);
+        if (ws.bufferedAmount > maxWsBuffer) {
+          setTimeout(sendChunks, 60);
           break;
         }
         const chunk = chunkQueue.shift();
@@ -991,9 +998,17 @@ export class MultiStreamManager {
     recorder.ondataavailable = (ev) => {
       if (!ev.data || ev.data.size === 0) return;
       chunkQueue.push(ev.data);
-      // DO NOT delete oldest chunks with splice! That deletes EBML container headers and keyframes,
-      // which corrupts FFmpeg's decoder and causes YouTube stream termination!
-      if (chunkQueue.length > 30) {
+      // Bound the queue to prevent runaway mobile memory usage / OOM,
+      // while strictly protecting chunk #1 (EBML container header) if not yet sent.
+      if (chunkQueue.length > 50) {
+        console.warn(`[MultiStream] Backpressure threshold exceeded (${chunkQueue.length}s). Pruning oldest frame to protect mobile memory.`);
+        if (chunkCount === 0 && chunkQueue.length > 1) {
+          chunkQueue.splice(1, 1); // Keep index 0 (EBML header) intact
+        } else if (chunkCount > 0) {
+          chunkQueue.shift();
+        }
+      }
+      if (chunkQueue.length > 20) {
         console.warn(`[MultiStream] Backpressure warning: ${chunkQueue.length} chunks queued for upload.`);
         const st = document.getElementById('externalStreamStatus');
         if (st && this.isStreaming) {

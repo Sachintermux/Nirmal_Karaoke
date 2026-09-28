@@ -861,11 +861,13 @@
     presence.onInviteResponse = (res) => {
         if (res.accepted) {
             alert(`🎉 ${res.responder?.name || 'Singer'} accepted your Duet invite! Connecting...`);
-            if (res.roomId) {
+            if (typeof window !== 'undefined') window.__bypassUnloadWarning = true;
+            const targetRoom = res.roomId || presence.currentRoomId;
+            if (targetRoom) {
                 if (presence.isLive && presence.currentRole === 'host') {
                     window.location.href = `./index.html#stage`;
                 } else {
-                    window.location.href = `./audience.html?room=${encodeURIComponent(res.roomId)}&role=duet&autoJoin=1`;
+                    window.location.href = `./audience.html?room=${encodeURIComponent(targetRoom)}&role=duet&autoJoin=1`;
                 }
             }
         } else {

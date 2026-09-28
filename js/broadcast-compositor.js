@@ -16,15 +16,20 @@ export class BroadcastCompositor {
     this.liveHost = liveHost;
     this.lyricsManager = lyricsManager;
 
-    // Output Quality & Canvas (Defaults to 480p 25fps for rock-solid performance on mobile & PC)
-    this.quality = localStorage.getItem('nirmal_stream_quality') || '480p';
-    this.width = 854;
-    this.height = 480;
-    this.targetFps = 25;
+    this._isMobile = typeof window !== 'undefined' && (
+      window.innerWidth <= 850 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    );
+
+    // Output Quality & Canvas (Defaults to 360p on mobile, 480p on desktop for rock-solid performance)
+    this.quality = localStorage.getItem('nirmal_stream_quality') || (this._isMobile ? '360p' : '480p');
+    this.width = this._isMobile ? 640 : 854;
+    this.height = this._isMobile ? 360 : 480;
+    this.targetFps = this._isMobile ? 24 : 25;
 
     this.canvas = document.createElement('canvas');
     this.setQuality(this.quality);
-    this.ctx = this.canvas.getContext('2d', { alpha: false });
+    this.ctx = this.canvas.getContext('2d', { alpha: false, desynchronized: true });
 
     this._rafId = null;
     this._isRunning = false;
@@ -190,9 +195,9 @@ export class BroadcastCompositor {
     if (this._isRunning) return;
     this._isRunning = true;
 
-    // Attach canvas to DOM in hidden offscreen position for hardware acceleration
+    // Attach canvas to DOM in lightweight position so browser GPU treats it as active
     if (!this.canvas.parentElement && typeof document !== 'undefined' && document.body) {
-      this.canvas.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:320px;height:180px;pointer-events:none;opacity:0.01;z-index:-999;';
+      this.canvas.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;pointer-events:none;opacity:0.01;z-index:-999;clip-path:inset(50%);';
       document.body.appendChild(this.canvas);
     }
 
@@ -337,40 +342,48 @@ export class BroadcastCompositor {
     const colors = this.getThemeColors();
 
     // ─── 1. Background Stage Theme ───────────────────────────────────────────
-    const grad = ctx.createLinearGradient(0, 0, w, h);
-    grad.addColorStop(0, colors.bg1);
-    grad.addColorStop(0.5, colors.bg2);
-    grad.addColorStop(1, colors.bg3);
-    ctx.fillStyle = grad;
+    if (!this._cachedBgGrad || this._cachedBgTheme !== this.theme || this._cachedBgW !== w || this._cachedBgH !== h) {
+      this._cachedBgW = w;
+      this._cachedBgH = h;
+      this._cachedBgTheme = this.theme;
+      this._cachedBgGrad = ctx.createLinearGradient(0, 0, w, h);
+      this._cachedBgGrad.addColorStop(0, colors.bg1);
+      this._cachedBgGrad.addColorStop(0.5, colors.bg2);
+      this._cachedBgGrad.addColorStop(1, colors.bg3);
+    }
+    ctx.fillStyle = this._cachedBgGrad;
     ctx.fillRect(0, 0, w, h);
 
-    // Dynamic ambient glow lights (Restricted to circle paths for massive CPU speedup on mobile)
-    const pulse1 = Math.sin(time * 1.5) * (w * 0.02);
-    const pulse2 = Math.cos(time * 1.2) * (h * 0.03);
-    const r1 = Math.min(w, h) * 0.38;
-    const cx1 = w * 0.2 + pulse1;
-    const cy1 = h * 0.3 + pulse2;
-    const glow1 = ctx.createRadialGradient(cx1, cy1, 10, cx1, cy1, r1);
-    glow1.addColorStop(0, colors.glow1);
-    glow1.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = glow1;
-    ctx.beginPath();
-    ctx.arc(cx1, cy1, r1, 0, Math.PI * 2);
-    ctx.fill();
+    // Dynamic ambient glow lights (optimized: 1 soft glow on mobile to save CPU/battery)
+    if (!this._isMobile) {
+      const pulse1 = Math.sin(time * 1.5) * (w * 0.02);
+      const pulse2 = Math.cos(time * 1.2) * (h * 0.03);
+      const r1 = Math.min(w, h) * 0.38;
+      const cx1 = w * 0.2 + pulse1;
+      const cy1 = h * 0.3 + pulse2;
+      const glow1 = ctx.createRadialGradient(cx1, cy1, 10, cx1, cy1, r1);
+      glow1.addColorStop(0, colors.glow1);
+      glow1.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow1;
+      ctx.beginPath();
+      ctx.arc(cx1, cy1, r1, 0, Math.PI * 2);
+      ctx.fill();
 
-    const r2 = Math.min(w, h) * 0.42;
-    const cx2 = w * 0.8 - pulse2;
-    const cy2 = h * 0.4 + pulse1;
-    const glow2 = ctx.createRadialGradient(cx2, cy2, 10, cx2, cy2, r2);
-    glow2.addColorStop(0, colors.glow2);
-    glow2.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = glow2;
-    ctx.beginPath();
-    ctx.arc(cx2, cy2, r2, 0, Math.PI * 2);
-    ctx.fill();
+      const r2 = Math.min(w, h) * 0.42;
+      const cx2 = w * 0.8 - pulse2;
+      const cy2 = h * 0.4 + pulse1;
+      const glow2 = ctx.createRadialGradient(cx2, cy2, 10, cx2, cy2, r2);
+      glow2.addColorStop(0, colors.glow2);
+      glow2.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow2;
+      ctx.beginPath();
+      ctx.arc(cx2, cy2, r2, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
-    // ─── 2. Camera Feeds & DOM Metadata Cache (Refreshed every 350ms) ────────
-    if (!this._lastDomScan || performance.now() - this._lastDomScan > 350) {
+    // ─── 2. Camera Feeds & DOM Metadata Cache (Throttled to 800ms) ───────────
+    const scanInterval = this._isMobile ? 1000 : 600;
+    if (!this._lastDomScan || performance.now() - this._lastDomScan > scanInterval) {
       this._lastDomScan = performance.now();
 
       // Scan Host Card
@@ -806,19 +819,24 @@ export class BroadcastCompositor {
     ctx.clip();
 
     try {
-      const vw = videoEl.videoWidth || width;
-      const vh = videoEl.videoHeight || height;
-      const videoAspect = vw / vh;
-      const boxAspect = width / height;
-      let sx = 0, sy = 0, sw = vw, sh = vh;
-      if (videoAspect > boxAspect) {
-        sw = Math.round(vh * boxAspect);
-        sx = Math.round((vw - sw) / 2);
+      if (!videoEl || videoEl.readyState < 2 || videoEl.paused || !videoEl.videoWidth) {
+        ctx.fillStyle = '#0a0d18';
+        ctx.fillRect(x, y, width, height);
       } else {
-        sh = Math.round(vw / boxAspect);
-        sy = Math.round((vh - sh) / 2);
+        const vw = videoEl.videoWidth || width;
+        const vh = videoEl.videoHeight || height;
+        const videoAspect = vw / vh;
+        const boxAspect = width / height;
+        let sx = 0, sy = 0, sw = vw, sh = vh;
+        if (videoAspect > boxAspect) {
+          sw = Math.round(vh * boxAspect);
+          sx = Math.round((vw - sw) / 2);
+        } else {
+          sh = Math.round(vw / boxAspect);
+          sy = Math.round((vh - sh) / 2);
+        }
+        ctx.drawImage(videoEl, sx, sy, sw, sh, x, y, width, height);
       }
-      ctx.drawImage(videoEl, sx, sy, sw, sh, x, y, width, height);
     } catch (_) {
       try { ctx.drawImage(videoEl, x, y, width, height); } catch (_) {}
     }

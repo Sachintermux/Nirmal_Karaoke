@@ -212,6 +212,14 @@ export class PresenceManager {
           return;
         }
         if (invTargetRoom) {
+          if (typeof window !== 'undefined') window.__bypassUnloadWarning = true;
+          // If already on audience.html for this exact room, promote in-page smoothly without reload
+          if (typeof window !== 'undefined' && window.location.pathname.includes('audience.html') && this.currentRoomId === invTargetRoom) {
+            if (typeof window.promoteToDuet === 'function') {
+              window.promoteToDuet();
+              return;
+            }
+          }
           const targetUrl = `./audience.html?room=${encodeURIComponent(invTargetRoom)}&role=duet&autoJoin=1`;
           window.location.href = targetUrl;
         }
@@ -225,6 +233,18 @@ export class PresenceManager {
 
   async sendInvite(targetUserId, type = 'duet') {
     try {
+      // Ensure there is always a valid room ID so recipient joins the same stage
+      if (!this.currentRoomId) {
+        this.currentRoomId = 'room_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+        this.currentRoomName = this.user.name ? `${this.user.name}'s Stage` : 'Live Karaoke Stage';
+        this.updateLiveStatus({
+          role: this.isStudioAdmin ? 'host' : 'duet',
+          roomId: this.currentRoomId,
+          roomName: this.currentRoomName,
+          isLive: true
+        });
+      }
+
       const r = await fetch('/api/presence/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

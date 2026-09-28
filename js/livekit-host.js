@@ -295,13 +295,18 @@ export class LiveKitLiveStreamHost {
   }
 
   startVisualBroadcast() {
-    const BARS = 48;
-    const TARGET_FPS = 15;
+    const isMobile = typeof window !== 'undefined' && (window.innerWidth <= 850 || /Android|iPhone|iPad/i.test(navigator.userAgent));
+    const BARS = isMobile ? 32 : 40;
+    const TARGET_FPS = isMobile ? 10 : 12;
     const FRAME_MS = 1000 / TARGET_FPS;
+    let lastHadSignal = false;
 
     const loop = (ts) => {
       if (!this.isConnected()) { this.visualBroadcastRaf = null; return; }
       this.visualBroadcastRaf = requestAnimationFrame(loop);
+
+      // Only broadcast if there are actual audience connections
+      if (!this.connections || this.connections.size === 0) return;
 
       // Throttle to TARGET_FPS
       if (ts - this._lastVisualTs < FRAME_MS) return;
@@ -322,9 +327,12 @@ export class LiveKitLiveStreamHost {
         bars[i] = this._visDataArray[i * step] || 0;
       }
 
-      // Only send if there's actual signal (avoid flooding silence)
+      // Only send if there's actual signal (or 1 transition frame to silence)
       const hasSignal = bars.some(v => v > 2);
-      this.sendData({ type: 'VISUAL_DATA', bars: hasSignal ? bars : null }, { reliable: false });
+      if (hasSignal || lastHadSignal) {
+        lastHadSignal = hasSignal;
+        this.sendData({ type: 'VISUAL_DATA', bars: hasSignal ? bars : null }, { reliable: false });
+      }
     };
 
     if (!this.visualBroadcastRaf) {
@@ -1316,6 +1324,17 @@ export class LiveKitLiveStreamHost {
             identity: id,
             name: data.name || participant.name || id
           });
+        } else if (data.type === 'ACCEPT_DUET') {
+          console.info('[Nirmal] Guest accepted duet invitation:', id, data.name);
+          const c = this.connections.get(id) || { metadata: {} };
+          c.metadata = {
+            ...c.metadata,
+            role: 'duet',
+            isDuetActive: true
+          };
+          this.connections.set(id, c);
+          this.updateAudience();
+          this.onDuetAccepted?.({ identity: id, name: data.name || participant.name || id });
         } else if (data.type === 'AUDIENCE_CHAT') {
           this.onChatMessage?.(data.sender, data.text, data.isSpecial);
           this.broadcastChatMessage(data.sender, data.text, data.isSpecial, false, id);
@@ -1445,6 +1464,18 @@ export class LiveKitLiveStreamHost {
       type: 'REJECT_MIC',
       targetIdentity: guestId
     }, { reliable: true });
+  }
+
+  async inviteAudienceToDuet(guestId, guestName) {
+    if (!guestId || !this.room?.localParticipant) return false;
+    console.info(`[Nirmal] Host sending stage duet invitation to ${guestId} (${guestName || 'Guest'})`);
+    await this.sendData({
+      type: 'INVITE_DUET',
+      targetIdentity: guestId,
+      hostName: this.room.localParticipant.name || 'Host',
+      roomId: this.roomId
+    }, { reliable: true });
+    return true;
   }
 
   async getLiveKitDiagnostics() {
