@@ -973,10 +973,10 @@ export class MultiStreamManager {
       if (isSending || ws.readyState !== WebSocket.OPEN) return;
       isSending = true;
       while (chunkQueue.length > 0 && ws.readyState === WebSocket.OPEN) {
-        // Pacing & backpressure: if browser's internal WebSocket buffer has > 1.5-2.5MB, let TCP drain smoothly
-        const maxWsBuffer = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? (1.5 * 1024 * 1024) : (2.5 * 1024 * 1024);
+        // Pacing & backpressure: if browser's internal WebSocket buffer has > 384KB on mobile (or 1.5MB desktop), let TCP drain smoothly
+        const maxWsBuffer = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? (384 * 1024) : (1.5 * 1024 * 1024);
         if (ws.bufferedAmount > maxWsBuffer) {
-          setTimeout(sendChunks, 60);
+          setTimeout(sendChunks, 40);
           break;
         }
         const chunk = chunkQueue.shift();
@@ -998,9 +998,10 @@ export class MultiStreamManager {
     recorder.ondataavailable = (ev) => {
       if (!ev.data || ev.data.size === 0) return;
       chunkQueue.push(ev.data);
-      // Bound the queue to prevent runaway mobile memory usage / OOM,
+      // Bound the queue to prevent runaway mobile memory usage / OOM and audio drift,
       // while strictly protecting chunk #1 (EBML container header) if not yet sent.
-      if (chunkQueue.length > 50) {
+      const maxQueue = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 8 : 20;
+      if (chunkQueue.length > maxQueue) {
         console.warn(`[MultiStream] Backpressure threshold exceeded (${chunkQueue.length}s). Pruning oldest frame to protect mobile memory.`);
         if (chunkCount === 0 && chunkQueue.length > 1) {
           chunkQueue.splice(1, 1); // Keep index 0 (EBML header) intact
@@ -1008,7 +1009,7 @@ export class MultiStreamManager {
           chunkQueue.shift();
         }
       }
-      if (chunkQueue.length > 20) {
+      if (chunkQueue.length > (maxQueue / 2)) {
         console.warn(`[MultiStream] Backpressure warning: ${chunkQueue.length} chunks queued for upload.`);
         const st = document.getElementById('externalStreamStatus');
         if (st && this.isStreaming) {

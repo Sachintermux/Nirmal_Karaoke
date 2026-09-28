@@ -28,6 +28,7 @@
   const btnTuneIn = document.getElementById('btnTuneIn');
   const btnLeaveStage = document.getElementById('btnLeaveStage');
   const btnRequestMic = document.getElementById('btnRequestMic');
+  const btnAudienceShareStage = document.getElementById('btnAudienceShareStage');
   const btnEnableMic = document.getElementById('btnEnableMic');
   const btnToggleMute = document.getElementById('btnToggleMute');
   const btnToggleCamera = document.getElementById('btnToggleCamera');
@@ -74,8 +75,151 @@
   let participantIdentity = null;
   let reconnectAttempts = 0;
   let reconnectTimer = null;
-  let audienceVolume = 1.25;
+  let audienceVolume = 1.0;
   let clientSyncOffset = 0.0;
+
+  // Cached High-Performance Gen-Z Visualizer State
+  const audVisWrap = document.getElementById('audienceVisualizerWrap');
+  const audVisCvs = document.getElementById('audienceVisualizer');
+  const audVisCtx = audVisCvs ? audVisCvs.getContext('2d') : null;
+  let audVisWidth = 0;
+  let audVisHeight = 0;
+  let audVisGrad = null;
+  let audVisReflGrad = null;
+  let latestVisualBars = null;
+  let visualDirty = false;
+  let visualIsActive = false;
+  let audVisPeaks = new Float32Array(64);
+  let audVisPeakHold = new Int16Array(64);
+  let audVisPeakSpeed = new Float32Array(64);
+
+  function updateAudienceVisualizerSize() {
+    if (!audVisCvs || !audVisWrap) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const cw = audVisWrap.clientWidth || 320;
+    const ch = 48;
+    const targetW = Math.round(cw * dpr);
+    const targetH = Math.round(ch * dpr);
+    if (audVisCvs.width !== targetW || audVisCvs.height !== targetH) {
+      audVisCvs.width = targetW;
+      audVisCvs.height = targetH;
+      audVisWidth = targetW;
+      audVisHeight = targetH;
+      audVisGrad = null;
+      audVisReflGrad = null;
+    }
+  }
+  window.addEventListener('resize', updateAudienceVisualizerSize, { passive: true });
+
+  function drawAudienceVisualizer() {
+    if (!audVisCtx || !audVisWidth || !audVisHeight) return;
+    const bars = latestVisualBars;
+    if (!bars || !Array.isArray(bars) || !bars.length) {
+      audVisCtx.clearRect(0, 0, audVisWidth, audVisHeight);
+      if (audVisWrap && visualIsActive) {
+        audVisWrap.style.display = 'none';
+        visualIsActive = false;
+      }
+      return;
+    }
+
+    if (audVisWrap && !visualIsActive) {
+      audVisWrap.style.display = '';
+      visualIsActive = true;
+    }
+
+    audVisCtx.clearRect(0, 0, audVisWidth, audVisHeight);
+    const numBars = bars.length;
+    const barSpacing = audVisWidth / numBars;
+    const barWidth = Math.max(2.5, barSpacing * 0.70);
+    const baseLine = Math.round(audVisHeight * 0.82);
+    const maxBarH = Math.round(audVisHeight * 0.72);
+    const capRadius = Math.max(1.5, Math.min(barWidth / 2, 3));
+
+    if (!audVisGrad) {
+      audVisGrad = audVisCtx.createLinearGradient(0, baseLine - maxBarH, 0, baseLine);
+      audVisGrad.addColorStop(0, '#00f0ff');
+      audVisGrad.addColorStop(0.35, '#a855f7');
+      audVisGrad.addColorStop(0.75, '#ff007f');
+      audVisGrad.addColorStop(1, '#ff3366');
+
+      audVisReflGrad = audVisCtx.createLinearGradient(0, baseLine, 0, baseLine + Math.round(maxBarH * 0.25));
+      audVisReflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.20)');
+      audVisReflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+    }
+
+    // Baseline line
+    audVisCtx.strokeStyle = 'rgba(0, 240, 255, 0.2)';
+    audVisCtx.lineWidth = 1;
+    audVisCtx.beginPath();
+    audVisCtx.moveTo(0, baseLine);
+    audVisCtx.lineTo(audVisWidth, baseLine);
+    audVisCtx.stroke();
+
+    // 1. Draw reflected baseline bars
+    audVisCtx.fillStyle = audVisReflGrad;
+    for (let i = 0; i < numBars; i++) {
+      const pct = (bars[i] || 0) / 255;
+      const bH = Math.pow(pct, 1.35) * maxBarH;
+      if (bH < 2) continue;
+      const x = Math.round(i * barSpacing + (barSpacing - barWidth) / 2);
+      const reflH = Math.min(Math.round(bH * 0.26), Math.round(maxBarH * 0.22));
+      if (typeof audVisCtx.roundRect === 'function') {
+        audVisCtx.beginPath();
+        audVisCtx.roundRect(x, baseLine + 1, barWidth, reflH, [1, 1, capRadius, capRadius]);
+        audVisCtx.fill();
+      } else {
+        audVisCtx.fillRect(x, baseLine + 1, barWidth, reflH);
+      }
+    }
+
+    // 2. Draw Main Bars
+    audVisCtx.fillStyle = audVisGrad;
+    for (let i = 0; i < numBars; i++) {
+      const pct = (bars[i] || 0) / 255;
+      const bH = Math.max(0, Math.pow(pct, 1.35) * maxBarH);
+
+      // Peak physics
+      if (bH >= audVisPeaks[i]) {
+        audVisPeaks[i] = bH;
+        audVisPeakHold[i] = 5;
+        audVisPeakSpeed[i] = 0;
+      } else if (audVisPeakHold[i] > 0) {
+        audVisPeakHold[i]--;
+      } else {
+        audVisPeakSpeed[i] += 0.3;
+        audVisPeaks[i] = Math.max(0, audVisPeaks[i] - audVisPeakSpeed[i]);
+      }
+
+      if (bH < 1.5) continue;
+      const x = Math.round(i * barSpacing + (barSpacing - barWidth) / 2);
+      const y = Math.round(baseLine - bH);
+      if (typeof audVisCtx.roundRect === 'function') {
+        audVisCtx.beginPath();
+        audVisCtx.roundRect(x, y, barWidth, bH, [capRadius, capRadius, 1, 1]);
+        audVisCtx.fill();
+      } else {
+        audVisCtx.fillRect(x, y, barWidth, bH);
+      }
+    }
+
+    // 3. Draw Floating Peak Dots
+    audVisCtx.fillStyle = '#00ffff';
+    const peakDotH = Math.max(2, Math.min(barWidth * 0.4, 3));
+    for (let i = 0; i < numBars; i++) {
+      const pH = audVisPeaks[i];
+      if (pH < 3) continue;
+      const x = Math.round(i * barSpacing + (barSpacing - barWidth) / 2);
+      const y = Math.round(baseLine - pH - peakDotH - 1.5);
+      if (typeof audVisCtx.roundRect === 'function') {
+        audVisCtx.beginPath();
+        audVisCtx.roundRect(x, y, barWidth, peakDotH, capRadius);
+        audVisCtx.fill();
+      } else {
+        audVisCtx.fillRect(x, y, barWidth, peakDotH);
+      }
+    }
+  }
 
   function setStatus(text, tone = 'var(--text-dim)') {
     let box = document.getElementById('liveQualityStatus');
@@ -92,6 +236,7 @@
   }
 
   async function leaveLiveStage() {
+    window.__bypassUnloadWarning = true;
     // Cancel any pending auto-reconnect timers first
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
@@ -129,6 +274,7 @@
       }
     }
     if (btnLeaveStage) btnLeaveStage.style.display = 'none';
+    if (btnAudienceShareStage) btnAudienceShareStage.style.display = 'none';
     if (liveIndicator) liveIndicator.style.display = 'none';
     if (duetNotice) duetNotice.style.display = 'none';
     if (btnEnableMic) btnEnableMic.disabled = true;
@@ -149,12 +295,16 @@
   }
 
   function addChatMessage(sender, text, isSpecial = false, isHost = false) {
+    if (!chatMessages) return;
     const msg = document.createElement('div');
     msg.className = isSpecial ? 'chat-msg-req' : isHost ? 'chat-msg-host' : 'chat-msg-user';
     const safeSender = escapeHtml(sender);
     const safeText = escapeHtml(text);
     msg.innerHTML = isSpecial ? `🎵 <strong>${safeSender}</strong> requested: <em>${safeText}</em>` : isHost ? `⭐ <strong>${safeSender}</strong>: ${safeText}` : `<strong>${safeSender}</strong>: ${safeText}`;
     chatMessages.appendChild(msg);
+    while (chatMessages.children.length > 100) {
+      chatMessages.removeChild(chatMessages.firstChild);
+    }
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
@@ -162,7 +312,8 @@
     if (!playbackCtx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) throw new Error('Web Audio is not supported by this browser.');
-      playbackCtx = new AC({ latencyHint: 'interactive', sampleRate: 48000 });
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      playbackCtx = new AC(isMobileDevice ? { latencyHint: 'interactive' } : { latencyHint: 'interactive', sampleRate: 48000 });
       // Fix E: pin the playback context's destination to 2-ch stereo.
       // LiveKit's webAudioMix graph feeds decoded remote audio into this
       // context's destination. Without explicit pinning the OS speaker
@@ -186,17 +337,19 @@
     }
   }
 
-  // Low-latency receiver policy: starts at 0ms and delivers packets immediately.
+  // Low-latency receiver policy: calibrated for zero jitter buffer on desktop and
+  // 1-packet (20ms) cushion on mobile to eliminate packet drops and audio buffering.
   // RTCRtpReceiver.jitterBufferTarget is in milliseconds; LiveKit's
   // setPlayoutDelay fallback takes seconds.
+  const isMobileClient = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const KARAOKE_AUDIO_LATENCY = {
-    healthy: 30,
-    moderate: 45,
-    bad: 60,
-    severe: 80,
-    critical: 120,
-    stallFloor: 35,
-    max: 180,
+    healthy: isMobileClient ? 20 : 0,
+    moderate: isMobileClient ? 30 : 10,
+    bad: isMobileClient ? 45 : 20,
+    severe: isMobileClient ? 60 : 35,
+    critical: isMobileClient ? 80 : 50,
+    stallFloor: isMobileClient ? 20 : 10,
+    max: isMobileClient ? 90 : 60,
     recoverySteps: 3
   };
 
@@ -206,14 +359,27 @@
     try {
       const receiver = track.receiver;
       if (receiver && 'jitterBufferTarget' in receiver) {
-        receiver.jitterBufferTarget = ms;
+        if (receiver.jitterBufferTarget !== ms) {
+          receiver.jitterBufferTarget = ms;
+        }
+        track.__nirmalJitterTargetMs = ms;
+        return ms;
+      }
+      if (receiver && 'playoutDelayHint' in receiver) {
+        const sec = ms / 1000;
+        if (receiver.playoutDelayHint !== sec) {
+          receiver.playoutDelayHint = sec;
+        }
         track.__nirmalJitterTargetMs = ms;
         return ms;
       }
     } catch (_) {}
     try {
       if (typeof track.setPlayoutDelay === 'function') {
-        track.setPlayoutDelay(ms / 1000);
+        const sec = ms / 1000;
+        if (track.getPlayoutDelay?.() !== sec) {
+          track.setPlayoutDelay(sec);
+        }
         track.__nirmalJitterTargetMs = ms;
         return ms;
       }
@@ -261,9 +427,11 @@
         audioEl.autoplay = true;
         audioEl.playsInline = true;
         audioEl.controls = false;
-        audioEl.preload = 'auto';
+        audioEl.preload = 'none';
         audioEl.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0.01;pointer-events:none;left:0;bottom:0;z-index:0;';
         document.body.appendChild(audioEl);
+      } else {
+        audioEl.preload = 'none';
       }
 
       try { track.detach?.(audioEl); } catch (_) {}
@@ -271,7 +439,7 @@
       audioEl.autoplay = true;
       audioEl.playsInline = true;
       audioEl.controls = false;
-      audioEl.preload = 'auto';
+      audioEl.preload = 'none';
       audioEl.dataset.livekitProgramAudio = 'true';
       try { track.start?.(); } catch (_) {}
       try { track.setVolume?.(audienceVolume); } catch (_) {}
@@ -458,7 +626,7 @@
       source: L.Track.Source.Microphone,
       audioPreset: { maxBitrate: 64_000, priority: 'high' },
       dtx: false,
-      red: true,
+      red: false,
       forceStereo: true,
       name: 'nirmal-audience-mic',
       stream: 'nirmal-audience-mic'
@@ -525,7 +693,7 @@
       dynacast: true,
       // Prefer separate publisher/subscriber RTP when the browser supports it.
       singlePeerConnection: false,
-      publishDefaults: { audioPreset: { maxBitrate: 64_000, priority: 'high' }, dtx: false, red: true, simulcast: false, forceStereo: true }
+      publishDefaults: { audioPreset: { maxBitrate: 64_000, priority: 'high' }, dtx: false, red: false, simulcast: false, forceStereo: true }
     });
 
     const handlePublishedTrack = async (publication, participant) => {
@@ -625,22 +793,17 @@
           alert('The host has ended this live broadcast. The live stage is now closed.');
           return;
         }
+        if (data.type === 'INVITE_DUET') {
+          if (!data.targetIdentity || data.targetIdentity === room?.localParticipant?.identity) {
+            console.info('[Nirmal] Received INVITE_DUET from host:', data.hostName);
+            showHostDuetInvitationModal(data.hostName);
+          }
+          return;
+        }
         if (data.type === 'APPROVE_MIC') {
           if (data.targetIdentity && data.targetIdentity === room?.localParticipant?.identity) {
             console.info('[Nirmal] Host approved duet mic request!');
-            isDuetGuest = true;
-            const reqBtn = document.getElementById('btnRequestMic');
-            if (reqBtn) reqBtn.style.display = 'none';
-            const duetBox = document.getElementById('duetNotice');
-            if (duetBox) duetBox.style.display = 'block';
-            if (btnEnableMic) {
-              btnEnableMic.style.display = 'inline-flex';
-              btnEnableMic.disabled = false;
-            }
-            if (roleBadge) {
-              roleBadge.textContent = '🎤 Duet Singer Mode';
-              roleBadge.className = 'role-badge badge-duet';
-            }
+            await promoteToDuet(false);
             alert('🎉 The Host accepted your duet request! Tap "Enable Mic" below to sing along!');
           }
           return;
@@ -681,53 +844,9 @@
           updateAudienceScroll(lyricClock.hostTime);
         }
         else if (data.type === 'VISUAL_DATA') {
-          const wrap = document.getElementById('audienceVisualizerWrap');
-          const cvs  = document.getElementById('audienceVisualizer');
-          if (!cvs || !wrap) return;
-          const bars = data.bars;
-          // Hide wrap and clear on silence/null
-          if (!bars || !Array.isArray(bars)) {
-            wrap.style.display = 'none';
-            const ctx2d = cvs.getContext('2d');
-            if (ctx2d) ctx2d.clearRect(0, 0, cvs.width, cvs.height);
-            return;
-          }
-          // Ensure canvas pixel size matches CSS layout size
-          const dpr = window.devicePixelRatio || 1;
-          const cw = wrap.clientWidth || 320;
-          const ch = 48;
-          if (cvs.width !== Math.round(cw * dpr) || cvs.height !== Math.round(ch * dpr)) {
-            cvs.width  = Math.round(cw * dpr);
-            cvs.height = Math.round(ch * dpr);
-          }
-          wrap.style.display = '';
-          const ctx2d = cvs.getContext('2d');
-          const w = cvs.width, h = cvs.height;
-          ctx2d.clearRect(0, 0, w, h);
-          const numBars = bars.length;
-          const barSpacing = w / numBars;
-          const barWidth = barSpacing * 0.65;
-          const baseLine = h * 0.92;
-          // Match host visualizer gradient: cyan → purple → pink
-          const grad = ctx2d.createLinearGradient(0, h * 0.05, 0, baseLine);
-          grad.addColorStop(0, '#00e5ff');
-          grad.addColorStop(0.5, '#a855f7');
-          grad.addColorStop(1, '#ff007f');
-          ctx2d.fillStyle = grad;
-          for (let i = 0; i < numBars; i++) {
-            const pct = (bars[i] || 0) / 255;
-            const barH = Math.pow(pct, 1.4) * (h * 0.85);
-            if (barH < 1) continue;
-            const barX = i * barSpacing + (barSpacing - barWidth) / 2;
-            const barY = baseLine - barH;
-            if (typeof ctx2d.roundRect === 'function') {
-              ctx2d.beginPath();
-              ctx2d.roundRect(barX, barY, barWidth, barH, [3, 3, 0, 0]);
-              ctx2d.fill();
-            } else {
-              ctx2d.fillRect(barX, barY, barWidth, barH);
-            }
-          }
+          latestVisualBars = data.bars;
+          visualDirty = true;
+          if (!audVisWidth) updateAudienceVisualizerSize();
         }
         else if (data.type === 'CHAT_BROADCAST') addChatMessage(data.sender, data.text, data.isSpecial, data.isHost);
         else if (data.type === 'FORCE_MUTE') {
@@ -858,6 +977,7 @@
     if (btnEnableMic) btnEnableMic.disabled = false;
     if (btnToggleCamera) btnToggleCamera.disabled = false;
     if (btnLeaveStage) btnLeaveStage.style.display = 'block';
+    if (btnAudienceShareStage) btnAudienceShareStage.style.display = 'block';
 
     // Must be attempted from the Tune In interaction; if the browser rejects
     // autoplay, the explicit Enable Live Audio button below remains available.
@@ -883,9 +1003,8 @@
     if (!room) return;
     const audioElements = Array.from(remoteAudio.values()).map(i => i.audio).filter(Boolean);
     const anyAudioPaused = audioElements.length > 0 && audioElements.some(el => el.paused);
-    const ctxBlocked = playbackCtx && playbackCtx.state !== 'running';
     const lkBlocked = room.canPlaybackAudio === false;
-    const needsUnlock = anyAudioPaused || ctxBlocked || lkBlocked;
+    const needsUnlock = anyAudioPaused || lkBlocked;
 
     let unlock = document.getElementById('liveAudioUnlock');
     if (!needsUnlock) {
@@ -975,25 +1094,30 @@
         state.conceal = state.conceal ? state.conceal * .75 + concealPct * .25 : concealPct;
 
         let desired = KARAOKE_AUDIO_LATENCY.healthy;
-        if (intervalLossPct >= 4 || jitter >= 35 || concealPct >= 3) desired = KARAOKE_AUDIO_LATENCY.critical;
-        else if (intervalLossPct >= 2 || jitter >= 22 || concealPct >= 1.5) desired = KARAOKE_AUDIO_LATENCY.severe;
-        else if (intervalLossPct >= 1 || jitter >= 14 || concealPct >= 0.8) desired = KARAOKE_AUDIO_LATENCY.bad;
-        else if (intervalLossPct >= 0.4 || jitter >= 8 || concealPct >= 0.3) desired = KARAOKE_AUDIO_LATENCY.moderate;
+        if (intervalLossPct >= 4 || jitter >= 45 || concealPct >= 4) desired = KARAOKE_AUDIO_LATENCY.critical;
+        else if (intervalLossPct >= 2.5 || jitter >= 30 || concealPct >= 2.5) desired = KARAOKE_AUDIO_LATENCY.severe;
+        else if (intervalLossPct >= 1.5 || jitter >= 20 || concealPct >= 1.5) desired = KARAOKE_AUDIO_LATENCY.bad;
+        else if (intervalLossPct >= 0.8 || jitter >= 12 || concealPct >= 0.8) desired = KARAOKE_AUDIO_LATENCY.moderate;
 
         for (const item of remoteAudio.values()) {
           const current = getAudioJitterTarget(item.track) || KARAOKE_AUDIO_LATENCY.healthy;
           const recentStall = Date.now() - Number(item.__lastStallAt || 0) < 2000;
           const target = recentStall ? Math.max(desired, KARAOKE_AUDIO_LATENCY.stallFloor) : desired;
-          if (target > current + 5) {
+          if (target > current + 8) {
             item.__stable = 0;
-            setAudioJitterTarget(item.track, Math.min(target, current + 15));
-          } else if (target < current - 2 && intervalLossPct < .2 && jitter < 8 && concealPct < .1) {
+            setAudioJitterTarget(item.track, Math.min(target, current + 10));
+          } else if (target < current && intervalLossPct < 1 && jitter < 25 && concealPct < 0.5) {
             item.__stable = (item.__stable || 0) + 1;
             if (item.__stable >= KARAOKE_AUDIO_LATENCY.recoverySteps) {
               setAudioJitterTarget(item.track, Math.max(target, current - 10));
               item.__stable = 0;
             }
           } else if (target >= current) item.__stable = 0;
+
+          // Ensure audio element continues playing smoothly if transiently paused by mobile background policy
+          if (item.audio && item.audio.paused && !item.audio.ended && document.visibilityState === 'visible') {
+            try { item.audio.play().catch(() => {}); } catch (_) {}
+          }
         }
 
         // Protect audio by shedding only audience video when the connection is poor.
@@ -1014,7 +1138,7 @@
       } catch (e) {
         console.warn('[Nirmal] audio stats monitor error:', e);
       }
-    }, 500);
+    }, 2000);
   }
 
   function requestStageState() {
@@ -1146,7 +1270,10 @@
     // isolated so enabling voice effects cannot add latency or CPU contention to
     // the incoming music stream.
     if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)(
+        isMobileDevice ? { latencyHint: 'interactive' } : { latencyHint: 'interactive', sampleRate: 48000 }
+      );
     }
     if (audioCtx.state === 'suspended') await audioCtx.resume();
     rawMicStream = await navigator.mediaDevices.getUserMedia({
@@ -1235,7 +1362,7 @@
         source: L.Track.Source.Microphone,
         ...(preset ? { audioPreset: preset } : {}),
         dtx: false,
-        red: true,
+        red: false,
         forceStereo: true,
         name: 'nirmal-audience-mic',
         stream: 'nirmal-audience-mic'
@@ -1630,17 +1757,14 @@
     }
   });
 
+  let cachedLyricEls = [];
+  let lastLyricFillInt = -1;
+
   function scrollToAudienceLyric(idx, smooth = true) {
-    const el = document.getElementById(`aud-lyric-${idx}`);
+    const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
     if (!el || !audienceLyricsBox) return;
     const container = audienceLyricsBox;
-    let top = 0;
-    let curr = el;
-    while (curr && curr !== container) {
-      top += curr.offsetTop;
-      curr = curr.offsetParent;
-    }
-    const targetTop = top - (container.clientHeight / 2) + (el.clientHeight / 2);
+    const targetTop = el.offsetTop - (container.clientHeight / 2) + (el.clientHeight / 2);
     container.scrollTo({
       top: Math.max(0, targetTop),
       behavior: smooth ? 'smooth' : 'auto'
@@ -1654,18 +1778,23 @@
     })).filter(l => Number.isFinite(l.time) && l.text);
     parsedLyrics.sort((a, b) => a.time - b.time);
     currentLyricIndex = -1;
+    lastLyricFillInt = -1;
+    cachedLyricEls = [];
     lyricsContent.innerHTML = '';
     if (!parsedLyrics.length) {
       lyricsContent.innerHTML = '<div class="lyric-line-aud" style="color:var(--text-dim)">No lyrics loaded for this track.</div>';
       return;
     }
+    const frag = document.createDocumentFragment();
     parsedLyrics.forEach((lyric, i) => {
       const d = document.createElement('div');
       d.className = 'lyric-line-aud';
       d.id = `aud-lyric-${i}`;
       d.textContent = lyric.text;
-      lyricsContent.appendChild(d);
+      frag.appendChild(d);
+      cachedLyricEls.push(d);
     });
+    lyricsContent.appendChild(frag);
     isAudienceUserScrolling = false;
     if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
     if (audienceLyricsBox) {
@@ -1681,13 +1810,19 @@
       if (t >= parsedLyrics[i].time) idx = i; else break;
     }
     if (idx !== currentLyricIndex) {
-      if (currentLyricIndex >= 0) document.getElementById(`aud-lyric-${currentLyricIndex}`)?.classList.remove('active');
+      if (currentLyricIndex >= 0) {
+        const oldEl = cachedLyricEls[currentLyricIndex] || document.getElementById(`aud-lyric-${currentLyricIndex}`);
+        if (oldEl) {
+          oldEl.classList.remove('active');
+          oldEl.style.removeProperty('--fill');
+        }
+      }
       currentLyricIndex = idx;
+      lastLyricFillInt = -1;
       if (idx >= 0) {
-        const el = document.getElementById(`aud-lyric-${idx}`);
+        const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
         if (el) {
           el.classList.add('active');
-          // When lyric advances to next line, automatically scroll to that line!
           isAudienceUserScrolling = false;
           if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
           scrollToAudienceLyric(idx, true);
@@ -1695,12 +1830,16 @@
       }
     }
     if (idx >= 0) {
-      const el = document.getElementById(`aud-lyric-${idx}`);
+      const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
       if (el) {
         const nextTime = idx < parsedLyrics.length - 1 ? Number(parsedLyrics[idx + 1].time) : Number(parsedLyrics[idx].time) + 4;
         const span = Math.max(.2, nextTime - Number(parsedLyrics[idx].time));
         const progress = Math.max(0, Math.min(100, ((t - Number(parsedLyrics[idx].time)) / span) * 100));
-        el.style.setProperty('--fill', `${progress}%`);
+        const progressInt = Math.round(progress);
+        if (progressInt !== lastLyricFillInt) {
+          lastLyricFillInt = progressInt;
+          el.style.setProperty('--fill', `${progressInt}%`);
+        }
       }
     }
   }
@@ -1712,11 +1851,158 @@
         const estimate = Math.max(0, lyricClock.hostTime + Math.max(0, performance.now() - lyricClock.receivedPerf) / 1000 - clientSyncOffset);
         updateAudienceScroll(estimate);
       }
+      if (visualDirty) {
+        visualDirty = false;
+        drawAudienceVisualizer();
+      }
       lyricRaf = requestAnimationFrame(loop);
     };
     lyricRaf = requestAnimationFrame(loop);
   }
   startLyricClock();
+
+  window.renderAudienceLyrics = renderAudienceLyrics;
+  window.updateAudienceScroll = updateAudienceScroll;
+  window.drawAudienceVisualizer = drawAudienceVisualizer;
+  window.addChatMessage = addChatMessage;
+
+  async function promoteToDuet(autoEnableMic = false) {
+    isDuetGuest = true;
+    guestRole = 'duet';
+    if (presence) {
+      try { presence.updateStatus({ role: 'duet' }); } catch (_) {}
+    }
+    const reqBtn = document.getElementById('btnRequestMic');
+    if (reqBtn) reqBtn.style.display = 'none';
+    const duetBox = document.getElementById('duetNotice');
+    if (duetBox) duetBox.style.display = 'block';
+    if (btnEnableMic) {
+      btnEnableMic.style.display = 'inline-flex';
+      btnEnableMic.disabled = false;
+    }
+    if (btnToggleCamera) {
+      btnToggleCamera.disabled = false;
+    }
+    if (roleBadge) {
+      roleBadge.textContent = '🎤 Duet Singer Mode';
+      roleBadge.className = 'role-badge badge-duet';
+    }
+    updateMediaSession({
+      title: 'Live Stage Duet',
+      artist: 'Nirmal Live Stage',
+      album: 'Nirmal Karaoke Live'
+    });
+    sendPresenceUpdate();
+    if (autoEnableMic && !isMicEnabled) {
+      try {
+        await initGuestAudioDSP();
+      } catch (err) {
+        console.warn('[Nirmal] Auto-enable mic after duet promotion failed:', err);
+      }
+    }
+    updateMicButtons();
+  }
+  window.promoteToDuet = promoteToDuet;
+
+  function showHostDuetInvitationModal(hostName) {
+    const existing = document.getElementById('hostDuetInviteModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'hostDuetInviteModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(4,2,8,0.85);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;';
+    overlay.innerHTML = `
+      <div style="background:linear-gradient(145deg, #1c152b, #0f0b18); border:1px solid #ff007f; border-radius:20px; padding:28px 22px; max-width:380px; width:100%; box-shadow:0 0 35px rgba(255,0,127,0.4); text-align:center;">
+        <div style="font-size:3rem; margin-bottom:12px;">🎤</div>
+        <h2 style="color:#fff; font-size:1.25rem; font-weight:800; margin:0 0 8px;">Duet Stage Invitation!</h2>
+        <p style="color:var(--text-dim, #a39cb5); font-size:0.88rem; line-height:1.45; margin:0 0 20px;">
+          <strong style="color:#00e5ff;">${escapeHtml(hostName || 'The Host')}</strong> has invited you to join the stage as a duet singer!
+        </p>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button id="btnAcceptDuetInvite" style="width:100%; min-height:46px; font-size:0.95rem; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:linear-gradient(135deg, #ff007f, #9b51e0); border:none; border-radius:12px; color:#fff; box-shadow:0 4px 15px rgba(255,0,127,0.3);">
+            🎤 Accept & Sing Now
+          </button>
+          <button id="btnDeclineDuetInvite" style="width:100%; min-height:40px; font-size:0.85rem; font-weight:600; cursor:pointer; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:12px; color:#cbd5e1;">
+            Maybe Later
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#btnAcceptDuetInvite')?.addEventListener('click', async () => {
+      overlay.remove();
+      window.__bypassUnloadWarning = true;
+      await promoteToDuet(true);
+      if (room?.localParticipant) {
+        const reply = new TextEncoder().encode(JSON.stringify({
+          type: 'ACCEPT_DUET',
+          identity: room.localParticipant.identity,
+          name: chatNickInput?.value?.trim() || presence?.getUser()?.name || room.localParticipant.identity
+        }));
+        try { await room.localParticipant.publishData(reply, { reliable: true }); } catch (_) {}
+      }
+    });
+
+    overlay.querySelector('#btnDeclineDuetInvite')?.addEventListener('click', () => {
+      overlay.remove();
+    });
+  }
+
+  btnAudienceShareStage?.addEventListener('click', async () => {
+    // Construct audience listener share URL
+    let shareUrl = window.location.href;
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set('role', 'audience');
+      u.searchParams.delete('autoJoin');
+      shareUrl = u.toString();
+    } catch (_) {}
+
+    const shareData = {
+      title: 'Join me on Nirmal Karaoke Live!',
+      text: 'Come listen and sing live with us on Nirmal Karaoke!',
+      url: shareUrl
+    };
+    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
+      try {
+        if (navigator.canShare(shareData)) {
+          await navigator.share(shareData);
+          return;
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') console.warn('Share error:', err);
+      }
+    }
+    const showSuccess = () => {
+      const origText = btnAudienceShareStage.textContent;
+      btnAudienceShareStage.textContent = '✅ Link Copied to Clipboard!';
+      setTimeout(() => { if (btnAudienceShareStage.isConnected) btnAudienceShareStage.textContent = origText; }, 2500);
+    };
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        showSuccess();
+        return;
+      } catch (_) {}
+    }
+    // Reliable hidden textarea fallback for mobile and non-secure contexts
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = shareUrl;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const copied = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (copied) {
+        showSuccess();
+        return;
+      }
+    } catch (_) {}
+    prompt('Copy this stage link to invite friends:', shareUrl);
+  });
 
   // Accidental reload & navigation protection
   function shouldWarnAudienceOnReload() {

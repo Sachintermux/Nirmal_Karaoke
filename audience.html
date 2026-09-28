@@ -407,9 +407,9 @@
 <div class="audience-volume-row" id="audienceVolControl" style="margin: 6px 0 10px; background: rgba(0,0,0,0.35); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; text-align: left;">
   <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem; margin-bottom:4px;">
     <span style="font-weight:700; color:var(--accent-blue);">🔊 Broadcast Audio Volume</span>
-    <b id="lblAudienceVol" style="color:var(--accent-green); font-size:0.75rem;">125%</b>
+    <b id="lblAudienceVol" style="color:var(--accent-green); font-size:0.75rem;">100%</b>
   </div>
-  <input id="sliderAudienceVol" max="2" min="0" step="0.05" type="range" value="1.25" style="width:100%; cursor:pointer; accent-color:var(--accent-blue);"/>
+  <input id="sliderAudienceVol" max="2" min="0" step="0.05" type="range" value="1.0" style="width:100%; cursor:pointer; accent-color:var(--accent-blue);"/>
 </div>
 <!-- AUDIO ELEMENT -->
 <audio autoplay="" id="liveAudio" playsinline=""></audio>
@@ -551,7 +551,7 @@
   let participantIdentity = null;
   let reconnectAttempts = 0;
   let reconnectTimer = null;
-  let audienceVolume = 1.25;
+  let audienceVolume = 1.0;
   let clientSyncOffset = 0.0;
 
   // Cached High-Performance Gen-Z Visualizer State
@@ -788,7 +788,8 @@
     if (!playbackCtx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) throw new Error('Web Audio is not supported by this browser.');
-      playbackCtx = new AC({ latencyHint: 'interactive', sampleRate: 48000 });
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      playbackCtx = new AC(isMobileDevice ? { latencyHint: 'interactive' } : { latencyHint: 'interactive', sampleRate: 48000 });
       // Fix E: pin the playback context's destination to 2-ch stereo.
       // LiveKit's webAudioMix graph feeds decoded remote audio into this
       // context's destination. Without explicit pinning the OS speaker
@@ -812,17 +813,19 @@
     }
   }
 
-  // Low-latency receiver policy: starts at 0ms and delivers packets immediately.
+  // Low-latency receiver policy: calibrated for zero jitter buffer on desktop and
+  // 1-packet (20ms) cushion on mobile to eliminate packet drops and audio buffering.
   // RTCRtpReceiver.jitterBufferTarget is in milliseconds; LiveKit's
   // setPlayoutDelay fallback takes seconds.
+  const isMobileClient = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const KARAOKE_AUDIO_LATENCY = {
-    healthy: 30,
-    moderate: 45,
-    bad: 60,
-    severe: 80,
-    critical: 120,
-    stallFloor: 35,
-    max: 180,
+    healthy: isMobileClient ? 20 : 0,
+    moderate: isMobileClient ? 30 : 10,
+    bad: isMobileClient ? 45 : 20,
+    severe: isMobileClient ? 60 : 35,
+    critical: isMobileClient ? 80 : 50,
+    stallFloor: isMobileClient ? 20 : 10,
+    max: isMobileClient ? 90 : 60,
     recoverySteps: 3
   };
 
@@ -832,14 +835,27 @@
     try {
       const receiver = track.receiver;
       if (receiver && 'jitterBufferTarget' in receiver) {
-        receiver.jitterBufferTarget = ms;
+        if (receiver.jitterBufferTarget !== ms) {
+          receiver.jitterBufferTarget = ms;
+        }
+        track.__nirmalJitterTargetMs = ms;
+        return ms;
+      }
+      if (receiver && 'playoutDelayHint' in receiver) {
+        const sec = ms / 1000;
+        if (receiver.playoutDelayHint !== sec) {
+          receiver.playoutDelayHint = sec;
+        }
         track.__nirmalJitterTargetMs = ms;
         return ms;
       }
     } catch (_) {}
     try {
       if (typeof track.setPlayoutDelay === 'function') {
-        track.setPlayoutDelay(ms / 1000);
+        const sec = ms / 1000;
+        if (track.getPlayoutDelay?.() !== sec) {
+          track.setPlayoutDelay(sec);
+        }
         track.__nirmalJitterTargetMs = ms;
         return ms;
       }
@@ -887,9 +903,11 @@
         audioEl.autoplay = true;
         audioEl.playsInline = true;
         audioEl.controls = false;
-        audioEl.preload = 'auto';
+        audioEl.preload = 'none';
         audioEl.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0.01;pointer-events:none;left:0;bottom:0;z-index:0;';
         document.body.appendChild(audioEl);
+      } else {
+        audioEl.preload = 'none';
       }
 
       try { track.detach?.(audioEl); } catch (_) {}
@@ -897,7 +915,7 @@
       audioEl.autoplay = true;
       audioEl.playsInline = true;
       audioEl.controls = false;
-      audioEl.preload = 'auto';
+      audioEl.preload = 'none';
       audioEl.dataset.livekitProgramAudio = 'true';
       try { track.start?.(); } catch (_) {}
       try { track.setVolume?.(audienceVolume); } catch (_) {}
@@ -1084,7 +1102,7 @@
       source: L.Track.Source.Microphone,
       audioPreset: { maxBitrate: 64_000, priority: 'high' },
       dtx: false,
-      red: true,
+      red: false,
       forceStereo: true,
       name: 'nirmal-audience-mic',
       stream: 'nirmal-audience-mic'
@@ -1151,7 +1169,7 @@
       dynacast: true,
       // Prefer separate publisher/subscriber RTP when the browser supports it.
       singlePeerConnection: false,
-      publishDefaults: { audioPreset: { maxBitrate: 64_000, priority: 'high' }, dtx: false, red: true, simulcast: false, forceStereo: true }
+      publishDefaults: { audioPreset: { maxBitrate: 64_000, priority: 'high' }, dtx: false, red: false, simulcast: false, forceStereo: true }
     });
 
     const handlePublishedTrack = async (publication, participant) => {
@@ -1461,9 +1479,8 @@
     if (!room) return;
     const audioElements = Array.from(remoteAudio.values()).map(i => i.audio).filter(Boolean);
     const anyAudioPaused = audioElements.length > 0 && audioElements.some(el => el.paused);
-    const ctxBlocked = playbackCtx && playbackCtx.state !== 'running';
     const lkBlocked = room.canPlaybackAudio === false;
-    const needsUnlock = anyAudioPaused || ctxBlocked || lkBlocked;
+    const needsUnlock = anyAudioPaused || lkBlocked;
 
     let unlock = document.getElementById('liveAudioUnlock');
     if (!needsUnlock) {
@@ -1553,25 +1570,30 @@
         state.conceal = state.conceal ? state.conceal * .75 + concealPct * .25 : concealPct;
 
         let desired = KARAOKE_AUDIO_LATENCY.healthy;
-        if (intervalLossPct >= 4 || jitter >= 35 || concealPct >= 3) desired = KARAOKE_AUDIO_LATENCY.critical;
-        else if (intervalLossPct >= 2 || jitter >= 22 || concealPct >= 1.5) desired = KARAOKE_AUDIO_LATENCY.severe;
-        else if (intervalLossPct >= 1 || jitter >= 14 || concealPct >= 0.8) desired = KARAOKE_AUDIO_LATENCY.bad;
-        else if (intervalLossPct >= 0.4 || jitter >= 8 || concealPct >= 0.3) desired = KARAOKE_AUDIO_LATENCY.moderate;
+        if (intervalLossPct >= 4 || jitter >= 45 || concealPct >= 4) desired = KARAOKE_AUDIO_LATENCY.critical;
+        else if (intervalLossPct >= 2.5 || jitter >= 30 || concealPct >= 2.5) desired = KARAOKE_AUDIO_LATENCY.severe;
+        else if (intervalLossPct >= 1.5 || jitter >= 20 || concealPct >= 1.5) desired = KARAOKE_AUDIO_LATENCY.bad;
+        else if (intervalLossPct >= 0.8 || jitter >= 12 || concealPct >= 0.8) desired = KARAOKE_AUDIO_LATENCY.moderate;
 
         for (const item of remoteAudio.values()) {
           const current = getAudioJitterTarget(item.track) || KARAOKE_AUDIO_LATENCY.healthy;
           const recentStall = Date.now() - Number(item.__lastStallAt || 0) < 2000;
           const target = recentStall ? Math.max(desired, KARAOKE_AUDIO_LATENCY.stallFloor) : desired;
-          if (target > current + 5) {
+          if (target > current + 8) {
             item.__stable = 0;
-            setAudioJitterTarget(item.track, Math.min(target, current + 15));
-          } else if (target < current - 2 && intervalLossPct < .2 && jitter < 8 && concealPct < .1) {
+            setAudioJitterTarget(item.track, Math.min(target, current + 10));
+          } else if (target < current && intervalLossPct < 1 && jitter < 25 && concealPct < 0.5) {
             item.__stable = (item.__stable || 0) + 1;
             if (item.__stable >= KARAOKE_AUDIO_LATENCY.recoverySteps) {
               setAudioJitterTarget(item.track, Math.max(target, current - 10));
               item.__stable = 0;
             }
           } else if (target >= current) item.__stable = 0;
+
+          // Ensure audio element continues playing smoothly if transiently paused by mobile background policy
+          if (item.audio && item.audio.paused && !item.audio.ended && document.visibilityState === 'visible') {
+            try { item.audio.play().catch(() => {}); } catch (_) {}
+          }
         }
 
         // Protect audio by shedding only audience video when the connection is poor.
@@ -1724,7 +1746,10 @@
     // isolated so enabling voice effects cannot add latency or CPU contention to
     // the incoming music stream.
     if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)(
+        isMobileDevice ? { latencyHint: 'interactive' } : { latencyHint: 'interactive', sampleRate: 48000 }
+      );
     }
     if (audioCtx.state === 'suspended') await audioCtx.resume();
     rawMicStream = await navigator.mediaDevices.getUserMedia({
@@ -1813,7 +1838,7 @@
         source: L.Track.Source.Microphone,
         ...(preset ? { audioPreset: preset } : {}),
         dtx: false,
-        red: true,
+        red: false,
         forceStereo: true,
         name: 'nirmal-audience-mic',
         stream: 'nirmal-audience-mic'
@@ -2401,28 +2426,58 @@
   }
 
   btnAudienceShareStage?.addEventListener('click', async () => {
-    const shareUrl = window.location.href;
+    // Construct audience listener share URL
+    let shareUrl = window.location.href;
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set('role', 'audience');
+      u.searchParams.delete('autoJoin');
+      shareUrl = u.toString();
+    } catch (_) {}
+
     const shareData = {
       title: 'Join me on Nirmal Karaoke Live!',
       text: 'Come listen and sing live with us on Nirmal Karaoke!',
       url: shareUrl
     };
-    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
       try {
-        await navigator.share(shareData);
-        return;
+        if (navigator.canShare(shareData)) {
+          await navigator.share(shareData);
+          return;
+        }
       } catch (err) {
         if (err.name !== 'AbortError') console.warn('Share error:', err);
       }
     }
-    try {
-      await navigator.clipboard.writeText(shareUrl);
+    const showSuccess = () => {
       const origText = btnAudienceShareStage.textContent;
       btnAudienceShareStage.textContent = '✅ Link Copied to Clipboard!';
-      setTimeout(() => { btnAudienceShareStage.textContent = origText; }, 2500);
-    } catch (e) {
-      prompt('Copy this stage link to invite friends:', shareUrl);
+      setTimeout(() => { if (btnAudienceShareStage.isConnected) btnAudienceShareStage.textContent = origText; }, 2500);
+    };
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        showSuccess();
+        return;
+      } catch (_) {}
     }
+    // Reliable hidden textarea fallback for mobile and non-secure contexts
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = shareUrl;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const copied = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (copied) {
+        showSuccess();
+        return;
+      }
+    } catch (_) {}
+    prompt('Copy this stage link to invite friends:', shareUrl);
   });
 
   // Accidental reload & navigation protection

@@ -155,8 +155,14 @@ export class AudioEngine {
   async _buildEngine() {
     try {
       if (!this.ctx || this.ctx.state === 'closed') {
+        const isMobileDevice = typeof window !== 'undefined' && (
+          window.innerWidth <= 850 ||
+          /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+        );
         try {
-          this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)(
+            isMobileDevice ? { latencyHint: 'interactive' } : { latencyHint: 'interactive', sampleRate: 48000 }
+          );
         } catch (_) {
           this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
         }

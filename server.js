@@ -1199,8 +1199,8 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '480p', hasAudio = true)
     '-thread_queue_size', '4096',
     '-err_detect', 'ignore_err',
     '-fflags', '+genpts+discardcorrupt+nobuffer',
-    '-probesize', '2M',
-    '-analyzeduration', '2000000',
+    '-probesize', '512k',
+    '-analyzeduration', '500000',
     '-f', 'matroska,webm',
     '-i', 'pipe:0'
   ];
@@ -1245,19 +1245,19 @@ function spawnFfmpeg(rtmpUrl, onLog, onState, quality = '480p', hasAudio = true)
     '-maxrate', videoBitrate,
     '-bufsize', bufSize,
 
-    // Audio: stereo AAC at 96 kbps calibrated for low CPU limits.
+    // Audio: stereo AAC at 96 kbps calibrated for low CPU limits and native 48kHz Opus matching.
     '-c:a', 'aac',
     '-b:a', '96k',
-    '-ar', '44100',
+    '-ar', '48000',
     '-ac', '2',
-    '-af', 'asetpts=PTS-STARTPTS,aresample=async=1000:first_pts=0',
+    '-af', 'asetpts=PTS-STARTPTS,aresample=async=250:first_pts=0',
 
     '-max_muxing_queue_size', '8192',
     '-max_interleave_delta', '0',
 
-    // FLV/RTMP(S) output with transmission buffer.
+    // FLV/RTMP(S) output with low-latency transmission buffer (250ms).
     '-flvflags', 'no_duration_filesize',
-    '-rtmp_buffer', '5000',
+    '-rtmp_buffer', '250',
     '-rtmp_live', 'live',
     '-f', 'flv',
     rtmpUrl

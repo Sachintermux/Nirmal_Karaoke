@@ -427,7 +427,7 @@ export class LiveKitLiveStreamHost {
       source: L.Track.Source.Microphone,
       audioPreset: KARAOKE_STEREO_AUDIO_PRESET,
       dtx: false,
-      red: true,
+      red: false,
       forceStereo: true,
       name: 'nirmal-program-audio',
       stream: 'nirmal-program'
@@ -723,7 +723,7 @@ export class LiveKitLiveStreamHost {
     audio.autoplay = true;
     audio.playsInline = true;
     audio.controls = false;
-    audio.preload = 'auto';
+    audio.preload = 'none';
     audio.dataset.livekitAudienceAudio = 'true';
     audio.dataset.participant = item.participant?.identity || '';
     audio.dataset.trackSid = item.publication?.trackSid || '';
@@ -759,14 +759,27 @@ export class LiveKitLiveStreamHost {
     try {
       const receiver = track.receiver;
       if (receiver && 'jitterBufferTarget' in receiver) {
-        receiver.jitterBufferTarget = ms;
+        if (receiver.jitterBufferTarget !== ms) {
+          receiver.jitterBufferTarget = ms;
+        }
+        track.__nirmalJitterTargetMs = ms;
+        return ms;
+      }
+      if (receiver && 'playoutDelayHint' in receiver) {
+        const sec = ms / 1000;
+        if (receiver.playoutDelayHint !== sec) {
+          receiver.playoutDelayHint = sec;
+        }
         track.__nirmalJitterTargetMs = ms;
         return ms;
       }
     } catch (_) {}
     try {
       if (typeof track.setPlayoutDelay === 'function') {
-        track.setPlayoutDelay(ms / 1000);
+        const sec = ms / 1000;
+        if (track.getPlayoutDelay?.() !== sec) {
+          track.setPlayoutDelay(sec);
+        }
         track.__nirmalJitterTargetMs = ms;
         return ms;
       }
