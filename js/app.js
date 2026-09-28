@@ -1,15 +1,15 @@
-import { AudioEngine } from './audio-engine.js?v=29';
-import { LyricsManager } from './lyrics.js?v=29';
-import { MusicSearchManager } from './music-search.js?v=29';
-import { VisualizerRenderer } from './visualizer.js?v=29';
-import { playSFX } from './sfx.js?v=29';
-import { LiveStreamHost } from './live-stream.js?v=29';
-import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=29';
-import { PresenceManager } from './presence-manager.js?v=29';
-import { MultiStreamManager } from './multistream.js?v=29';
-import { ArtistToolsManager } from './artist-tools.js?v=29';
-import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=29';
-import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=29';
+import { AudioEngine } from './audio-engine.js?v=30';
+import { LyricsManager } from './lyrics.js?v=30';
+import { MusicSearchManager } from './music-search.js?v=30';
+import { VisualizerRenderer } from './visualizer.js?v=30';
+import { playSFX } from './sfx.js?v=30';
+import { LiveStreamHost } from './live-stream.js?v=30';
+import { AUTOTUNE_PRESETS, SCALE_MAP, NOTE_NAMES } from './config.js?v=30';
+import { PresenceManager } from './presence-manager.js?v=30';
+import { MultiStreamManager } from './multistream.js?v=30';
+import { ArtistToolsManager } from './artist-tools.js?v=30';
+import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=30';
+import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=30';
 
 const audioEngine = new AudioEngine();
 if (typeof window !== 'undefined') window.audioEngine = audioEngine;
@@ -49,9 +49,16 @@ export function shouldKeepAlive() {
 }
 
 export function syncBackgroundKeepAlive() {
+  const isPlayerPlaying = filePlayerGlobal && !filePlayerGlobal.paused && !filePlayerGlobal.ended;
   if (shouldKeepAlive()) {
     acquireWakeLock().catch(() => {});
-    startBackgroundAudioKeepAlive();
+    // When filePlayer is actively playing music, the browser and OS already maintain an active audio session.
+    // Concurrently playing an 8kHz silent audio element causes hardware mixer contention and audible audio cuts/pops on mobile.
+    if (isPlayerPlaying) {
+      stopBackgroundAudioKeepAlive();
+    } else {
+      startBackgroundAudioKeepAlive();
+    }
   } else {
     releaseWakeLock().catch(() => {});
     stopBackgroundAudioKeepAlive();
@@ -68,10 +75,12 @@ lyricsManager.onLyricsUpdated = (parsed) => {
 };
 
 const filePlayerGlobal = document.getElementById('filePlayer');
-filePlayerGlobal?.addEventListener('play', () => {
+filePlayerGlobal?.addEventListener('play', async () => {
   if (audioEngine) {
-    if (audioEngine.ctx && audioEngine.ctx.state === 'suspended') {
-      audioEngine.ctx.resume().catch(() => {});
+    if (!audioEngine.isGraphComplete()) {
+      await audioEngine.boot().catch(() => {});
+    } else if (audioEngine.ctx && audioEngine.ctx.state === 'suspended') {
+      await audioEngine.ctx.resume().catch(() => {});
     }
     audioEngine.connectMediaElement(filePlayerGlobal);
   }

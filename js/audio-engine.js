@@ -26,6 +26,8 @@ export class AudioEngine {
     this._broadcastDest = null;
     this._clockKeepAlive = null;
     this._guestAudioNodes = new Map();
+    this._connectedMediaElement = null;
+    this._connectedMediaGain = null;
   }
 
   isGraphComplete() {
@@ -94,6 +96,8 @@ export class AudioEngine {
       }
     }
     this.engine = {};
+    this._connectedMediaElement = null;
+    this._connectedMediaGain = null;
     const dspLed = document.getElementById('led-dsp');
     if (dspLed) dspLed.classList.remove('active-blue');
   }
@@ -155,16 +159,17 @@ export class AudioEngine {
   async _buildEngine() {
     try {
       if (!this.ctx || this.ctx.state === 'closed') {
-        const isMobileDevice = typeof window !== 'undefined' && (
-          window.innerWidth <= 850 ||
-          /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-        );
         try {
-          this.ctx = new (window.AudioContext || window.webkitAudioContext)(
-            isMobileDevice ? { latencyHint: 'interactive' } : { latencyHint: 'interactive', sampleRate: 48000 }
-          );
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)({
+            latencyHint: 'interactive',
+            sampleRate: 48000
+          });
         } catch (_) {
-          this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+          try {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+          } catch (e2) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          }
         }
       }
 
@@ -1312,6 +1317,11 @@ export class AudioEngine {
   connectMediaElement(mediaEl) {
     if (!mediaEl || !this.ctx || !this.engine?.mediaGain) return;
     try {
+      // If already connected to the current active mediaGain for this element, avoid disconnecting
+      if (this.mediaElementSource && this._connectedMediaElement === mediaEl && this._connectedMediaGain === this.engine.mediaGain) {
+        return;
+      }
+
       if (!this.mediaElementSource || this.mediaElementSource.context !== this.ctx) {
         if (mediaEl.__audioSourceNode && mediaEl.__audioSourceNode.context === this.ctx) {
           this.mediaElementSource = mediaEl.__audioSourceNode;
@@ -1338,9 +1348,13 @@ export class AudioEngine {
         try { this.mediaElementSource.channelInterpretation = 'discrete'; } catch (_) {}
       }
       if (this.mediaElementSource) {
-        try { this.mediaElementSource.disconnect(); } catch (_) {}
-        this.mediaElementSource.connect(this.engine.mediaGain);
-        console.info('[AudioEngine] filePlayer successfully routed to mediaGain.');
+        if (this._connectedMediaElement !== mediaEl || this._connectedMediaGain !== this.engine.mediaGain) {
+          try { this.mediaElementSource.disconnect(); } catch (_) {}
+          this.mediaElementSource.connect(this.engine.mediaGain);
+          this._connectedMediaElement = mediaEl;
+          this._connectedMediaGain = this.engine.mediaGain;
+          console.info('[AudioEngine] filePlayer successfully routed to mediaGain.');
+        }
       }
     } catch (err) {
       console.warn('[AudioEngine] connectMediaElement notice:', err?.message || err);
