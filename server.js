@@ -41,6 +41,18 @@ app.use((req, res, next) => {
 
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
+app.get('/sitemap.xml', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'sitemap.xml'), {
+    headers: { 'Content-Type': 'application/xml; charset=utf-8' }
+  });
+});
+
+app.get('/robots.txt', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'robots.txt'), {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+  });
+});
+
 app.use(express.static(path.join(__dirname), {
   dotfiles: 'deny',
   index: ['index.html']

@@ -38,6 +38,54 @@ export class VisualizerRenderer {
     this.peaks = new Float32Array(this.numBars);
     this.peakHold = new Int16Array(this.numBars);
     this.peakSpeed = new Float32Array(this.numBars);
+    this._wasHidden = false;
+    this._resizeObserver = null;
+    this._resizeBound = null;
+  }
+
+  resize() {
+    if (!this.cvs || !this.cvs.parentElement) return;
+    const parent = this.cvs.parentElement;
+
+    // Safety guard: If parent element is hidden (display: none) or has 0 dimensions,
+    // NEVER overwrite canvas resolution to 10x10!
+    if (parent.clientWidth <= 0 || parent.clientHeight <= 0) {
+      return;
+    }
+
+    this._isMobile = typeof window !== 'undefined' && (
+      window.innerWidth <= 850 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    );
+    const targetBars = this._isMobile ? 32 : 48;
+    if (this.numBars !== targetBars) {
+      this.numBars = targetBars;
+      this.bars = new Float32Array(this.numBars);
+      this.peaks = new Float32Array(this.numBars);
+      this.peakHold = new Int16Array(this.numBars);
+      this.peakSpeed = new Float32Array(this.numBars);
+    }
+
+    const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 2);
+    const targetW = Math.max(80, Math.round(parent.clientWidth * dpr));
+    const targetH = Math.max(40, Math.round(parent.clientHeight * dpr));
+
+    if (this.cvs.width !== targetW || this.cvs.height !== targetH) {
+      this.cvs.width = targetW;
+      this.cvs.height = targetH;
+      this._cachedGrad = null;
+      this._cachedReflGrad = null;
+      this._cachedH = targetH;
+    }
+  }
+
+  refresh() {
+    this.resize();
+    this._lastTime = performance.now();
+    this._lastDrawTs = 0;
+    if (!this._rafId) {
+      this.startPump();
+    }
   }
 
   init() {
@@ -50,43 +98,29 @@ export class VisualizerRenderer {
 
     const hudAccel = document.getElementById('hudAccel');
     if (hudAccel) {
-      hudAccel.textContent = "HW ACCEL: ON";
+      hudAccel.textContent = "⚡ ACCEL: ON";
       hudAccel.style.color = "var(--accent-green, #00ff88)";
     }
 
-    const resize = () => {
-      if (!this.cvs || !this.cvs.parentElement) return;
-      this._isMobile = typeof window !== 'undefined' && (
-        window.innerWidth <= 850 ||
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-      );
-      const targetBars = this._isMobile ? 32 : 48;
-      if (this.numBars !== targetBars) {
-        this.numBars = targetBars;
-        this.bars = new Float32Array(this.numBars);
-        this.peaks = new Float32Array(this.numBars);
-        this.peakHold = new Int16Array(this.numBars);
-        this.peakSpeed = new Float32Array(this.numBars);
-      }
+    this._resizeBound = () => this.resize();
+    window.addEventListener('resize', this._resizeBound, { passive: true });
+    window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 150), { passive: true });
 
-      const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 2);
-      const parent = this.cvs.parentElement;
-      const targetW = Math.max(10, Math.round(parent.clientWidth * dpr));
-      const targetH = Math.max(10, Math.round(parent.clientHeight * dpr));
+    // Use ResizeObserver for instant reflow detection on tab switching or DOM display changes
+    if (typeof ResizeObserver !== 'undefined' && this.cvs.parentElement) {
+      try {
+        this._resizeObserver = new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            if (entry.contentRect && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+              this.resize();
+            }
+          }
+        });
+        this._resizeObserver.observe(this.cvs.parentElement);
+      } catch (_) {}
+    }
 
-      if (this.cvs.width !== targetW || this.cvs.height !== targetH) {
-        this.cvs.width = targetW;
-        this.cvs.height = targetH;
-        this._cachedGrad = null;
-        this._cachedReflGrad = null;
-        this._cachedH = targetH;
-      }
-    };
-
-    window.addEventListener('resize', resize, { passive: true });
-    window.addEventListener('orientationchange', () => setTimeout(resize, 200), { passive: true });
-    resize();
-
+    this.resize();
     this.startPump();
   }
 
@@ -96,12 +130,38 @@ export class VisualizerRenderer {
       this._rafId = null;
     }
 
+    let fpsFrames = 0;
+    let fpsLastSec = performance.now();
+    const hudFps = document.getElementById('hudFps');
+
     const pumpLoop = (ts) => {
       this._rafId = requestAnimationFrame(pumpLoop);
 
-      // Do not consume GPU / CPU cycles when tab is hidden or canvas is not in viewport
+      // Do not consume GPU / CPU cycles when tab is hidden
       if (typeof document !== 'undefined' && document.hidden) return;
-      if (this.cvs && this.cvs.offsetParent === null) return;
+
+      const isHidden = !this.cvs || this.cvs.offsetParent === null || (this.cvs.parentElement && this.cvs.parentElement.clientWidth <= 0);
+      if (isHidden) {
+        this._wasHidden = true;
+        return;
+      }
+
+      // If returning from another screen (e.g. effects or mixer tab):
+      if (this._wasHidden) {
+        this._wasHidden = false;
+        this.resize();
+        this._lastTime = ts;
+        this._lastDrawTs = ts;
+      }
+
+      // Keep canvas resolution in sync with container layout if resized
+      if (this.cvs.parentElement) {
+        const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 2);
+        const expectedW = Math.round(this.cvs.parentElement.clientWidth * dpr);
+        if (expectedW > 50 && Math.abs(this.cvs.width - expectedW) > 6) {
+          this.resize();
+        }
+      }
 
       // Frame throttle:
       // Mobile: ~30 FPS (interval ~33ms) for optimal battery and thermals
@@ -111,6 +171,17 @@ export class VisualizerRenderer {
       this._lastDrawTs = ts;
 
       this.renderFrame(ts);
+
+      // Live FPS Telemetry on stage HUD
+      fpsFrames++;
+      if (ts - fpsLastSec >= 1000) {
+        const curFps = Math.round((fpsFrames * 1000) / (ts - fpsLastSec));
+        if (hudFps) {
+          hudFps.textContent = `FPS: ${curFps}`;
+        }
+        fpsFrames = 0;
+        fpsLastSec = ts;
+      }
     };
 
     this._rafId = requestAnimationFrame(pumpLoop);
@@ -362,6 +433,14 @@ export class VisualizerRenderer {
     if (this._rafId) {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
+    }
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+    if (this._resizeBound) {
+      window.removeEventListener('resize', this._resizeBound);
+      this._resizeBound = null;
     }
   }
 }

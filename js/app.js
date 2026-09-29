@@ -14,8 +14,8 @@ import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMedi
 const audioEngine = new AudioEngine();
 if (typeof window !== 'undefined') window.audioEngine = audioEngine;
 const lyricsManager = new LyricsManager();
-const searchManager = new MusicSearchManager(audioEngine, lyricsManager);
 const visualizer = new VisualizerRenderer(audioEngine);
+if (typeof window !== 'undefined') window.visualizer = visualizer;
 const liveHost = new LiveStreamHost(audioEngine);
 const presence = new PresenceManager();
 const multistream = new MultiStreamManager(liveHost, audioEngine, lyricsManager);
@@ -1101,6 +1101,16 @@ function setupEventListeners() {
       const target = link.dataset.screen || link.getAttribute('href')?.replace(/^#/, '');
       link.classList.toggle('active', target === screenId || (screenId === 'stage' && target === 'lyrics') || (screenId === 'audience' && target === 'recording'));
     });
+
+    // When navigating to or back to stage, ensure visualizer re-measures and renders smoothly
+    if (screenId === 'stage') {
+      try {
+        visualizer?.refresh?.();
+        requestAnimationFrame(() => {
+          visualizer?.refresh?.();
+        });
+      } catch (_) {}
+    }
   }
   window.setActiveMobileScreen = setActiveMobileScreen;
 
@@ -1836,7 +1846,7 @@ function setupEventListeners() {
     const MAX_HISTORY = 90;
 
     const renderPitchGraph = () => {
-      if (!ctx2d || !canvas || atGraphWrapper?.classList.contains('is-hidden')) return;
+      if (!ctx2d || !canvas || atGraphWrapper?.classList.contains('is-hidden') || canvas.offsetParent === null) return;
 
       const w = canvas.width;
       const h = canvas.height;
