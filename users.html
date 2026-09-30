@@ -902,7 +902,9 @@
                 presence.onlineUsers = data.users;
                 renderRoster(data.users);
             }
-        } catch (_) {}
+        } catch (err) {
+            console.warn('[Users] Failed to refresh user roster:', err);
+        }
     });
 
     function escapeHtml(str) {

@@ -58,7 +58,9 @@ export class MultiStreamManager {
         const parsed = JSON.parse(data);
         if (parsed.youtube || parsed.youtube_rtmps) return parsed;
       }
-    } catch (_) {}
+    } catch (e) {
+      console.warn('[MultiStream] Failed to parse saved stream keys from localStorage:', e);
+    }
     return { youtube: '', youtube_rtmps: '', twitch: '', facebook: '', custom_url: '', custom_key: '' };
   }
 
@@ -72,7 +74,9 @@ export class MultiStreamManager {
       if (platform === 'youtube_rtmps') this.savedKeys.youtube = key;
       if (platform === 'youtube') this.savedKeys.youtube_rtmps = key;
     }
-    try { localStorage.setItem(STORAGE_KEY_STREAM_KEYS, JSON.stringify(this.savedKeys)); } catch (_) {}
+    try { localStorage.setItem(STORAGE_KEY_STREAM_KEYS, JSON.stringify(this.savedKeys)); } catch (e) {
+      console.warn('[MultiStream] Failed to save stream keys to localStorage:', e);
+    }
   }
 
   getCloudRelayUrl() {
@@ -96,7 +100,9 @@ export class MultiStreamManager {
   saveCloudRelayUrl(url) {
     try {
       localStorage.setItem(STORAGE_KEY_RELAY_URL, String(url || '').trim());
-    } catch (_) {}
+    } catch (e) {
+      console.warn('[MultiStream] Failed to save cloud relay URL to localStorage:', e);
+    }
   }
 
   // ─── UI Init ──────────────────────────────────────────────────────────────
@@ -182,9 +188,12 @@ export class MultiStreamManager {
       this.selectQuality.addEventListener('change', () => {
         this.selectedQuality = this.selectQuality.value;
         this.compositor.setQuality(this.selectedQuality);
-        try { localStorage.setItem('nirmal_stream_quality', this.selectedQuality); } catch (_) {}
+        try {
+          localStorage.setItem('nirmal_stream_quality', this.selectedQuality);
+        } catch (e) {
+          console.warn('[MultiStream] Failed to save stream quality to localStorage:', e);
+        }
       });
-    }
 
     // Bind Layout Preset Switcher Buttons
     if (this.layoutPillsContainer) {
@@ -587,9 +596,17 @@ export class MultiStreamManager {
           this.setStatus('LiveKit offline • Standalone mode');
         }
       } else {
-        try { await this.liveHost.ensureProgramAudioPublished?.(); } catch (_) {}
+        try {
+          await this.liveHost.ensureProgramAudioPublished?.();
+        } catch (e) {
+          console.warn('[MultiStream] Program audio publish check failed:', e);
+        }
       }
-      try { await this.liveHost.reconcileAudienceMicPublications?.(); } catch (_) {}
+      try {
+        await this.liveHost.reconcileAudienceMicPublications?.();
+      } catch (e) {
+        console.warn('[MultiStream] Audience mic reconcile failed:', e);
+      }
     } else {
       roomName = 'standalone_stream_' + Date.now();
     }
@@ -728,7 +745,7 @@ export class MultiStreamManager {
     this.updateStateUI();
     this.startTimer();
     this.resetStartButton();
-    try { this.onStreamingStateChange?.(true); } catch (_) {}
+    try { this.onStreamingStateChange?.(true); } catch (err) { console.warn('[MultiStream] onStreamingStateChange error:', err); }
 
     if (!this._renderKeepAliveTimer) {
       this._renderKeepAliveTimer = setInterval(() => {
@@ -738,9 +755,13 @@ export class MultiStreamManager {
             const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
             const scheme = isLocal && location.protocol !== 'https:' ? 'http://' : 'https://';
             const cleanHost = host.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '');
-            fetch(`${scheme}${cleanHost}/api/health`, { cache: 'no-store' }).catch(() => {});
+            fetch(`${scheme}${cleanHost}/api/health`, { cache: 'no-store' }).catch((err) => {
+              console.warn('[MultiStream] Cloud relay keepalive ping failed:', err);
+            });
           }
-        } catch (_) {}
+        } catch (e) {
+          console.warn('[MultiStream] Error sending relay keepalive ping:', e);
+        }
       }, 4 * 60 * 1000);
     }
   }
@@ -873,8 +894,9 @@ export class MultiStreamManager {
             console.info('[MultiStream] Server signaled stream stopped');
             if (this.isStreaming) this.stopBroadcast();
           }
-        } catch (_) {}
-      };
+        } catch (e) {
+          console.warn('[MultiStream] Failed to parse WebSocket message from relay:', e);
+        }
 
       ws.onerror = () => {
         if (!resolved) {
@@ -1009,16 +1031,17 @@ export class MultiStreamManager {
           chunkQueue.shift();
         }
       }
+      const st = this.streamStatusBadge || document.getElementById('streamStatusBadge');
       if (chunkQueue.length > (maxQueue / 2)) {
         console.warn(`[MultiStream] Backpressure warning: ${chunkQueue.length} chunks queued for upload.`);
-        const st = document.getElementById('externalStreamStatus');
         if (st && this.isStreaming) {
-          st.textContent = `⚠️ Network congestion: buffering (${chunkQueue.length}s)...`;
+          st.innerHTML = `<span class="badge-dot" style="background:#ff9f1c;"></span> ⚠️ Congestion (${chunkQueue.length}s)...`;
         }
       } else if (chunkQueue.length === 0) {
-        const st = document.getElementById('externalStreamStatus');
-        if (st && this.isStreaming && st.textContent.includes('congestion')) {
-          st.textContent = '🟢 Broadcasting Live';
+        if (st && this.isStreaming && st.textContent && (st.textContent.includes('Congestion') || st.textContent.includes('congestion'))) {
+          const platLabel = this.activePlatform ? this.activePlatform.toUpperCase() : 'LIVE';
+          st.className = 'status-badge-live';
+          st.innerHTML = `<span class="badge-dot"></span> LIVE ON ${platLabel}`;
         }
       }
       sendChunks();
@@ -1069,7 +1092,9 @@ export class MultiStreamManager {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ roomName, egressId: sessionId, action: 'stop-egress' })
         });
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[MultiStream] stop-egress fetch failed:', err);
+      }
     } else {
       const targets = ['/api/stream/stop-ffmpeg', `${httpProto}//${targetHost}/api/stream/stop-ffmpeg`];
       for (const t of targets) {
@@ -1079,7 +1104,9 @@ export class MultiStreamManager {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ roomName, sessionId })
           });
-        } catch (_) {}
+        } catch (err) {
+          console.warn(`[MultiStream] stop-ffmpeg fetch to ${t} failed:`, err);
+        }
       }
     }
 

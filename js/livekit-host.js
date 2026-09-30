@@ -403,7 +403,11 @@ export class LiveKitLiveStreamHost {
     }
 
     if (this.audioEngine?.ctx?.state === 'suspended') {
-      try { await this.audioEngine.ctx.resume(); } catch (_) {}
+      try {
+        await this.audioEngine.ctx.resume();
+      } catch (err) {
+        console.warn('[LiveKitHost] AudioEngine context resume warning:', err);
+      }
     }
 
     const mixedTrack = this.audioEngine?.engine?.dest?.stream?.getAudioTracks?.()[0];
@@ -470,7 +474,9 @@ export class LiveKitLiveStreamHost {
         if (!trk || trk.readyState !== 'live' || this.programPublication?.isMuted) {
           try {
             await this.ensureProgramAudioPublished();
-          } catch (_) {}
+          } catch (err) {
+            console.warn('[LiveKitHost] Watchdog ensureProgramAudioPublished warning:', err);
+          }
         }
       }
     }, 8000);
@@ -1099,7 +1105,11 @@ export class LiveKitLiveStreamHost {
         const cfg = await fetchToken(this.roomId, identity, 'host');
         await this.room.connect(cfg.url, cfg.token, { autoSubscribe: true, maxRetries: 5 });
         await this.reconcileAudienceMicPublications();
-        try { await this.ensureProgramAudioPublished(); } catch (_) {}
+        try {
+          await this.ensureProgramAudioPublished();
+        } catch (err) {
+          console.warn('[LiveKitHost] Reconnect ensureProgramAudioPublished warning:', err);
+        }
         if (this.duetMonitorEnabled && this.audienceMonitorUnlocked) {
           for (const item of this.guestAudioElements.values()) {
             this.playAudienceItem(item);
@@ -1130,9 +1140,17 @@ export class LiveKitLiveStreamHost {
     this.room.on(L.RoomEvent.Reconnected, async () => {
       this.hostReconnectAttempts = 0;
       console.info('[Nirmal] host LiveKit reconnected');
-      try { await this.reconcileAudienceMicPublications(); } catch (_) {}
+      try {
+        await this.reconcileAudienceMicPublications();
+      } catch (err) {
+        console.warn('[LiveKitHost] Reconnected reconcileAudienceMicPublications warning:', err);
+      }
       if (this.duetMonitorEnabled) this.primeAudienceMonitorFromGesture();
-      try { await this.ensureProgramAudioPublished(); } catch (_) {}
+      try {
+        await this.ensureProgramAudioPublished();
+      } catch (err) {
+        console.warn('[LiveKitHost] Reconnected ensureProgramAudioPublished warning:', err);
+      }
     });
     this.room.on(L.RoomEvent.Disconnected, reason => {
       console.warn('[Nirmal] host LiveKit disconnected:', reason);
@@ -1352,14 +1370,20 @@ export class LiveKitLiveStreamHost {
           this.onChatMessage?.(data.sender, data.text, data.isSpecial);
           this.broadcastChatMessage(data.sender, data.text, data.isSpecial, false, id);
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[LiveKitHost] Failed to parse received data packet:', err);
+      }
     });
   }
 
   async sendData(data, options = {}) {
     if (!this.room?.localParticipant) return;
     const bytes = new TextEncoder().encode(JSON.stringify(data));
-    try { await this.room.localParticipant.publishData(bytes, options); } catch (_) {}
+    try {
+      await this.room.localParticipant.publishData(bytes, options);
+    } catch (err) {
+      console.warn('[LiveKitHost] sendData publishData warning:', err);
+    }
   }
 
   broadcastChatMessage(sender, text, isSpecial = false, isHost = true, excludeId = null) {

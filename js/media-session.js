@@ -52,7 +52,8 @@ export function updateMediaSession({ title, artist, album, onPlay, onPause } = {
         artist: artist || 'Live Karaoke Studio',
         album: album || 'Nirmal Karaoke Live',
         artwork: [
-          { src: './favicon.ico', sizes: '192x192', type: 'image/png' }
+          { src: './icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: './icon-512.png', sizes: '512x512', type: 'image/png' }
         ]
       });
       if (typeof onPlay === 'function') {

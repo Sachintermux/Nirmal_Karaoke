@@ -479,7 +479,8 @@ function setupLiveShareUI() {
       try {
         await liveHost.rejectDuetRequest(identity);
         toast.remove();
-      } catch (_) {
+      } catch (err) {
+        console.warn('[Host] rejectDuetRequest warning:', err);
         toast.remove();
       }
     };
@@ -527,7 +528,11 @@ function setupLiveShareUI() {
       return;
     }
     if (liveHost.roomId && !isLive) {
-      try { await liveHost.endRoom(); } catch (_) {}
+      try {
+        await liveHost.endRoom();
+      } catch (err) {
+        console.warn('[Host] liveHost.endRoom warning before restart:', err);
+      }
     }
     if (liveStarting) return;
     liveStarting = true;
@@ -2059,7 +2064,8 @@ function setupEventListeners() {
     const getUserPresets = () => {
       try {
         return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      } catch (_) {
+      } catch (err) {
+        console.warn('[AutoTune] Failed to parse user presets from localStorage:', err);
         return {};
       }
     };
@@ -2271,6 +2277,7 @@ function setupEventListeners() {
       });
       if (!found && resBox) resBox.innerHTML = '<span style="color:var(--text-dim); font-size: 0.8rem;">No synced lyrics found.</span>';
     } catch (e) {
+      console.warn('[LRC] Auto lyrics fetch failed:', e);
       if (resBox) resBox.innerHTML = '<span style="color:var(--accent-red); font-size: 0.8rem;">Connection error.</span>';
     }
   });

@@ -6,6 +6,8 @@
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" name="viewport"/>
 <title>Live Karaoke Broadcast, Chat &amp; Duet</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎤</text></svg>">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml"/>
 <link href="./css/style.css?v=32" rel="stylesheet"/>
 <link href="./css/game-invite.css?v=32" rel="stylesheet"/>
@@ -1424,7 +1426,11 @@
           }
           if (!tokenData) throw tokenError || new Error('Token refresh failed.');
           await room.connect(tokenData.url, tokenData.token, { autoSubscribe: true });
-          try { await room.startAudio(); } catch (_) {}
+          try {
+            await room.startAudio();
+          } catch (err) {
+            console.warn('[Audience] room.startAudio deferred by browser autoplay policy:', err);
+          }
           updatePlaybackUnlock();
           reconnectAttempts = 0;
           liveIndicator.style.display = 'flex';
@@ -1462,7 +1468,11 @@
 
     // Must be attempted from the Tune In interaction; if the browser rejects
     // autoplay, the explicit Enable Live Audio button below remains available.
-    try { await room.startAudio(); } catch (_) {}
+    try {
+      await room.startAudio();
+    } catch (err) {
+      console.warn('[Audience] Initial room.startAudio deferred by browser autoplay policy:', err);
+    }
 
     // Attach every publication already present when we joined.
     for (const participant of room.remoteParticipants.values()) {
@@ -1502,9 +1512,9 @@
       liveIndicator.parentElement?.appendChild(unlock);
     }
     unlock.onclick = async () => {
-      try { await ensurePlaybackAudio(); } catch (_) {}
-      try { await room.startAudio?.(); } catch (_) {}
-      try { await playbackCtx?.resume?.(); } catch (_) {}
+      try { await ensurePlaybackAudio(); } catch (err) { console.warn('[Audience] ensurePlaybackAudio failed:', err); }
+      try { await room.startAudio?.(); } catch (err) { console.warn('[Audience] room.startAudio failed:', err); }
+      try { await playbackCtx?.resume?.(); } catch (err) { console.warn('[Audience] playbackCtx resume failed:', err); }
       if (liveAudio) {
         liveAudio.muted = false;
         try { await liveAudio.play(); } catch (_) {}
@@ -2168,7 +2178,7 @@
       return;
     }
     const sender = chatNickInput.value.trim() || 'Audience Member';
-    room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type:'AUDIENCE_CHAT', sender, text, isSpecial:false })), { reliable:true }).catch(()=>{});
+    room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type:'AUDIENCE_CHAT', sender, text, isSpecial:false })), { reliable:true }).catch((err)=>{ console.warn('[Audience] Chat publishData failed:', err); });
     addChatMessage('You', text);
     chatTextInput.value = '';
   }
@@ -2181,7 +2191,15 @@
     songSearchSuggestions.innerHTML = '<div style="color:var(--text-dim);font-size:.7rem;padding:4px">Searching…</div>';
     let found = [];
     for (const base of SAAVN_API_URLS) {
-      try { const r = await fetch(`${base}${encodeURIComponent(q)}`); if (!r.ok) continue; const j = await r.json(); const list = j.data?.results || j.data || j.results || j; if (Array.isArray(list) && list.length) { found=list.slice(0,4); break; } } catch (_) {}
+      try {
+        const r = await fetch(`${base}${encodeURIComponent(q)}`);
+        if (!r.ok) continue;
+        const j = await r.json();
+        const list = j.data?.results || j.data || j.results || j;
+        if (Array.isArray(list) && list.length) { found = list.slice(0, 4); break; }
+      } catch (err) {
+        console.warn('[Audience] Song search endpoint error:', base, err);
+      }
     }
     songSearchSuggestions.innerHTML = '';
     if (!found.length) { songSearchSuggestions.innerHTML='<div style="color:var(--accent-red);font-size:.7rem;padding:4px">Song not found.</div>'; return; }
@@ -2360,7 +2378,11 @@
     isDuetGuest = true;
     guestRole = 'duet';
     if (presence) {
-      try { presence.updateStatus({ role: 'duet' }); } catch (_) {}
+      try {
+        presence.updateStatus({ role: 'duet' });
+      } catch (err) {
+        console.warn('[Audience] Failed to update presence status to duet:', err);
+      }
     }
     const reqBtn = document.getElementById('btnRequestMic');
     if (reqBtn) reqBtn.style.display = 'none';
@@ -2430,7 +2452,11 @@
           identity: room.localParticipant.identity,
           name: chatNickInput?.value?.trim() || presence?.getUser()?.name || room.localParticipant.identity
         }));
-        try { await room.localParticipant.publishData(reply, { reliable: true }); } catch (_) {}
+        try {
+          await room.localParticipant.publishData(reply, { reliable: true });
+        } catch (err) {
+          console.warn('[Audience] publishData ACCEPT_DUET failed:', err);
+        }
       }
     });
 

@@ -31,7 +31,7 @@ export class PresenceManager {
     this.onInviteResponse = null;
 
     // 1. Initial immediate user list fetch
-    this.fetchUsers().catch(() => {});
+    this.fetchUsers().catch((err) => console.warn('[Presence] initial fetchUsers failed:', err));
 
     // 2. Initialize real-time signaling
     this.initSSE();
@@ -45,7 +45,9 @@ export class PresenceManager {
         const parsed = JSON.parse(saved);
         if (parsed?.id && parsed?.name) return parsed;
       }
-    } catch (_) {}
+    } catch (e) {
+      console.warn('[Presence] Failed to parse profile from localStorage:', e);
+    }
 
     const avatars = ['🎤', '🎧', '🎸', '🎹', '⚡', '👑', '🔥', '🌟', '🎶', '💎'];
     const randomAvatar = avatars[Math.floor(Math.random() * avatars.length)];
@@ -56,14 +58,18 @@ export class PresenceManager {
       avatar: randomAvatar
     };
 
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile)); } catch (_) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile)); } catch (e) {
+      console.warn('[Presence] Failed to save new profile to localStorage:', e);
+    }
     return newProfile;
   }
 
   updateProfile(name, avatar) {
     if (name) this.user.name = String(name).trim();
     if (avatar) this.user.avatar = String(avatar).trim();
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.user)); } catch (_) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.user)); } catch (e) {
+      console.warn('[Presence] Failed to update profile in localStorage:', e);
+    }
     this.pushHeartbeat();
   }
 
@@ -86,7 +92,8 @@ export class PresenceManager {
         }
       }
       return this.onlineUsers;
-    } catch (_) {
+    } catch (err) {
+      console.warn('[Presence] fetchUsers failed:', err);
       return this.onlineUsers;
     }
   }
@@ -161,7 +168,8 @@ export class PresenceManager {
         // On serverless environments (Netlify), activate high-frequency polling fallback
         this.startPollingFallback();
       };
-    } catch (_) {
+    } catch (e) {
+      console.warn('[Presence] EventSource initialization failed, starting polling fallback:', e);
       this.startPollingFallback();
     }
   }
@@ -341,6 +349,8 @@ export class PresenceManager {
           }
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Presence] Polling cycle request failed:', err);
+    }
   }
 }

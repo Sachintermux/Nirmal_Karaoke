@@ -28,6 +28,9 @@ const BLOCKED_PATTERNS = [
   /^\/render\.yaml$/i,
   /^\/package.*\.json$/i,
   /^\/scratch/i,
+  /^\/netlify/i,
+  /^\/\.idea/i,
+  /^\/\.git/i,
   /\.mp4$/i
 ];
 
@@ -39,7 +42,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/favicon.ico', (req, res) => res.status(204).end());
+app.get('/favicon.ico', (_req, res) => res.sendFile(path.join(__dirname, 'favicon.ico')));
 
 app.get('/sitemap.xml', (_req, res) => {
   res.sendFile(path.join(__dirname, 'sitemap.xml'), {
@@ -391,14 +394,18 @@ setInterval(() => {
       if (sender?.sseRes && !sender.sseRes.writableEnded) {
         try {
           sender.sseRes.write(`event: invite_response\ndata: ${JSON.stringify(expiredData)}\n\n`);
-        } catch (_) {}
+        } catch (err) {
+          console.warn('[Presence] Failed to send expired invite_response:', err);
+        }
       }
       // Notify recipient that invite timed out so modal dialog auto-dismisses
       const toUser = inv.toUserId ? activeUsers.get(inv.toUserId) : null;
       if (toUser?.sseRes && !toUser.sseRes.writableEnded) {
         try {
           toUser.sseRes.write(`event: invite_expired\ndata: ${JSON.stringify(expiredData)}\n\n`);
-        } catch (_) {}
+        } catch (err) {
+          console.warn('[Presence] Failed to send invite_expired event:', err);
+        }
       }
       activeInvites.delete(invId);
     } else if (now - inv.createdAt > 60000) {
@@ -1509,7 +1516,9 @@ wss.on('connection', (ws, req) => {
     if (ws.readyState === ws.OPEN) {
       try {
         ws.send(JSON.stringify(payload));
-      } catch (_) {}
+      } catch (err) {
+        console.warn(`[StreamRelay] Failed to send payload to client (sessionId: ${sessionId}):`, err);
+      }
     }
   };
 
