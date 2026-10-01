@@ -194,31 +194,66 @@ app.get('/api/music/search', async (req, res) => {
     return res.json({ ok: true, results: [] });
   }
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 50);
+
+  const normQuery = query.toLowerCase();
+  const cacheKey = `${normQuery}_${limit}`;
+  const cached = musicSearchCache.get(cacheKey);
+  if (cached && (Date.now() - cached.time < MUSIC_CACHE_TTL)) {
+    return res.json({ ok: true, results: cached.tracks, cached: true });
+  }
+
+  // 1. Primary: User's Vercel JioSaavn API
+  try {
+    const vercelUrl = `https://jiosaavn-api-main-mu.vercel.app/song/?query=${encodeURIComponent(query)}`;
+    const vRes = await fetch(vercelUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*'
+      },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (vRes.ok) {
+      const vData = await vRes.json();
+      const rawList = Array.isArray(vData) ? vData : (vData?.results || []);
+      if (rawList.length > 0) {
+        const tracks = rawList.slice(0, limit).map(t => {
+          let mediaUrl = t.media_url || t.url || '';
+          if (mediaUrl.includes('preview.saavncdn.com')) {
+            mediaUrl = mediaUrl.replace('preview.saavncdn.com', 'aac.saavncdn.com').replace('_96_p', '_320');
+          } else if (mediaUrl.includes('_96.mp4')) {
+            mediaUrl = mediaUrl.replace('_96.mp4', '_320.mp4');
+          } else if (mediaUrl.includes('_160.mp4')) {
+            mediaUrl = mediaUrl.replace('_160.mp4', '_320.mp4');
+          }
+          let img = (t.image || '').replace('50x50', '500x500').replace('150x150', '500x500');
+          return {
+            id: t.id || `saavn_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            title: cleanHtmlEntities(t.song || t.name || t.title || 'Unknown Title'),
+            artist: cleanHtmlEntities(t.singers || t.primary_artists || t.artist || 'Artist'),
+            album: cleanHtmlEntities(t.album || ''),
+            url: mediaUrl,
+            image: img,
+            duration: parseInt(t.duration || 0, 10),
+            has_lyrics: t.has_lyrics === 'true' || t.has_lyrics === true
+          };
+        }).filter(t => !!t.url);
+
+        if (tracks.length > 0) {
+          musicSearchCache.set(cacheKey, { tracks, time: Date.now() });
+          return res.json({ ok: true, results: tracks });
+        }
+      }
+    }
+  } catch (vercelErr) {
+    console.warn('[music-search] User Vercel endpoint notice:', vercelErr.message);
+  }
+
+  // 2. Secondary: Direct JioSaavn scrape + DES-ECB decryption
   try {
     const tracks = await fetchJioSaavnTracks(query, limit);
     return res.json({ ok: true, results: tracks });
   } catch (err) {
     console.warn('[music-search] Direct JioSaavn failed for:', query, err.message);
-    try {
-      const fallbackUrl = `https://jiosaavn-api-main-mu.vercel.app/song?query=${encodeURIComponent(query)}`;
-      const fbRes = await fetch(fallbackUrl, { signal: AbortSignal.timeout(5000) });
-      if (fbRes.ok) {
-        const fbData = await fbRes.json();
-        if (Array.isArray(fbData)) {
-          const fbTracks = fbData.map(t => ({
-            id: t.id,
-            title: cleanHtmlEntities(t.song || t.name || t.title),
-            artist: cleanHtmlEntities(t.primary_artists || t.singers || 'Artist'),
-            album: cleanHtmlEntities(t.album || ''),
-            url: t.media_url || (t.media_preview_url ? t.media_preview_url.replace('preview.saavncdn.com', 'aac.saavncdn.com').replace('_96_p', '_320') : ''),
-            image: (t.image || '').replace('50x50', '500x500'),
-            duration: parseInt(t.duration || 0, 10),
-            has_lyrics: false
-          })).filter(t => !!t.url);
-          return res.json({ ok: true, results: fbTracks });
-        }
-      }
-    } catch (_) {}
     return res.status(500).json({ ok: false, error: 'Search failed', results: [] });
   }
 });

@@ -14,6 +14,8 @@ import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMedi
 const audioEngine = new AudioEngine();
 if (typeof window !== 'undefined') window.audioEngine = audioEngine;
 const lyricsManager = new LyricsManager();
+const searchManager = new MusicSearchManager(audioEngine, lyricsManager);
+if (typeof window !== 'undefined') window.searchManager = searchManager;
 const visualizer = new VisualizerRenderer(audioEngine);
 if (typeof window !== 'undefined') window.visualizer = visualizer;
 const liveHost = new LiveStreamHost(audioEngine);

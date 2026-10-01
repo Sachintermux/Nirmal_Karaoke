@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 
 console.log('=== TESTING MUSIC LIBRARY & AUTOSEARCH FIXES ===');
 
-const TEST_PORT = 3899;
+const TEST_PORT = 3901;
 const serverProc = spawn('node', ['server.js'], {
   env: { ...process.env, PORT: String(TEST_PORT) },
   cwd: process.cwd(),

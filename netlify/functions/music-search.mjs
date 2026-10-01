@@ -70,6 +70,65 @@ export default async function handler(req) {
     });
   }
 
+  // 1. Try User's Primary Vercel JioSaavn API first
+  try {
+    const vercelUrl = `https://jiosaavn-api-main-mu.vercel.app/song/?query=${encodeURIComponent(query)}`;
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 6000);
+    const vRes = await fetch(vercelUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*'
+      },
+      signal: ctrl.signal
+    });
+    clearTimeout(timeout);
+
+    if (vRes.ok) {
+      const vData = await vRes.json();
+      const rawList = Array.isArray(vData) ? vData : (vData?.results || []);
+      if (rawList.length > 0) {
+        const tracks = rawList.slice(0, limit).map(t => {
+          let mediaUrl = t.media_url || t.url || '';
+          if (mediaUrl.includes('preview.saavncdn.com')) {
+            mediaUrl = mediaUrl.replace('preview.saavncdn.com', 'aac.saavncdn.com').replace('_96_p', '_320');
+          } else if (mediaUrl.includes('_96.mp4')) {
+            mediaUrl = mediaUrl.replace('_96.mp4', '_320.mp4');
+          } else if (mediaUrl.includes('_160.mp4')) {
+            mediaUrl = mediaUrl.replace('_160.mp4', '_320.mp4');
+          }
+
+          let img = (t.image || '').replace('50x50', '500x500').replace('150x150', '500x500');
+
+          return {
+            id: t.id || `saavn_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            title: cleanHtmlEntities(t.song || t.name || t.title || 'Unknown Title'),
+            artist: cleanHtmlEntities(t.singers || t.primary_artists || t.artist || 'Artist'),
+            album: cleanHtmlEntities(t.album || ''),
+            url: mediaUrl,
+            image: img,
+            duration: parseInt(t.duration || 0, 10),
+            has_lyrics: t.has_lyrics === 'true' || t.has_lyrics === true
+          };
+        }).filter(t => !!t.url);
+
+        if (tracks.length > 0) {
+          musicSearchCache.set(cacheKey, { tracks, time: Date.now() });
+          return new Response(JSON.stringify({ ok: true, results: tracks }), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          });
+        }
+      }
+    }
+  } catch (vercelErr) {
+    console.warn('[Netlify music-search] Primary Vercel endpoint notice:', vercelErr.message);
+  }
+
+  // 2. Direct JioSaavn scrape + DES-ECB decryption fallback
   try {
     const saavnUrl = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=${limit}&p=1&q=${encodeURIComponent(query)}`;
     const ctrl = new AbortController();
@@ -123,35 +182,6 @@ export default async function handler(req) {
       }
     });
   } catch (err) {
-    // Fallback to secondary Vercel provider if direct saavn failed
-    try {
-      const fbUrl = `https://jiosaavn-api-main-mu.vercel.app/song?query=${encodeURIComponent(query)}`;
-      const fbRes = await fetch(fbUrl, { signal: AbortSignal.timeout(5000) });
-      if (fbRes.ok) {
-        const fbData = await fbRes.json();
-        if (Array.isArray(fbData)) {
-          const fbTracks = fbData.map(t => ({
-            id: t.id,
-            title: cleanHtmlEntities(t.song || t.name || t.title),
-            artist: cleanHtmlEntities(t.primary_artists || t.singers || 'Artist'),
-            album: cleanHtmlEntities(t.album || ''),
-            url: t.media_url || (t.media_preview_url ? t.media_preview_url.replace('preview.saavncdn.com', 'aac.saavncdn.com').replace('_96_p', '_320') : ''),
-            image: (t.image || '').replace('50x50', '500x500'),
-            duration: parseInt(t.duration || 0, 10),
-            has_lyrics: false
-          })).filter(t => !!t.url);
-
-          return new Response(JSON.stringify({ ok: true, results: fbTracks }), {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
-            }
-          });
-        }
-      }
-    } catch (_) {}
-
     return new Response(JSON.stringify({ ok: false, error: err.message, results: [] }), {
       status: 500,
       headers: {

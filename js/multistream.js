@@ -303,6 +303,25 @@ export class MultiStreamManager {
       return;
     }
 
+    await this.testConnection(platform, key, customUrl, btn, resultBox);
+  }
+
+  _resolveStreamTargetHost() {
+    if (typeof location === 'undefined') return 'localhost:3000';
+    const h = location.hostname;
+    const isLocal = h === 'localhost' || h === '127.0.0.1' || h === '::1' ||
+                    /^192\.168\./.test(h) || /^10\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h);
+    if (isLocal) {
+      return location.host || 'localhost:3000';
+    }
+    const cloud = this.getCloudRelayUrl();
+    if (cloud) {
+      return cloud.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+    }
+    return location.host;
+  }
+
+  async testConnection(platform, key, customUrl, btn, resultBox) {
     if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
     if (resultBox) {
       resultBox.style.display = 'block';
@@ -313,8 +332,8 @@ export class MultiStreamManager {
     }
 
     try {
-      const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1';
-      const targetHost = isLocalhost ? (location.port && location.port !== '3000' ? `${location.hostname}:3000` : location.host) : this.getCloudRelayUrl().replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+      const targetHost = this._resolveStreamTargetHost();
+      const isLocalhost = targetHost.includes('localhost') || targetHost.includes('127.0.0.1') || /^192\.168\./.test(targetHost) || /^10\./.test(targetHost);
       const httpProto = isLocalhost && location.protocol !== 'https:' ? 'http:' : 'https:';
       const params = new URLSearchParams({ key, platform, ...(customUrl ? { customUrl } : {}) });
       const resp = await fetch(`${httpProto}//${targetHost}/api/stream/test-ffmpeg?${params}`, { cache: 'no-store' });
@@ -682,16 +701,17 @@ export class MultiStreamManager {
 
     this.setStatus('Connecting Server…');
 
-    const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1';
+    const targetHost = this._resolveStreamTargetHost();
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1' ||
+                    /^192\.168\./.test(location.hostname) || /^10\./.test(location.hostname) || /^172\.(1[6-9]|2\d|3[01])\./.test(location.hostname);
 
     let started = false;
     let lastError = null;
 
-    if (isLocalhost) {
-      // Local development: route to local Node server on current port / 3000
+    if (isLocal) {
+      // Local development or LAN: route to target host
       try {
-        const localTarget = (location.port && location.port !== '3000') ? `${location.hostname}:3000` : location.host;
-        await this._startWebSocketStream(roomName, platform, streamKey, customUrl, broadcastStream, localTarget);
+        await this._startWebSocketStream(roomName, platform, streamKey, customUrl, broadcastStream, targetHost);
         started = true;
       } catch (wsErr) {
         lastError = wsErr;
@@ -712,14 +732,14 @@ export class MultiStreamManager {
         }
       }
 
-      // Option B: Try local relay (if host is running 'node server.js' on localhost:3000)
+      // Option B: Try target host / local relay
       if (!started) {
         try {
-          console.info('[MultiStream] Attempting local relay on 127.0.0.1:3000...');
-          await this._startWebSocketStream(roomName, platform, streamKey, customUrl, broadcastStream, '127.0.0.1:3000');
+          console.info(`[MultiStream] Attempting relay on ${targetHost}...`);
+          await this._startWebSocketStream(roomName, platform, streamKey, customUrl, broadcastStream, targetHost);
           started = true;
         } catch (localRelayErr) {
-          console.info('[MultiStream] Local relay not available, trying Cloud LiveKit Egress fallback...');
+          console.info('[MultiStream] Relay not available, trying Cloud LiveKit Egress fallback...');
           // Option C: Cloud LiveKit Egress fallback
           try {
             await this._startCloudEgressStream(roomName, platform, streamKey, customUrl);
