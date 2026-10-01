@@ -236,6 +236,7 @@ export class MultiStreamManager {
           console.warn('[MultiStream] Failed to save stream quality to localStorage:', e);
         }
       });
+    }
 
     // Bind Layout Preset Switcher Buttons
     if (this.layoutPillsContainer) {
@@ -959,6 +960,7 @@ export class MultiStreamManager {
         } catch (e) {
           console.warn('[MultiStream] Failed to parse WebSocket message from relay:', e);
         }
+      };
 
       ws.onerror = () => {
         if (!resolved) {
