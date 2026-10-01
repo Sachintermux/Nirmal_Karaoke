@@ -235,8 +235,9 @@ export const AUTOTUNE_PRESETS = {
 export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export const SAAVN_API_URLS = [
-  "https://jiosaavn-api-main-mu.vercel.app/song/?query=",
-  "/api/music/search?query="
+  "/api/saavn/song/?query=",
+  "/api/music/search?query=",
+  "https://jiosaavn-api-main-mu.vercel.app/song/?query="
 ];
 
 export const TRENDING_SEARCH_TERMS = [

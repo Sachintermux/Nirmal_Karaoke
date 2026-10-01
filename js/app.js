@@ -749,6 +749,32 @@ function setupLiveShareUI() {
     }
   }
 
+  // LiveKit Cloud Credentials Configuration (In-App fallback for Netlify)
+  const inputLkUrl = document.getElementById('inputLiveKitUrl');
+  const inputLkKey = document.getElementById('inputLiveKitApiKey');
+  const inputLkSecret = document.getElementById('inputLiveKitApiSecret');
+  const btnSaveLk = document.getElementById('btnSaveLiveKitConfig');
+  const lblLkStatus = document.getElementById('lblLiveKitConfigStatus');
+
+  try {
+    const savedLk = JSON.parse(localStorage.getItem('nirmal_livekit_config') || '{}');
+    if (inputLkUrl && savedLk.url) inputLkUrl.value = savedLk.url;
+    if (inputLkKey && savedLk.apiKey) inputLkKey.value = savedLk.apiKey;
+    if (inputLkSecret && savedLk.apiSecret) inputLkSecret.value = savedLk.apiSecret;
+  } catch (_) {}
+
+  btnSaveLk?.addEventListener('click', () => {
+    const url = inputLkUrl?.value.trim() || '';
+    const apiKey = inputLkKey?.value.trim() || '';
+    const apiSecret = inputLkSecret?.value.trim() || '';
+    localStorage.setItem('nirmal_livekit_config', JSON.stringify({ url, apiKey, apiSecret }));
+    if (lblLkStatus) {
+      lblLkStatus.style.display = 'inline';
+      lblLkStatus.textContent = 'Saved!';
+      setTimeout(() => { lblLkStatus.style.display = 'none'; }, 2500);
+    }
+  });
+
   // ==========================================================================
   // REAL-TIME ACTIVE SINGERS & DUET LOBBY (DESKTOP & MODAL INTEGRATION)
   // ==========================================================================

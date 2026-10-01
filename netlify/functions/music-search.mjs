@@ -44,8 +44,12 @@ export default async function handler(req) {
   }
 
   const url = new URL(req.url, 'http://localhost');
-  const query = (url.searchParams.get('query') || url.searchParams.get('q') || url.searchParams.get('category') || '').trim();
+  let query = (url.searchParams.get('query') || url.searchParams.get('q') || url.searchParams.get('category') || '').trim();
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit'), 10) || 25, 1), 50);
+
+  if (!query && (url.pathname.includes('/trending') || url.pathname.endsWith('/trending'))) {
+    query = 'Latest Bollywood Hits';
+  }
 
   if (!query) {
     return new Response(JSON.stringify({ ok: true, results: [] }), {

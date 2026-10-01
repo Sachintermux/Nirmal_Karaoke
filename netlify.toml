@@ -25,6 +25,13 @@
   force = true
 
 [[redirects]]
+  from = "/api/saavn/*"
+  to = "https://jiosaavn-api-main-mu.vercel.app/:splat"
+  status = 200
+  force = true
+  headers = { Access-Control-Allow-Origin = "*" }
+
+[[redirects]]
   from = "/api/music/*"
   to = "/.netlify/functions/music-search"
   status = 200

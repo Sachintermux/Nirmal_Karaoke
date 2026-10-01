@@ -17,8 +17,28 @@ const NIRMAL_LOW_LATENCY_AUDIO = {
 };
 
 async function fetchToken(room, identity, role) {
-  const payload = { roomName: room, identity, role };
+  let customLk = null;
+  try {
+    customLk = JSON.parse(localStorage.getItem('nirmal_livekit_config') || '{}');
+  } catch (_) {}
+
+  const payload = {
+    roomName: room,
+    identity,
+    role,
+    ...(customLk?.url ? { livekitUrl: customLk.url } : {}),
+    ...(customLk?.apiKey ? { apiKey: customLk.apiKey } : {}),
+    ...(customLk?.apiSecret ? { apiSecret: customLk.apiSecret } : {})
+  };
+
   const endpoints = ['/api/livekit/token', '/.netlify/functions/livekit-token'];
+  const savedRelay = (localStorage.getItem('nirmal_stream_relay_url') || '').trim();
+  if (savedRelay) {
+    const cleanHost = savedRelay.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+    const proto = savedRelay.startsWith('http://') ? 'http:' : 'https:';
+    endpoints.push(`${proto}//${cleanHost}/api/livekit/token`);
+  }
+
   let lastError = null;
   for (const endpoint of endpoints) {
     const controller = new AbortController();
@@ -34,9 +54,7 @@ async function fetchToken(room, identity, role) {
       const data = await r.json().catch(() => ({}));
       if (r.ok && data.token && data.url) return data;
       lastError = new Error(data.error || `LiveKit token request failed (${r.status})`);
-      // If the primary endpoint returned a specific configuration error (503) or client error (400),
-      // break immediately so the actual error message is surfaced to the user.
-      if (r.status === 503 || r.status === 400 || r.status === 401) break;
+      if (r.status === 400 || r.status === 401) break;
     } catch (e) {
       lastError = e?.name === 'AbortError' ? new Error(`LiveKit token endpoint timed out: ${endpoint}`) : e;
     } finally {

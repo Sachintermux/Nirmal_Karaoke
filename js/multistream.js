@@ -171,6 +171,48 @@ export class MultiStreamManager {
       this.inputCloudRelay.addEventListener('input', () => {
         this.saveCloudRelayUrl(this.inputCloudRelay.value);
       });
+
+      const btnPingRelay = document.getElementById('btnPingRelayServer');
+      const relayBadge = document.getElementById('relayStatusIndicator');
+      btnPingRelay?.addEventListener('click', async () => {
+        const url = this.getCloudRelayUrl();
+        if (!url) {
+          if (relayBadge) {
+            relayBadge.style.background = 'rgba(255, 77, 77, 0.15)';
+            relayBadge.style.color = '#ff6b6b';
+            relayBadge.textContent = 'Enter URL';
+          }
+          return;
+        }
+        const cleanHost = url.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+        const proto = url.startsWith('http://') ? 'http:' : 'https:';
+        if (relayBadge) {
+          relayBadge.style.background = 'rgba(0, 229, 255, 0.15)';
+          relayBadge.style.color = '#00e5ff';
+          relayBadge.textContent = 'Pinging…';
+        }
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 12000);
+          const res = await fetch(`${proto}//${cleanHost}/api/health`, { signal: ctrl.signal, cache: 'no-store' });
+          clearTimeout(t);
+          if (res.ok) {
+            if (relayBadge) {
+              relayBadge.style.background = 'rgba(0, 255, 136, 0.15)';
+              relayBadge.style.color = '#00ff88';
+              relayBadge.textContent = 'Online ✓';
+            }
+          } else {
+            throw new Error('HTTP ' + res.status);
+          }
+        } catch (err) {
+          if (relayBadge) {
+            relayBadge.style.background = 'rgba(255, 77, 77, 0.15)';
+            relayBadge.style.color = '#ff6b6b';
+            relayBadge.textContent = 'Offline (Check URL)';
+          }
+        }
+      });
     }
 
     // Bind Stage Theme Dropdown
@@ -364,7 +406,7 @@ export class MultiStreamManager {
         resultBox.style.background = 'rgba(255, 77, 77, 0.15)';
         resultBox.style.color = '#ff6b6b';
         resultBox.style.border = '1px solid rgba(255, 77, 77, 0.3)';
-        resultBox.textContent = `❌ Network error: ${netErr.message}`;
+        resultBox.innerHTML = `❌ <b>Connection error:</b> ${netErr.message}<br><span style="font-size:0.75rem; color:#ffd166; margin-top:6px; display:block;">💡 <b>Render Relay Setup:</b> When running on Netlify, paste your active Render backend URL into the <i>Render Streaming Relay URL</i> field above. If using a Render free-tier instance, it sleeps when inactive and needs ~30-40 seconds to wake up.</span>`;
       }
     }
   }

@@ -35,12 +35,12 @@ export default async (req) => {
     const identity = String(body.identity || body.participant_identity || url.searchParams.get('identity') || '').trim();
     const role = String(body.role || url.searchParams.get('role') || 'audience').trim();
 
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
-    const livekitUrl = process.env.LIVEKIT_URL;
+    const apiKey = String(body.apiKey || process.env.LIVEKIT_API_KEY || '').trim();
+    const apiSecret = String(body.apiSecret || process.env.LIVEKIT_API_SECRET || '').trim();
+    const livekitUrl = String(body.livekitUrl || process.env.LIVEKIT_URL || '').trim();
 
     if (!apiKey || !apiSecret || !livekitUrl) {
-      return json({ error: 'Server configuration error: LiveKit credentials missing.' }, 500);
+      return json({ error: 'Server configuration error: LiveKit credentials missing. Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET in Netlify environment variables, or enter them in the app settings.' }, 500);
     }
 
     const apiHost = livekitUrl.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://').replace(/\/$/, '');

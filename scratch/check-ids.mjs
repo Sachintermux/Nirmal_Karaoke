@@ -1,25 +1,36 @@
 import fs from 'fs';
-import path from 'path';
 
 const html = fs.readFileSync('index.html', 'utf8');
-const htmlIds = new Set();
 const idRegex = /id=["']([^"']+)["']/g;
-let m;
-while ((m = idRegex.exec(html)) !== null) {
-  htmlIds.add(m[1]);
+const htmlIds = new Set();
+let match;
+while ((match = idRegex.exec(html)) !== null) {
+  htmlIds.add(match[1]);
 }
+console.log('Total IDs found in index.html:', htmlIds.size);
 
 const jsFiles = fs.readdirSync('js').filter(f => f.endsWith('.js'));
-const missing = [];
-for (const file of jsFiles) {
-  const content = fs.readFileSync(path.join('js', file), 'utf8');
-  const getElemRegex = /getElementById\(["']([^"']+)["']\)/g;
-  while ((m = getElemRegex.exec(content)) !== null) {
+let missingTotal = 0;
+
+for (const f of jsFiles) {
+  const code = fs.readFileSync('js/' + f, 'utf8');
+  const getElemRegex = /document\.getElementById\(['"]([^'"]+)['"]\)/g;
+  let m;
+  const missingInFile = new Set();
+  while ((m = getElemRegex.exec(code)) !== null) {
     const id = m[1];
+    // Dynamic or generated IDs like user_*, toast_*, etc. should be ignored
+    if (id.includes('${') || id.startsWith('toast') || id.startsWith('user_')) continue;
     if (!htmlIds.has(id)) {
-      missing.push({ file, id });
+      missingInFile.add(id);
+    }
+  }
+  if (missingInFile.size > 0) {
+    console.log('\n--- Missing in js/' + f + ' (' + missingInFile.size + ') ---');
+    for (const id of missingInFile) {
+      console.log('  ' + id);
+      missingTotal++;
     }
   }
 }
-console.log('Missing IDs from index.html:');
-console.log(missing);
+console.log('\nTotal missing IDs:', missingTotal);

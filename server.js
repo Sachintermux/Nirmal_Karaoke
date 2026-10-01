@@ -268,6 +268,25 @@ app.get('/api/music/trending', async (req, res) => {
   }
 });
 
+// Same-origin proxy to user's Vercel JioSaavn API (avoids all browser CORS issues)
+app.get('/api/saavn/*', async (req, res) => {
+  const subPath = req.params[0] || '';
+  const qs = new URLSearchParams(req.query).toString();
+  const target = `https://jiosaavn-api-main-mu.vercel.app/${subPath}${qs ? '?' + qs : ''}`;
+  try {
+    const upstream = await fetch(target, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*'
+      }
+    });
+    const data = await upstream.text();
+    res.status(upstream.status).type('application/json').send(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 
 app.get('/api/stream/diag', async (_req, res) => {
   const dns = require('dns').promises;
@@ -454,7 +473,15 @@ function issueLiveKitToken(req, res) {
         });
       }
 
-      const token = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, {
+      const apiKey = String(src.apiKey || process.env.LIVEKIT_API_KEY || '').trim();
+      const apiSecret = String(src.apiSecret || process.env.LIVEKIT_API_SECRET || '').trim();
+      const livekitUrl = String(src.livekitUrl || process.env.LIVEKIT_URL || '').trim();
+
+      if (!apiKey || !apiSecret || !livekitUrl) {
+        return res.status(500).json({ error: 'Server configuration error: LiveKit credentials missing.' });
+      }
+
+      const token = new AccessToken(apiKey, apiSecret, {
         identity,
         name: identity,
         ttl: '24h'
@@ -468,7 +495,7 @@ function issueLiveKitToken(req, res) {
         canUpdateOwnMetadata: true
       });
       res.set('Cache-Control', 'no-store');
-      return res.json({ token: await token.toJwt(), url: process.env.LIVEKIT_URL });
+      return res.json({ token: await token.toJwt(), url: livekitUrl });
     } catch (err) {
       console.error('[livekit-token]', err);
       return res.status(500).json({ error: err?.message || 'Unable to create LiveKit token' });

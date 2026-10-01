@@ -483,7 +483,7 @@
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.min.js?v=24"></script>
 <script type="module">
   import { dspWorkletCode } from './js/dsp-code.js?v=31';
-  import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=33';
+  import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=34';
   import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=31';
   import { PresenceManager } from './js/presence-manager.js?v=31';
   import { acquireWakeLock, releaseWakeLock } from './js/wake-lock.js?v=31';
@@ -1140,11 +1140,32 @@
     // All audience members may independently publish microphone/camera. The
     // token restricts them to those two sources; the host has a separate grant
     // allowing the mixed program screen-share-audio source.
+    let customLk = null;
+    try {
+      customLk = JSON.parse(localStorage.getItem('nirmal_livekit_config') || '{}');
+    } catch (_) {}
+
     const role = guestRole === 'participate' ? 'duet' : 'audience';
-    const tokenPayload = { roomName: roomId, identity, role };
+    const tokenPayload = {
+      roomName: roomId,
+      identity,
+      role,
+      ...(customLk?.url ? { livekitUrl: customLk.url } : {}),
+      ...(customLk?.apiKey ? { apiKey: customLk.apiKey } : {}),
+      ...(customLk?.apiSecret ? { apiSecret: customLk.apiSecret } : {})
+    };
+
+    const endpoints = ['/api/livekit/token', '/.netlify/functions/livekit-token'];
+    const savedRelay = (localStorage.getItem('nirmal_stream_relay_url') || '').trim();
+    if (savedRelay) {
+      const cleanHost = savedRelay.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+      const proto = savedRelay.startsWith('http://') ? 'http:' : 'https:';
+      endpoints.push(`${proto}//${cleanHost}/api/livekit/token`);
+    }
+
     let tokenData = null;
     let tokenError = null;
-    for (const endpoint of ['/api/livekit/token', '/.netlify/functions/livekit-token']) {
+    for (const endpoint of endpoints) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);
       try {
@@ -1401,10 +1422,26 @@
         reconnectAttempts += 1;
         try {
           setStatus(`LIVE • reconnecting (${reconnectAttempts}/8)…`, 'var(--accent-orange)');
-          const tokenPayload = { roomName: roomId, identity: participantIdentity, role: guestRole === 'participate' ? 'duet' : 'audience' };
+          let customLk = null;
+          try { customLk = JSON.parse(localStorage.getItem('nirmal_livekit_config') || '{}'); } catch (_) {}
+          const tokenPayload = {
+            roomName: roomId,
+            identity: participantIdentity,
+            role: guestRole === 'participate' ? 'duet' : 'audience',
+            ...(customLk?.url ? { livekitUrl: customLk.url } : {}),
+            ...(customLk?.apiKey ? { apiKey: customLk.apiKey } : {}),
+            ...(customLk?.apiSecret ? { apiSecret: customLk.apiSecret } : {})
+          };
           let tokenData = null;
           let tokenError = null;
-          for (const endpoint of ['/api/livekit/token', '/.netlify/functions/livekit-token']) {
+          const endpoints = ['/api/livekit/token', '/.netlify/functions/livekit-token'];
+          const savedRelay = (localStorage.getItem('nirmal_stream_relay_url') || '').trim();
+          if (savedRelay) {
+            const cleanHost = savedRelay.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+            const proto = savedRelay.startsWith('http://') ? 'http:' : 'https:';
+            endpoints.push(`${proto}//${cleanHost}/api/livekit/token`);
+          }
+          for (const endpoint of endpoints) {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), 8000);
             try {
