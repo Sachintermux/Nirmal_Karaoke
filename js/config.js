@@ -235,14 +235,16 @@ export const AUTOTUNE_PRESETS = {
 export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export const SAAVN_API_URLS = [
-  "https://saavn.dev/api/search/songs?query=",
+  "/api/music/search?query=",
   "https://jiosaavn-api-main-mu.vercel.app/song?query=",
-  "https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query="
+  "https://itunes.apple.com/search?media=music&limit=25&term="
 ];
 
 export const TRENDING_SEARCH_TERMS = [
-  "Trending Bollywood Hindi",
-  "Top Indian Hits",
-  "Arijit Singh Hits",
-  "Latest Punjabi Hits"
+  "Latest Bollywood Hits",
+  "Romantic Hindi Melodies",
+  "Top Punjabi Party Hits",
+  "90s Bollywood Evergreen Hits",
+  "Bollywood Lo-Fi Chill",
+  "Arijit Singh Best Songs"
 ];

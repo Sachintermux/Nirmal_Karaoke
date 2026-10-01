@@ -1,6 +1,6 @@
 import { AudioEngine } from './audio-engine.js?v=31';
 import { LyricsManager } from './lyrics.js?v=31';
-import { MusicSearchManager } from './music-search.js?v=31';
+import { MusicSearchManager } from './music-search.js?v=33';
 import { VisualizerRenderer } from './visualizer.js?v=31';
 import { playSFX } from './sfx.js?v=31';
 import { LiveStreamHost } from './live-stream.js?v=31';
@@ -388,8 +388,10 @@ function setupLiveShareUI() {
         if (tracks.length > 0) {
           const t = tracks[0];
           searchManager.addToUpcomingQueue({
-            title: t.name || t.song || t.title,
-            artist: t.primaryArtists || t.primary_artists || t.artist || 'Requested Artist',
+            title: t.title || t.name || t.song || 'Requested Song',
+            artist: t.artist || t.primaryArtists || t.primary_artists || 'Requested Artist',
+            album: t.album || '',
+            image: t.image || '',
             url: searchManager.cleanAudioUrl(t),
             duration: t.duration || 0
           });

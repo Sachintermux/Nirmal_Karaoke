@@ -7,6 +7,7 @@ const { WebSocketServer } = require('ws');
 require('dotenv').config();
 
 const { AccessToken, RoomServiceClient, EgressClient, StreamProtocol } = require('livekit-server-sdk');
+const CryptoJS = require('crypto-js');
 const app = express();
 const server = http.createServer(app);
 const PORT = Number(process.env.PORT || 3000);
@@ -94,6 +95,144 @@ app.get('/api/health', (_req, res) => {
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'nirmal-karaoke-web', transport: 'livekit-sfu', livekitConfigured: livekitConfigured() });
 });
+
+// ==========================================
+// MUSIC LIBRARY & AUTOSEARCH API ENDPOINTS
+// ==========================================
+const musicSearchCache = new Map();
+const MUSIC_CACHE_TTL = 15 * 60 * 1000; // 15 mins
+
+function decryptSaavnUrl(encryptedUrl) {
+  if (!encryptedUrl) return '';
+  try {
+    const key = CryptoJS.enc.Utf8.parse('38346591');
+    const decrypted = CryptoJS.DES.decrypt(
+      { ciphertext: CryptoJS.enc.Base64.parse(encryptedUrl) },
+      key,
+      { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 }
+    );
+    const url = decrypted.toString(CryptoJS.enc.Utf8);
+    if (!url) return '';
+    return url.replace('_96.mp4', '_320.mp4');
+  } catch (e) {
+    return '';
+  }
+}
+
+function cleanHtmlEntities(str) {
+  return String(str || '')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+async function fetchJioSaavnTracks(query, limit = 25) {
+  const normQuery = (query || '').trim().toLowerCase();
+  const cacheKey = `${normQuery}_${limit}`;
+  const cached = musicSearchCache.get(cacheKey);
+  if (cached && (Date.now() - cached.time < MUSIC_CACHE_TTL)) {
+    return cached.tracks;
+  }
+
+  const url = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=${limit}&p=1&q=${encodeURIComponent(query)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*'
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`JioSaavn HTTP status: ${res.status}`);
+    const data = await res.json();
+    const rawList = Array.isArray(data.results) ? data.results : [];
+    const tracks = rawList.map(t => {
+      const more = t.more_info || {};
+      const enc = more.encrypted_media_url;
+      const audioUrl = decryptSaavnUrl(enc);
+      let artist = '';
+      if (more.artistMap && more.artistMap.primary_artists && more.artistMap.primary_artists.length > 0) {
+        artist = more.artistMap.primary_artists.map(a => a.name).join(', ');
+      } else if (more.singers) {
+        artist = more.singers;
+      } else if (more.primary_artists) {
+        artist = more.primary_artists;
+      }
+      let image = t.image || more.image || '';
+      if (image) image = image.replace('50x50', '500x500').replace('150x150', '500x500');
+
+      return {
+        id: t.id,
+        title: cleanHtmlEntities(t.title || t.song || ''),
+        artist: cleanHtmlEntities(artist || 'Artist'),
+        album: cleanHtmlEntities(more.album || t.album || ''),
+        url: audioUrl,
+        image: image,
+        duration: parseInt(more.duration || t.duration || 0, 10),
+        has_lyrics: more.has_lyrics === 'true'
+      };
+    }).filter(t => !!t.url);
+
+    musicSearchCache.set(cacheKey, { tracks, time: Date.now() });
+    return tracks;
+  } catch (err) {
+    clearTimeout(timer);
+    if (cached) return cached.tracks;
+    throw err;
+  }
+}
+
+app.get('/api/music/search', async (req, res) => {
+  const query = (req.query.query || req.query.q || '').trim();
+  if (!query) {
+    return res.json({ ok: true, results: [] });
+  }
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 50);
+  try {
+    const tracks = await fetchJioSaavnTracks(query, limit);
+    return res.json({ ok: true, results: tracks });
+  } catch (err) {
+    console.warn('[music-search] Direct JioSaavn failed for:', query, err.message);
+    try {
+      const fallbackUrl = `https://jiosaavn-api-main-mu.vercel.app/song?query=${encodeURIComponent(query)}`;
+      const fbRes = await fetch(fallbackUrl, { signal: AbortSignal.timeout(5000) });
+      if (fbRes.ok) {
+        const fbData = await fbRes.json();
+        if (Array.isArray(fbData)) {
+          const fbTracks = fbData.map(t => ({
+            id: t.id,
+            title: cleanHtmlEntities(t.song || t.name || t.title),
+            artist: cleanHtmlEntities(t.primary_artists || t.singers || 'Artist'),
+            album: cleanHtmlEntities(t.album || ''),
+            url: t.media_url || (t.media_preview_url ? t.media_preview_url.replace('preview.saavncdn.com', 'aac.saavncdn.com').replace('_96_p', '_320') : ''),
+            image: (t.image || '').replace('50x50', '500x500'),
+            duration: parseInt(t.duration || 0, 10),
+            has_lyrics: false
+          })).filter(t => !!t.url);
+          return res.json({ ok: true, results: fbTracks });
+        }
+      }
+    } catch (_) {}
+    return res.status(500).json({ ok: false, error: 'Search failed', results: [] });
+  }
+});
+
+app.get('/api/music/trending', async (req, res) => {
+  const category = (req.query.category || 'Latest Bollywood Hits').trim();
+  try {
+    const tracks = await fetchJioSaavnTracks(category, 25);
+    return res.json({ ok: true, results: tracks });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message, results: [] });
+  }
+});
+
 
 app.get('/api/stream/diag', async (_req, res) => {
   const dns = require('dns').promises;

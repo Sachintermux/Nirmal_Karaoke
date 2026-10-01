@@ -143,17 +143,45 @@
                             class="switch"></span></label>
                 </div>
             </div>
+
+            <!-- EXPANDABLE FIND MUSIC & LIVE AUTOSEARCH PANEL -->
+            <div class="expand-box" id="musicSearchBox" style="display:none; margin:10px 0 14px; border-color:rgba(0, 229, 255, 0.35); box-shadow:0 4px 18px rgba(0,0,0,0.35);">
+                <div class="search-row" style="position:relative;">
+                    <input id="musicSearchInput" placeholder="Search song, artist, film... (live autosearch)" autocomplete="off">
+                    <button id="btnClearMusicSearch" style="position:absolute; right:74px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--muted, #8e82a6); font-size:14px; cursor:pointer; padding:4px 8px; display:none;" title="Clear search">✕</button>
+                    <button class="button button-primary" id="btnDoMusicSearch">Search</button>
+                </div>
+
+                <!-- Quick Genre / Mood Discovery Chips -->
+                <div class="music-genre-chips" id="musicSearchChips">
+                    <button class="music-chip" data-query="Latest Bollywood Hits">🔥 Top Hits</button>
+                    <button class="music-chip" data-query="Romantic Hindi Melodies">❤️ Romance</button>
+                    <button class="music-chip" data-query="Top Punjabi Party Hits">💃 Punjabi</button>
+                    <button class="music-chip" data-query="90s Bollywood Evergreen Hits">✨ 90s Retro</button>
+                    <button class="music-chip" data-query="Arijit Singh Best Songs">🎤 Arijit Singh</button>
+                    <button class="music-chip" data-query="Bollywood Lo-Fi Chill">🌙 Lo-Fi</button>
+                </div>
+
+                <div class="compact-row" style="margin-top:10px;"><b id="musicListTitle">🔥 POPULAR KARAOKE TRACKS</b>
+                    <button class="text-button" id="btnRefreshTrending">↻ Refresh</button>
+                </div>
+                <div class="search-results" id="musicSearchResults"></div>
+            </div>
+
             <select id="presetPlaylistSelect">
-                <option value="Best of romance hindi">🔥 Top 50 Bollywood Hits</option>
-                <option value="Arijit Singh Romantic Song">❤️ Romantic Bollywood Melodies</option>
-                <option value="Top Punjabi Party Hit">💃 Punjabi Dance Party</option>
-                <option value="Bollywood 90s Evergreen Hit">✨ 90s Golden Classics</option>
-                <option value="Indian Lo-Fi Chill Song">🌙 Midnight Acoustic & Lo-Fi</option>
+                <option value="Latest Bollywood Hits">🔥 Top 50 Bollywood Hits</option>
+                <option value="Romantic Hindi Melodies">❤️ Romantic Bollywood Melodies</option>
+                <option value="Top Punjabi Party Hits">💃 Punjabi Dance Party</option>
+                <option value="90s Bollywood Evergreen Hits">✨ 90s Golden Classics</option>
+                <option value="Bollywood Lo-Fi Chill">🌙 Midnight Acoustic & Lo-Fi</option>
+                <option value="Arijit Singh Best Songs">🎤 Arijit Singh Special</option>
+                <option value="Kishore Kumar Lata Mangeshkar Hits">🌟 Retro Evergreen Legends</option>
+                <option value="Global English Pop Hits">🌍 Global English Pop</option>
             </select>
             <div class="compact-row"><span>Up next <b id="lblQueueCount">0 songs</b></span>
                 <div>
-                    <button class="icon-button" id="btnSkipNext">⏭</button>
-                    <button class="icon-button danger" id="btnClearPlaylist">⌫</button>
+                    <button class="icon-button" id="btnSkipNext" title="Skip to next track">⏭</button>
+                    <button class="icon-button danger" id="btnClearPlaylist" title="Clear playlist queue">⌫</button>
                 </div>
             </div>
             <div class="queue-list" id="playlistContainer">Loading playlist…</div>
@@ -161,15 +189,6 @@
                 <button class="button button-primary" id="btnFindMusicInTabBottom">⌕ Find music</button>
                 <button class="button button-quiet desktop-only" id="btnTab">Capture tab</button>
                 <button class="button button-quiet" id="btnStopMedia">Stop media</button>
-            </div>
-            <div class="expand-box" id="musicSearchBox" style="display:none">
-                <div class="search-row"><input id="musicSearchInput" placeholder="Search a song or artist">
-                    <button class="button" id="btnDoMusicSearch">Search</button>
-                </div>
-                <div class="compact-row"><b id="musicListTitle">SEARCH RESULTS</b>
-                    <button class="text-button" id="btnRefreshTrending">Refresh</button>
-                </div>
-                <div class="search-results" id="musicSearchResults"></div>
             </div>
         </section>
         <section class="card effects-card mobile-screen" id="effects" data-screen-group="effects">
@@ -982,7 +1001,7 @@
     </div>
 </div>
 
-<script src="./js/app.js?v=32" type="module"></script>
+<script src="./js/app.js?v=33" type="module"></script>
 
 <!-- Sandboxed ad container isolated from DAW and AudioContext -->
 <div class="ad-container-sandboxed" style="margin:16px auto;text-align:center;max-width:320px;overflow:hidden;position:relative;z-index:1;">

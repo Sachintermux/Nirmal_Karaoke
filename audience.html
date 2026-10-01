@@ -483,7 +483,7 @@
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.min.js?v=24"></script>
 <script type="module">
   import { dspWorkletCode } from './js/dsp-code.js?v=31';
-  import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=31';
+  import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=33';
   import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=31';
   import { PresenceManager } from './js/presence-manager.js?v=31';
   import { acquireWakeLock, releaseWakeLock } from './js/wake-lock.js?v=31';
@@ -2185,43 +2185,87 @@
   btnSendChat.addEventListener('click', sendChat);
   chatTextInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 
+  let audienceSongSearchTimer = null;
+  let audienceSearchAbortCtrl = null;
+
   async function searchAndSuggestSong() {
-    const q = songSearchRequestInput.value.trim(); if (!q) return;
+    const q = songSearchRequestInput.value.trim();
+    if (!q) {
+      songSearchSuggestions.style.display = 'none';
+      songSearchSuggestions.innerHTML = '';
+      return;
+    }
     songSearchSuggestions.style.display = 'block';
-    songSearchSuggestions.innerHTML = '<div style="color:var(--text-dim);font-size:.7rem;padding:4px">Searching…</div>';
+    songSearchSuggestions.innerHTML = '<div style="color:var(--text-dim);font-size:.7rem;padding:4px">🔍 Searching songs…</div>';
+
+    if (audienceSearchAbortCtrl) {
+      try { audienceSearchAbortCtrl.abort(); } catch (_) {}
+    }
+    audienceSearchAbortCtrl = new AbortController();
+    const parentSignal = audienceSearchAbortCtrl.signal;
+
     let found = [];
     for (const base of SAAVN_API_URLS) {
+      if (parentSignal.aborted) break;
       try {
-        const r = await fetch(`${base}${encodeURIComponent(q)}`);
+        const timeoutCtrl = new AbortController();
+        const timeout = setTimeout(() => timeoutCtrl.abort(), 4500);
+        const onAbort = () => timeoutCtrl.abort();
+        parentSignal.addEventListener('abort', onAbort, { once: true });
+
+        const r = await fetch(`${base}${encodeURIComponent(q)}`, { signal: timeoutCtrl.signal });
+        clearTimeout(timeout);
+        parentSignal.removeEventListener('abort', onAbort);
+
         if (!r.ok) continue;
         const j = await r.json();
-        const list = j.data?.results || j.data || j.results || j;
-        if (Array.isArray(list) && list.length) { found = list.slice(0, 4); break; }
+        const list = j.results || j.data?.results || j.data || (Array.isArray(j) ? j : []);
+        if (Array.isArray(list) && list.length) { found = list.slice(0, 5); break; }
       } catch (err) {
-        console.warn('[Audience] Song search endpoint error:', base, err);
+        if (parentSignal.aborted) return;
+        console.warn('[Audience] Song search endpoint error:', base, err?.message);
       }
     }
+
+    if (parentSignal.aborted) return;
     songSearchSuggestions.innerHTML = '';
-    if (!found.length) { songSearchSuggestions.innerHTML='<div style="color:var(--accent-red);font-size:.7rem;padding:4px">Song not found.</div>'; return; }
+    if (!found.length) { songSearchSuggestions.innerHTML='<div style="color:var(--accent-red);font-size:.7rem;padding:4px">No matching songs found.</div>'; return; }
     found.forEach(t => {
-      const title=t.name||t.song||t.title||'Song'; const artist=t.primaryArtists||t.primary_artists||t.artist||'Artist';
-      const item=document.createElement('div'); item.className='search-pick-item';
-      item.innerHTML=`<span><strong>${escapeHtml(title)}</strong> (${escapeHtml(artist)})</span><button class="btn" style="width:auto;margin:0;padding:2px 6px;font-size:.65rem;border-color:var(--accent-purple);color:var(--accent-purple)">Send</button>`;
-      item.querySelector('button').onclick=()=>{
+      const title = t.title || t.song || t.name || 'Song';
+      const artist = t.artist || t.primaryArtists || t.primary_artists || t.singers || 'Artist';
+      const item = document.createElement('div');
+      item.className = 'search-pick-item';
+      item.innerHTML = `<span><strong>${escapeHtml(title)}</strong> (${escapeHtml(artist)})</span><button class="btn" style="width:auto;margin:0;padding:2px 6px;font-size:.65rem;border-color:var(--accent-purple);color:var(--accent-purple)">Request</button>`;
+      item.querySelector('button').onclick = () => {
         if (!room?.localParticipant) {
           alert('Please tap "Tune In" above to connect before requesting a song.');
           return;
         }
-        const text=`${title} - ${artist}`;
-        const sender=chatNickInput.value.trim()||'Audience Guest';
+        const text = `${title} - ${artist}`;
+        const sender = chatNickInput.value.trim() || 'Audience Guest';
         room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({type:'AUDIENCE_CHAT',sender,text,isSpecial:true})),{reliable:true}).catch(()=>{});
-        addChatMessage('You',text,true);
-        songSearchSuggestions.style.display='none';
-        songSearchRequestInput.value='';
+        addChatMessage('You', text, true);
+        songSearchSuggestions.style.display = 'none';
+        songSearchRequestInput.value = '';
       };
       songSearchSuggestions.appendChild(item);
     });
   }
+
+  // Live debounced autosearch as audience types
+  songSearchRequestInput.addEventListener('input', () => {
+    if (audienceSongSearchTimer) clearTimeout(audienceSongSearchTimer);
+    const q = songSearchRequestInput.value.trim();
+    if (!q) {
+      songSearchSuggestions.style.display = 'none';
+      songSearchSuggestions.innerHTML = '';
+      return;
+    }
+    audienceSongSearchTimer = setTimeout(() => {
+      searchAndSuggestSong();
+    }, 280);
+  });
+
   btnSearchSongRequest.addEventListener('click', searchAndSuggestSong);
   songSearchRequestInput.addEventListener('keydown', e => { if (e.key === 'Enter') searchAndSuggestSong(); });
 
