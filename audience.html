@@ -9,8 +9,8 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml"/>
-<link href="./css/style.css?v=32" rel="stylesheet"/>
-<link href="./css/game-invite.css?v=32" rel="stylesheet"/>
+<link href="./css/style.css?v=35" rel="stylesheet"/>
+<link href="./css/game-invite.css?v=35" rel="stylesheet"/>
 <style>
         body {
           padding: 14px;
@@ -28,6 +28,10 @@
           *, *:before, *:after {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
+          }
+          .lyrics-container-audience {
+            mask-image: none !important;
+            -webkit-mask-image: none !important;
           }
         }
         .broadcast-card {
@@ -226,16 +230,20 @@
           padding-top: 95px;
           padding-bottom: 95px;
           position: relative;
+          contain: layout style;
+          will-change: scroll-position;
         }
         .lyric-line-aud {
           font-size: 1.1rem;
           color: #52586b;
           padding: 8px 16px;
-          transition: all 0.3s;
+          transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.2s ease, opacity 0.2s ease;
           min-height: 28px;
           line-height: 1.4;
           transform-origin: center;
           cursor: pointer;
+          contain: layout paint;
+          will-change: transform;
         }
         .lyric-line-aud.active {
           color: #fff;
@@ -313,6 +321,9 @@
           flex-direction: column;
           gap: 5px;
           margin-bottom: 8px;
+          contain: content;
+          will-change: scroll-position;
+          scroll-behavior: smooth;
         }
         .chat-msg-user { color: #cbd5e1; }
         .chat-msg-host { color: var(--accent-blue); font-weight: 700; }
@@ -561,10 +572,16 @@
   let audienceVolume = 1.0;
   let clientSyncOffset = 0.0;
 
-  // Cached High-Performance Gen-Z Visualizer State
+  // =========================================================================
+  // BACKGROUND THREAD WORKERS (OFFSCREENCANVAS & ASYNC LYRIC ENGINE)
+  // =========================================================================
   const audVisWrap = document.getElementById('audienceVisualizerWrap');
   const audVisCvs = document.getElementById('audienceVisualizer');
-  const audVisCtx = audVisCvs ? audVisCvs.getContext('2d') : null;
+  let visWorker = null;
+  let isOffscreenVisualizerActive = false;
+  let lyricWorker = null;
+
+  let audVisCtx = null;
   let audVisWidth = 0;
   let audVisHeight = 0;
   let audVisGrad = null;
@@ -576,11 +593,77 @@
   let audVisPeakHold = new Int16Array(64);
   let audVisPeakSpeed = new Float32Array(64);
 
-  function updateAudienceVisualizerSize() {
+  function initAudienceVisualizerWorker() {
     if (!audVisCvs || !audVisWrap) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     const cw = audVisWrap.clientWidth || 320;
     const ch = 48;
+
+    if (typeof window.OffscreenCanvas !== 'undefined' && typeof audVisCvs.transferControlToOffscreen === 'function') {
+      try {
+        const offscreen = audVisCvs.transferControlToOffscreen();
+        visWorker = new Worker('./js/workers/audience-visualizer.worker.js?v=35');
+        visWorker.onmessage = (e) => {
+          if (e.data?.type === 'VISIBILITY' && audVisWrap) {
+            audVisWrap.style.display = e.data.visible ? '' : 'none';
+          }
+        };
+        visWorker.postMessage({
+          type: 'INIT',
+          canvas: offscreen,
+          width: cw,
+          height: ch,
+          dpr
+        }, [offscreen]);
+        isOffscreenVisualizerActive = true;
+        console.info('[Audience] Visualizer offloaded to background Web Worker via OffscreenCanvas');
+        return;
+      } catch (err) {
+        console.warn('[Audience] OffscreenCanvas transfer failed; falling back to main-thread rendering:', err);
+      }
+    }
+
+    // Main-thread fallback for browsers without OffscreenCanvas transfer
+    audVisCtx = audVisCvs ? audVisCvs.getContext('2d') : null;
+    updateAudienceVisualizerSize();
+  }
+
+  function initAudienceLyricWorker() {
+    if (typeof window.Worker !== 'undefined') {
+      try {
+        lyricWorker = new Worker('./js/workers/audience-lyric.worker.js?v=35');
+        lyricWorker.onmessage = (e) => {
+          const msg = e.data;
+          if (!msg) return;
+          if (msg.type === 'PARSED') {
+            applyParsedLyrics(msg.lyrics);
+          } else if (msg.type === 'TICK_UPDATE') {
+            applyLyricTick(msg.index, msg.progressInt, msg.indexChanged);
+          }
+        };
+        console.info('[Audience] Lyrics parsing and sync engine offloaded to background Web Worker');
+      } catch (err) {
+        console.warn('[Audience] Lyric worker setup failed, using main-thread fallback:', err);
+        lyricWorker = null;
+      }
+    }
+  }
+
+  initAudienceVisualizerWorker();
+  initAudienceLyricWorker();
+
+  function updateAudienceVisualizerSize() {
+    if (!audVisWrap) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const cw = audVisWrap.clientWidth || 320;
+    const ch = 48;
+
+    if (visWorker && isOffscreenVisualizerActive) {
+      visWorker.postMessage({ type: 'RESIZE', width: cw, height: ch, dpr });
+      return;
+    }
+
+    if (!audVisCvs) return;
     const targetW = Math.round(cw * dpr);
     const targetH = Math.round(ch * dpr);
     if (audVisCvs.width !== targetW || audVisCvs.height !== targetH) {
@@ -595,6 +678,7 @@
   window.addEventListener('resize', updateAudienceVisualizerSize, { passive: true });
 
   function drawAudienceVisualizer() {
+    if (isOffscreenVisualizerActive) return; // 100% rendered off main thread
     if (!audVisCtx || !audVisWidth || !audVisHeight) return;
     const bars = latestVisualBars;
     if (!bars || !Array.isArray(bars) || !bars.length) {
@@ -704,7 +788,10 @@
     }
   }
 
+  let lastStatusText = '';
   function setStatus(text, tone = 'var(--text-dim)') {
+    if (text === lastStatusText) return;
+    lastStatusText = text;
     let box = document.getElementById('liveQualityStatus');
     if (!box) {
       box = document.createElement('div');
@@ -723,6 +810,12 @@
     // Cancel any pending auto-reconnect timers first
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+    if (visWorker) {
+      try { visWorker.postMessage({ type: 'CLEAR' }); } catch (_) {}
+    }
+    if (lyricWorker) {
+      try { lyricWorker.postMessage({ type: 'RESET' }); } catch (_) {}
+    }
     // Tear down guest microphone and camera cleanly
     if (isMicEnabled) { try { await disableGuestMic(); } catch (_) {} }
     if (isCameraEnabled) { try { await toggleGuestCamera(); } catch (_) {} }
@@ -769,6 +862,7 @@
       setStatus('Disconnected from live stage.', 'var(--text-dim)');
     }
   }
+
   if (btnLeaveStage) btnLeaveStage.addEventListener('click', leaveLiveStage);
 
   function escapeHtml(str) {
@@ -777,17 +871,40 @@
     }[c]));
   }
 
+  const chatQueue = [];
+  let chatFlushPending = false;
+  const isMobileChat = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const MAX_CHAT_MESSAGES = isMobileChat ? 50 : 80;
+
   function addChatMessage(sender, text, isSpecial = false, isHost = false) {
     if (!chatMessages) return;
-    const msg = document.createElement('div');
-    msg.className = isSpecial ? 'chat-msg-req' : isHost ? 'chat-msg-host' : 'chat-msg-user';
-    const safeSender = escapeHtml(sender);
-    const safeText = escapeHtml(text);
-    msg.innerHTML = isSpecial ? `🎵 <strong>${safeSender}</strong> requested: <em>${safeText}</em>` : isHost ? `⭐ <strong>${safeSender}</strong>: ${safeText}` : `<strong>${safeSender}</strong>: ${safeText}`;
-    chatMessages.appendChild(msg);
-    while (chatMessages.children.length > 100) {
-      chatMessages.removeChild(chatMessages.firstChild);
+    chatQueue.push({ sender, text, isSpecial, isHost });
+    if (!chatFlushPending) {
+      chatFlushPending = true;
+      requestAnimationFrame(flushChatMessages);
     }
+  }
+
+  function flushChatMessages() {
+    chatFlushPending = false;
+    if (!chatMessages || !chatQueue.length) return;
+    const frag = document.createDocumentFragment();
+    while (chatQueue.length > 0) {
+      const { sender, text, isSpecial, isHost } = chatQueue.shift();
+      const msg = document.createElement('div');
+      msg.className = isSpecial ? 'chat-msg-req' : isHost ? 'chat-msg-host' : 'chat-msg-user';
+      const safeSender = escapeHtml(sender);
+      const safeText = escapeHtml(text);
+      msg.innerHTML = isSpecial ? `🎵 <strong>${safeSender}</strong> requested: <em>${safeText}</em>` : isHost ? `⭐ <strong>${safeSender}</strong>: ${safeText}` : `<strong>${safeSender}</strong>: ${safeText}`;
+      frag.appendChild(msg);
+    }
+    chatMessages.appendChild(frag);
+
+    const excess = chatMessages.children.length - MAX_CHAT_MESSAGES;
+    for (let i = 0; i < excess; i++) {
+      if (chatMessages.firstChild) chatMessages.removeChild(chatMessages.firstChild);
+    }
+
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
@@ -1334,7 +1451,12 @@
           if (data.time) {
             const p = data.time;
             lyricClock = { hostTime: Number(p.currentTime || 0), receivedPerf: performance.now(), playing: p.playing !== false };
-            updateAudienceScroll(lyricClock.hostTime);
+            if (lyricWorker) {
+              lyricWorker.postMessage({ type: 'CLOCK_UPDATE', clock: lyricClock });
+              lyricWorker.postMessage({ type: 'EVAL_TIME', time: lyricClock.hostTime });
+            } else {
+              updateAudienceScroll(lyricClock.hostTime);
+            }
           }
           return;
         }
@@ -1345,12 +1467,21 @@
             receivedPerf: performance.now(),
             playing: payload.playing !== false
           };
-          updateAudienceScroll(lyricClock.hostTime);
+          if (lyricWorker) {
+            lyricWorker.postMessage({ type: 'CLOCK_UPDATE', clock: lyricClock });
+            lyricWorker.postMessage({ type: 'EVAL_TIME', time: lyricClock.hostTime });
+          } else {
+            updateAudienceScroll(lyricClock.hostTime);
+          }
         }
         else if (data.type === 'VISUAL_DATA') {
-          latestVisualBars = data.bars;
-          visualDirty = true;
-          if (!audVisWidth) updateAudienceVisualizerSize();
+          if (visWorker && isOffscreenVisualizerActive) {
+            visWorker.postMessage({ type: 'BARS', bars: data.bars });
+          } else {
+            latestVisualBars = data.bars;
+            visualDirty = true;
+            if (!audVisWidth) updateAudienceVisualizerSize();
+          }
         }
         else if (data.type === 'CHAT_BROADCAST') addChatMessage(data.sender, data.text, data.isSpecial, data.isHost);
         else if (data.type === 'FORCE_MUTE') {
@@ -1666,7 +1797,7 @@
       } catch (e) {
         console.warn('[Nirmal] audio stats monitor error:', e);
       }
-    }, 2000);
+    }, 3500);
   }
 
   function requestStageState() {
@@ -2338,28 +2469,59 @@
   });
 
   let cachedLyricEls = [];
+  let cachedLyricScrollTops = [];
   let lastLyricFillInt = -1;
 
-  function scrollToAudienceLyric(idx, smooth = true) {
-    const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
-    if (!el || !audienceLyricsBox) return;
-    const container = audienceLyricsBox;
-    const targetTop = el.offsetTop - (container.clientHeight / 2) + (el.clientHeight / 2);
-    container.scrollTo({
-      top: Math.max(0, targetTop),
-      behavior: smooth ? 'smooth' : 'auto'
-    });
+  function cacheLyricPositions() {
+    if (!audienceLyricsBox || !cachedLyricEls.length) return;
+    const containerH = audienceLyricsBox.clientHeight || 200;
+    cachedLyricScrollTops = cachedLyricEls.map(el => Math.max(0, el.offsetTop - (containerH / 2) + (el.clientHeight / 2)));
   }
 
-  function renderAudienceLyrics(lines) {
-    parsedLyrics = (Array.isArray(lines) ? lines : []).map((l) => ({
-      time: Number(l?.time ?? l?.timestamp ?? l?.startTime ?? 0),
-      text: String(l?.text ?? l?.line ?? '').trim()
-    })).filter(l => Number.isFinite(l.time) && l.text);
-    parsedLyrics.sort((a, b) => a.time - b.time);
+  function scrollToAudienceLyric(idx, smooth = true) {
+    if (isAudienceUserScrolling || !audienceLyricsBox) return;
+    const targetTop = cachedLyricScrollTops[idx];
+    if (targetTop !== undefined) {
+      audienceLyricsBox.scrollTo({
+        top: targetTop,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+    } else {
+      const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
+      el?.scrollIntoView?.({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+    }
+  }
+
+  function applyLyricTick(idx, progressInt, indexChanged) {
+    if (indexChanged) {
+      if (currentLyricIndex >= 0 && cachedLyricEls[currentLyricIndex]) {
+        const oldEl = cachedLyricEls[currentLyricIndex];
+        oldEl.classList.remove('active');
+        oldEl.style.removeProperty('--fill');
+      }
+      currentLyricIndex = idx;
+      lastLyricFillInt = -1;
+      if (idx >= 0 && cachedLyricEls[idx]) {
+        const el = cachedLyricEls[idx];
+        el.classList.add('active');
+        isAudienceUserScrolling = false;
+        if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
+        scrollToAudienceLyric(idx, true);
+      }
+    }
+
+    if (idx >= 0 && cachedLyricEls[idx] && progressInt !== lastLyricFillInt) {
+      lastLyricFillInt = progressInt;
+      cachedLyricEls[idx].style.setProperty('--fill', `${progressInt}%`);
+    }
+  }
+
+  function applyParsedLyrics(lines) {
+    parsedLyrics = lines || [];
     currentLyricIndex = -1;
     lastLyricFillInt = -1;
     cachedLyricEls = [];
+    cachedLyricScrollTops = [];
     lyricsContent.innerHTML = '';
     if (!parsedLyrics.length) {
       lyricsContent.innerHTML = '<div class="lyric-line-aud" style="color:var(--text-dim)">No lyrics loaded for this track.</div>';
@@ -2380,7 +2542,26 @@
     if (audienceLyricsBox) {
       audienceLyricsBox.scrollTo({ top: 0, behavior: 'auto' });
     }
+    // Pre-calculate scroll offsets once in next frame after DOM rendering
+    requestAnimationFrame(cacheLyricPositions);
     startLyricClock();
+  }
+
+  function fallbackParseLyrics(lines) {
+    const list = (Array.isArray(lines) ? lines : []).map(l => ({
+      time: Number(l?.time ?? l?.timestamp ?? l?.startTime ?? 0),
+      text: String(l?.text ?? l?.line ?? '').trim()
+    })).filter(l => Number.isFinite(l.time) && l.text);
+    list.sort((a, b) => a.time - b.time);
+    return list;
+  }
+
+  function renderAudienceLyrics(lines) {
+    if (lyricWorker) {
+      lyricWorker.postMessage({ type: 'PARSE', payload: lines });
+    } else {
+      applyParsedLyrics(fallbackParseLyrics(lines));
+    }
   }
 
   function updateAudienceScroll(t) {
@@ -2389,46 +2570,22 @@
     for (let i = 0; i < parsedLyrics.length; i++) {
       if (t >= parsedLyrics[i].time) idx = i; else break;
     }
-    if (idx !== currentLyricIndex) {
-      if (currentLyricIndex >= 0) {
-        const oldEl = cachedLyricEls[currentLyricIndex] || document.getElementById(`aud-lyric-${currentLyricIndex}`);
-        if (oldEl) {
-          oldEl.classList.remove('active');
-          oldEl.style.removeProperty('--fill');
-        }
-      }
-      currentLyricIndex = idx;
-      lastLyricFillInt = -1;
-      if (idx >= 0) {
-        const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
-        if (el) {
-          el.classList.add('active');
-          isAudienceUserScrolling = false;
-          if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
-          scrollToAudienceLyric(idx, true);
-        }
-      }
-    }
+    let progressInt = 0;
     if (idx >= 0) {
-      const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
-      if (el) {
-        const nextTime = idx < parsedLyrics.length - 1 ? Number(parsedLyrics[idx + 1].time) : Number(parsedLyrics[idx].time) + 4;
-        const span = Math.max(.2, nextTime - Number(parsedLyrics[idx].time));
-        const progress = Math.max(0, Math.min(100, ((t - Number(parsedLyrics[idx].time)) / span) * 100));
-        const progressInt = Math.round(progress);
-        if (progressInt !== lastLyricFillInt) {
-          lastLyricFillInt = progressInt;
-          el.style.setProperty('--fill', `${progressInt}%`);
-        }
-      }
+      const curTime = parsedLyrics[idx].time;
+      const nextTime = idx < parsedLyrics.length - 1 ? Number(parsedLyrics[idx + 1].time) : Number(curTime) + 4;
+      const span = Math.max(.2, nextTime - Number(curTime));
+      const progress = Math.max(0, Math.min(100, ((t - Number(curTime)) / span) * 100));
+      progressInt = Math.round(progress);
     }
+    applyLyricTick(idx, progressInt, idx !== currentLyricIndex);
   }
 
   function startLyricClock() {
     if (lyricRaf) cancelAnimationFrame(lyricRaf);
     let lastTs = 0;
     const isMobile = typeof window !== 'undefined' && (window.innerWidth <= 850 || /Android|iPhone|iPad/i.test(navigator.userAgent));
-    const targetInterval = isMobile ? 35 : 20;
+    const targetInterval = isMobile ? 40 : 25;
 
     const loop = (ts) => {
       lyricRaf = requestAnimationFrame(loop);
@@ -2439,9 +2596,15 @@
 
       if (lyricClock.receivedPerf && lyricClock.playing) {
         const estimate = Math.max(0, lyricClock.hostTime + Math.max(0, performance.now() - lyricClock.receivedPerf) / 1000 - clientSyncOffset);
-        updateAudienceScroll(estimate);
+        if (lyricWorker) {
+          lyricWorker.postMessage({ type: 'EVAL_TIME', time: estimate });
+        } else {
+          updateAudienceScroll(estimate);
+        }
       }
-      if (visualDirty) {
+
+      // If offscreen visualizer is not active, run throttled fallback on main thread
+      if (visualDirty && !isOffscreenVisualizerActive) {
         visualDirty = false;
         drawAudienceVisualizer();
       }
@@ -2616,7 +2779,13 @@
     return false;
   }
 
-    window.addEventListener('beforeunload', (e) => {
+  window.addEventListener('beforeunload', (e) => {
+    if (visWorker) {
+      try { visWorker.terminate(); } catch (_) {}
+    }
+    if (lyricWorker) {
+      try { lyricWorker.terminate(); } catch (_) {}
+    }
     if (shouldWarnAudienceOnReload()) {
       e.preventDefault();
       e.returnValue = 'You are currently connected to the live stage. Reloading will disconnect you.';
