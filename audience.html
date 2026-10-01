@@ -206,6 +206,41 @@
         .badge-listen { background: rgba(0, 229, 255, 0.15); color: var(--accent-blue); border: 1px solid var(--accent-blue); }
         .badge-duet { background: rgba(0, 255, 136, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
 
+        /* =========================================================================
+           MODULAR ISOLATED VIEWS (Composited Layers for Zero Screen Repaint)
+           ========================================================================= */
+
+        /* 1. VISUALIZER VIEW: Fully isolated GPU texture, never repaints parent or screen */
+        .audience-visualizer-view {
+          width: 100%;
+          height: 48px;
+          margin: 6px 0;
+          border-radius: 12px;
+          overflow: hidden;
+          background: radial-gradient(ellipse 70% 60% at 50% 80%, rgba(0, 240, 255, 0.06), transparent 75%), linear-gradient(180deg, rgba(8, 5, 16, 0.4), rgba(4, 2, 8, 0.7));
+          border: 1px solid rgba(0, 240, 255, 0.15);
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+          /* Strict layer containment & hardware promotion */
+          contain: strict;
+          transform: translateZ(0);
+          will-change: transform;
+          isolation: isolate;
+          backface-visibility: hidden;
+          display: none;
+        }
+        .audience-visualizer-view.active {
+          display: block;
+        }
+        .audience-visualizer-canvas {
+          display: block;
+          width: 100%;
+          height: 48px;
+          contain: strict;
+          transform: translateZ(0);
+          will-change: transform;
+        }
+
+        /* 2. LYRICS VIEW: Completely isolated scrolling viewport */
         .lyrics-container-audience {
           height: 240px;
           position: relative;
@@ -219,8 +254,12 @@
           margin: 0;
           scrollbar-width: thin;
           scrollbar-color: rgba(0, 229, 255, 0.4) transparent;
-          mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
-          -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+          /* Strict layer containment: NOTHING inside this container can cause repaints outside */
+          contain: strict;
+          transform: translateZ(0);
+          will-change: transform, scroll-position;
+          isolation: isolate;
+          backface-visibility: hidden;
         }
         .lyrics-content-audience {
           display: flex;
@@ -230,27 +269,76 @@
           padding-top: 95px;
           padding-bottom: 95px;
           position: relative;
-          contain: layout style;
-          will-change: scroll-position;
+          contain: layout paint;
+          transform: translateZ(0);
         }
         .lyric-line-aud {
-          font-size: 1.1rem;
+          font-size: 1.15rem;
           color: #52586b;
           padding: 8px 16px;
-          transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.2s ease, opacity 0.2s ease;
           min-height: 28px;
           line-height: 1.4;
           transform-origin: center;
           cursor: pointer;
           contain: layout paint;
-          will-change: transform;
+          transform: translateZ(0);
+          will-change: transform, color;
+          transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.2s ease;
         }
         .lyric-line-aud.active {
-          color: #fff;
-          font-size: 1.55rem;
+          color: #ffffff;
           font-weight: 800;
-          text-shadow: 0 0 20px var(--accent-blue), 0 0 40px var(--accent-purple);
-          transform: scale(1.06);
+          text-shadow: 0 0 16px var(--accent-blue), 0 0 32px var(--accent-purple);
+          /* Use GPU transform scale instead of changing font-size: ZERO layout reflow! */
+          transform: scale(1.15) translateZ(0);
+        }
+
+        /* 3. VIDEO ARENA VIEW: Independent WebRTC video layer */
+        .stage-video-arena {
+          contain: layout paint;
+          transform: translateZ(0);
+          isolation: isolate;
+        }
+        .stage-video-grid {
+          contain: layout paint;
+          transform: translateZ(0);
+        }
+        .admin-video-viewport, .guest-video-viewport {
+          contain: strict;
+          transform: translateZ(0);
+          isolation: isolate;
+        }
+
+        /* 4. CHAT VIEW: Isolated scrolling layer */
+        .audience-chat-box {
+          contain: layout paint;
+          transform: translateZ(0);
+          isolation: isolate;
+        }
+        .chat-messages {
+          contain: strict;
+          transform: translateZ(0);
+          will-change: scroll-position;
+          isolation: isolate;
+        }
+
+        /* 5. GUEST VOICE / EFFECTS PANEL: Isolated layer */
+        .guest-voice-panel {
+          contain: layout paint;
+          transform: translateZ(0);
+          isolation: isolate;
+        }
+
+        /* 6. VOLUME / SYNC DECK: Isolated layer */
+        .audience-volume-row {
+          contain: layout paint;
+          transform: translateZ(0);
+          isolation: isolate;
+        }
+        .sync-nudge-view {
+          contain: layout paint;
+          transform: translateZ(0);
+          isolation: isolate;
         }
         .btn-follow-lyrics-aud {
           position: absolute;
@@ -408,12 +496,12 @@
   </div>
 </div>
 
-<!-- AUDIENCE MUSIC VISUALIZER (mirrored from host's spectrum) -->
-<div id="audienceVisualizerWrap" style="display:none; width:100%; margin:6px 0; border-radius:12px; overflow:hidden; background:radial-gradient(ellipse 70% 60% at 50% 80%, rgba(0, 240, 255, 0.06), transparent 75%), linear-gradient(180deg, rgba(8, 5, 16, 0.4), rgba(4, 2, 8, 0.7)); border:1px solid rgba(0, 240, 255, 0.15); box-shadow:0 4px 15px rgba(0, 0, 0, 0.4);">
-  <canvas id="audienceVisualizer" style="display:block; width:100%; height:48px;"></canvas>
+<!-- AUDIENCE MUSIC VISUALIZER (isolated GPU compositor view) -->
+<div id="audienceVisualizerWrap" class="audience-visualizer-view">
+  <canvas id="audienceVisualizer" class="audience-visualizer-canvas"></canvas>
 </div>
 
-<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin: 6px 0; font-size:0.68rem; color:var(--text-dim); background:rgba(0,0,0,0.25); border-radius:6px; padding:4px 8px;">
+<div class="sync-nudge-view" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin: 6px 0; font-size:0.68rem; color:var(--text-dim); background:rgba(0,0,0,0.25); border-radius:6px; padding:4px 8px;">
   <span>⚡ Sync Nudge:</span>
   <div style="display:flex; align-items:center; gap:6px;">
     <button id="btnAudSyncMinus" class="btn" style="width:auto; min-height:36px; min-width:44px; padding:4px 10px; font-size:0.75rem; margin:0;" title="Nudge lyrics back">-0.2s</button>
@@ -650,7 +738,10 @@
         this._silentFrames = 0;
         if (!this._isActive) {
           this._isActive = true;
-          if (this.wrap) this.wrap.style.display = '';
+          if (this.wrap) {
+            this.wrap.style.display = 'block';
+            this.wrap.classList.add('active');
+          }
           this.resize();
           this.startPump();
         }
@@ -696,7 +787,10 @@
       if (this.ctx && this.cvs) {
         this.ctx.clearRect(0, 0, this.cvs.width, this.cvs.height);
       }
-      if (this.wrap) this.wrap.style.display = 'none';
+      if (this.wrap) {
+        this.wrap.style.display = 'none';
+        this.wrap.classList.remove('active');
+      }
     }
 
     renderFrame() {
@@ -2555,12 +2649,11 @@
       }
     }
 
+    // ONLY perform DOM operations when the active lyric line actually changes!
     if (idx !== currentLyricIndex) {
       currentLyricIndex = idx;
-      lastLyricFillInt = -1;
       if (currentActiveLyricEl) {
         currentActiveLyricEl.classList.remove('active');
-        currentActiveLyricEl.style.removeProperty('--fill');
         currentActiveLyricEl = null;
       }
       if (idx !== -1) {
@@ -2575,19 +2668,6 @@
         }
       }
     }
-
-    // Dynamic gradient progress fill for active lyric line (throttled to integer changes)
-    if (idx !== -1 && currentActiveLyricEl) {
-      const current = parsedLyrics[idx];
-      const nextTime = (idx < parsedLyrics.length - 1) ? parsedLyrics[idx + 1].time : (current.time + 4.0);
-      const span = Math.max(0.2, nextTime - current.time);
-      const progress = Math.max(0, Math.min(100, ((t - current.time) / span) * 100));
-      const progressInt = Math.round(progress);
-      if (progressInt !== lastLyricFillInt) {
-        lastLyricFillInt = progressInt;
-        currentActiveLyricEl.style.setProperty('--fill', `${progressInt}%`);
-      }
-    }
   }
 
   function startLyricClock() {
@@ -2597,7 +2677,7 @@
       window.innerWidth <= 850 ||
       /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
     );
-    const targetInterval = isMobile ? 35 : 20;
+    const targetInterval = isMobile ? 80 : 50;
 
     const loop = (ts) => {
       lyricRaf = requestAnimationFrame(loop);
