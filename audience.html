@@ -56,7 +56,6 @@
           flex-direction: column;
           gap: 12px;
           margin: 10px 0;
-          transition: all 0.3s ease;
         }
         .stage-arena.side-by-side {
           display: grid;
@@ -207,10 +206,10 @@
         .badge-duet { background: rgba(0, 255, 136, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
 
         /* =========================================================================
-           MODULAR ISOLATED VIEWS (Composited Layers for Zero Screen Repaint)
+           CLEAN, HIGH-PERFORMANCE MODULAR VIEWS (Admin-Style DOM Architecture)
            ========================================================================= */
 
-        /* 1. VISUALIZER VIEW: Fully isolated GPU texture, never repaints parent or screen */
+        /* 1. VISUALIZER VIEW */
         .audience-visualizer-view {
           width: 100%;
           height: 48px;
@@ -220,12 +219,6 @@
           background: radial-gradient(ellipse 70% 60% at 50% 80%, rgba(0, 240, 255, 0.06), transparent 75%), linear-gradient(180deg, rgba(8, 5, 16, 0.4), rgba(4, 2, 8, 0.7));
           border: 1px solid rgba(0, 240, 255, 0.15);
           box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-          /* Strict layer containment & hardware promotion */
-          contain: strict;
-          transform: translateZ(0);
-          will-change: transform;
-          isolation: isolate;
-          backface-visibility: hidden;
           display: none;
         }
         .audience-visualizer-view.active {
@@ -235,18 +228,14 @@
           display: block;
           width: 100%;
           height: 48px;
-          contain: strict;
-          transform: translateZ(0);
-          will-change: transform;
         }
 
-        /* 2. LYRICS VIEW: Completely isolated scrolling viewport */
+        /* 2. LYRICS VIEW: Smooth, lightweight native scroll without layer explosion */
         .lyrics-container-audience {
           height: 240px;
           position: relative;
           overflow-y: auto;
           overflow-x: hidden;
-          scroll-behavior: smooth;
           -webkit-overflow-scrolling: touch;
           background: rgba(0, 0, 0, 0.85);
           border: 1px solid var(--border);
@@ -254,12 +243,6 @@
           margin: 0;
           scrollbar-width: thin;
           scrollbar-color: rgba(0, 229, 255, 0.4) transparent;
-          /* Strict layer containment: NOTHING inside this container can cause repaints outside */
-          contain: strict;
-          transform: translateZ(0);
-          will-change: transform, scroll-position;
-          isolation: isolate;
-          backface-visibility: hidden;
         }
         .lyrics-content-audience {
           display: flex;
@@ -269,8 +252,6 @@
           padding-top: 95px;
           padding-bottom: 95px;
           position: relative;
-          contain: layout paint;
-          transform: translateZ(0);
         }
         .lyric-line-aud {
           font-size: 1.15rem;
@@ -280,65 +261,95 @@
           line-height: 1.4;
           transform-origin: center;
           cursor: pointer;
-          contain: layout paint;
-          transform: translateZ(0);
-          will-change: transform, color;
-          transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.2s ease;
+          user-select: none;
+          transition: color 0.2s ease, transform 0.2s ease;
+        }
+        .lyric-line-aud:hover {
+          color: #fff;
         }
         .lyric-line-aud.active {
           color: #ffffff;
           font-weight: 800;
-          text-shadow: 0 0 16px var(--accent-blue), 0 0 32px var(--accent-purple);
-          /* Use GPU transform scale instead of changing font-size: ZERO layout reflow! */
-          transform: scale(1.15) translateZ(0);
+          text-shadow: 0 0 16px rgba(0, 229, 255, 0.6), 0 0 24px rgba(168, 85, 247, 0.4);
+          transform: scale(1.05);
         }
 
-        /* 3. VIDEO ARENA VIEW: Independent WebRTC video layer */
+        /* 3. VIDEO ARENA VIEW */
         .stage-video-arena {
-          contain: layout paint;
-          transform: translateZ(0);
-          isolation: isolate;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
+          overflow: hidden;
         }
         .stage-video-grid {
-          contain: layout paint;
-          transform: translateZ(0);
+          display: grid;
+          gap: 10px;
+          align-items: stretch;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
         }
         .admin-video-viewport, .guest-video-viewport {
-          contain: strict;
-          transform: translateZ(0);
-          isolation: isolate;
+          flex: 1;
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #05070a;
+          min-height: 160px;
         }
 
-        /* 4. CHAT VIEW: Isolated scrolling layer */
+        /* 4. CHAT VIEW */
         .audience-chat-box {
-          contain: layout paint;
-          transform: translateZ(0);
-          isolation: isolate;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+          margin-top: 10px;
+          text-align: left;
         }
         .chat-messages {
-          contain: strict;
-          transform: translateZ(0);
-          will-change: scroll-position;
-          isolation: isolate;
+          max-height: 150px;
+          overflow-y: auto;
+          margin-bottom: 8px;
+          font-size: 0.72rem;
+          line-height: 1.4;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(0, 229, 255, 0.3) transparent;
         }
 
-        /* 5. GUEST VOICE / EFFECTS PANEL: Isolated layer */
+        /* 5. GUEST VOICE / EFFECTS PANEL */
         .guest-voice-panel {
-          contain: layout paint;
-          transform: translateZ(0);
-          isolation: isolate;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+          margin-top: 10px;
+          text-align: left;
         }
 
-        /* 6. VOLUME / SYNC DECK: Isolated layer */
+        /* 6. VOLUME / SYNC DECK */
         .audience-volume-row {
-          contain: layout paint;
-          transform: translateZ(0);
-          isolation: isolate;
+          background: rgba(0, 0, 0, 0.35);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 8px 12px;
+          text-align: left;
         }
         .sync-nudge-view {
-          contain: layout paint;
-          transform: translateZ(0);
-          isolation: isolate;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          margin: 6px 0;
+          font-size: 0.68rem;
+          color: var(--text-dim);
+          background: rgba(0, 0, 0, 0.25);
+          border-radius: 6px;
+          padding: 4px 8px;
         }
         .btn-follow-lyrics-aud {
           position: absolute;
@@ -659,6 +670,7 @@
   let reconnectTimer = null;
   let audienceVolume = 1.0;
   let clientSyncOffset = 0.0;
+  const sharedTextDecoder = new TextDecoder();
 
   // =========================================================================
   // DIRECT 2D CANVAS AUDIO VISUALIZER (Zero Workers, Admin-Engine Architecture)
@@ -677,6 +689,7 @@
       this._cachedGrad = null;
       this._cachedReflGrad = null;
       this._cachedH = 0;
+      this._cachedWrapW = 0;
 
       this._isMobile = typeof window !== 'undefined' && (
         window.innerWidth <= 850 ||
@@ -696,14 +709,16 @@
       this.ctx = this.cvs.getContext('2d', { alpha: true });
       if (!this.ctx) return;
 
-      window.addEventListener('resize', () => this.resize(), { passive: true });
-      window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 150), { passive: true });
+      window.addEventListener('resize', () => { this._cachedWrapW = 0; this.resize(); }, { passive: true });
+      window.addEventListener('orientationchange', () => setTimeout(() => { this._cachedWrapW = 0; this.resize(); }, 150), { passive: true });
       this.resize();
     }
 
     resize() {
       if (!this.cvs || !this.wrap) return;
-      if (this.wrap.clientWidth <= 0) return;
+      const wrapW = this.wrap.clientWidth;
+      if (wrapW <= 0) return;
+      this._cachedWrapW = wrapW;
 
       this._isMobile = typeof window !== 'undefined' && (
         window.innerWidth <= 850 ||
@@ -719,7 +734,7 @@
       }
 
       const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 1.75);
-      const targetW = Math.max(80, Math.round(this.wrap.clientWidth * dpr));
+      const targetW = Math.max(80, Math.round(wrapW * dpr));
       const targetH = Math.max(40, Math.round(48 * dpr));
 
       if (this.cvs.width !== targetW || this.cvs.height !== targetH) {
@@ -738,11 +753,13 @@
         this._silentFrames = 0;
         if (!this._isActive) {
           this._isActive = true;
-          if (this.wrap) {
+          if (this.wrap && this.wrap.style.display !== 'block') {
             this.wrap.style.display = 'block';
             this.wrap.classList.add('active');
           }
-          this.resize();
+          if (!this._cachedWrapW || this._cachedWrapW !== this.wrap.clientWidth) {
+            this.resize();
+          }
           this.startPump();
         }
       } else {
@@ -753,16 +770,16 @@
 
     startPump() {
       if (this._rafId) return;
+      const targetInterval = 33; // 30 FPS matched with host transmission rate
       const pumpLoop = (ts) => {
         this._rafId = requestAnimationFrame(pumpLoop);
         if (typeof document !== 'undefined' && document.hidden) return;
         if (!this._isActive) return;
 
-        const targetInterval = this._isMobile ? 33 : 16;
         if (ts - this._lastDrawTs < targetInterval) return;
         this._lastDrawTs = ts;
 
-        this.renderFrame(ts);
+        this.renderFrame();
       };
       this._rafId = requestAnimationFrame(pumpLoop);
     }
@@ -883,60 +900,65 @@
         this._cachedReflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
       }
 
-      // 1. Draw Mirrored Glassy Stage Reflection
+      const hasRoundRect = typeof ctx.roundRect === 'function';
+
+      // 1. Draw Mirrored Glassy Stage Reflection (batched single path)
       ctx.fillStyle = this._cachedReflGrad;
+      ctx.beginPath();
+      let hasRefl = false;
       for (let i = 0; i < numBars; i++) {
         const bH = this.bars[i] * maxBarH;
         if (bH < 3) continue;
         const x = Math.round(startX + (i * barSpacing) + (barSpacing - barWidth) / 2);
         const reflH = Math.min(Math.round(bH * 0.32), Math.round(maxBarH * 0.3));
-        this._drawCapsule(ctx, x, baseLine + 1, barWidth, reflH, capRadius);
+        const r = Math.min(capRadius, barWidth / 2, reflH / 2);
+        if (hasRoundRect) {
+          ctx.roundRect(x, baseLine + 1, barWidth, reflH, [r, r, 1, 1]);
+        } else {
+          ctx.rect(x, baseLine + 1, barWidth, reflH);
+        }
+        hasRefl = true;
       }
+      if (hasRefl) ctx.fill();
 
-      // 2. Draw Main Equalizer Capsule Bars
+      // 2. Draw Main Equalizer Capsule Bars (batched single path)
       ctx.fillStyle = this._cachedGrad;
+      ctx.beginPath();
+      let hasBars = false;
       for (let i = 0; i < numBars; i++) {
         const bH = Math.max(0, Math.pow(this.bars[i], 1.35) * maxBarH);
         if (bH < 1.5) continue;
         const x = Math.round(startX + (i * barSpacing) + (barSpacing - barWidth) / 2);
         const y = Math.round(baseLine - bH);
-        this._drawCapsule(ctx, x, y, barWidth, bH, capRadius);
+        const r = Math.min(capRadius, barWidth / 2, bH / 2);
+        if (hasRoundRect) {
+          ctx.roundRect(x, y, barWidth, bH, [r, r, 1, 1]);
+        } else {
+          ctx.rect(x, y, barWidth, bH);
+        }
+        hasBars = true;
       }
+      if (hasBars) ctx.fill();
 
-      // 3. Draw Floating Neon Peak Caps
+      // 3. Draw Floating Neon Peak Caps (batched single path)
       ctx.fillStyle = '#00ffff';
       const peakDotH = Math.max(2, Math.min(barWidth * 0.42, 3));
+      ctx.beginPath();
+      let hasPeaks = false;
       for (let i = 0; i < numBars; i++) {
         const pH = this.peaks[i];
         if (pH < 4) continue;
         const x = Math.round(startX + (i * barSpacing) + (barSpacing - barWidth) / 2);
         const y = Math.round(baseLine - pH - peakDotH - 2);
-        this._drawPeakPill(ctx, x, y, barWidth, peakDotH, capRadius);
+        const r = Math.min(capRadius, barWidth / 2, peakDotH / 2);
+        if (hasRoundRect) {
+          ctx.roundRect(x, y, barWidth, peakDotH, r);
+        } else {
+          ctx.rect(x, y, barWidth, peakDotH);
+        }
+        hasPeaks = true;
       }
-    }
-
-    _drawCapsule(ctx, x, y, w, h, radius) {
-      if (h <= 0 || w <= 0) return;
-      const r = Math.min(radius, w / 2, h / 2);
-      if (typeof ctx.roundRect === 'function') {
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, h, [r, r, 1, 1]);
-        ctx.fill();
-      } else {
-        ctx.fillRect(x, y, w, h);
-      }
-    }
-
-    _drawPeakPill(ctx, x, y, w, h, radius) {
-      if (w <= 0 || h <= 0) return;
-      const r = Math.min(radius, w / 2, h / 2);
-      if (typeof ctx.roundRect === 'function') {
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, h, r);
-        ctx.fill();
-      } else {
-        ctx.fillRect(x, y, w, h);
-      }
+      if (hasPeaks) ctx.fill();
     }
   }
 
@@ -1061,22 +1083,21 @@
   async function ensurePlaybackAudio() {
     if (!playbackCtx) {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) throw new Error('Web Audio is not supported by this browser.');
-      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      playbackCtx = new AC(isMobileDevice ? { latencyHint: 'interactive' } : { latencyHint: 'interactive', sampleRate: 48000 });
-      // Fix E: pin the playback context's destination to 2-ch stereo.
-      // LiveKit's webAudioMix graph feeds decoded remote audio into this
-      // context's destination. Without explicit pinning the OS speaker
-      // channel count (often 1 on mobile / mono headsets) folds the
-      // received stereo stream to mono on the receive side.
-      try { playbackCtx.destination.channelCount = Math.min(2, playbackCtx.destination.maxChannelCount || 2); } catch (_) {}
-      try { playbackCtx.destination.channelCountMode = 'max'; } catch (_) {}
-      try { playbackCtx.destination.channelInterpretation = 'speakers'; } catch (_) {}
-      if (typeof playbackCtx.setSinkId === 'function' && playbackSinkId) {
-        try { await playbackCtx.setSinkId(playbackSinkId); } catch (_) {}
-      }
+      if (!AC) return null;
+      try {
+        const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        playbackCtx = new AC(isMobileDevice ? { latencyHint: 'interactive' } : { latencyHint: 'interactive', sampleRate: 48000 });
+        try { playbackCtx.destination.channelCount = Math.min(2, playbackCtx.destination.maxChannelCount || 2); } catch (_) {}
+        try { playbackCtx.destination.channelCountMode = 'max'; } catch (_) {}
+        try { playbackCtx.destination.channelInterpretation = 'speakers'; } catch (_) {}
+        if (typeof playbackCtx.setSinkId === 'function' && playbackSinkId) {
+          try { await playbackCtx.setSinkId(playbackSinkId); } catch (_) {}
+        }
+      } catch (_) {}
     }
-    if (playbackCtx.state === 'suspended') await playbackCtx.resume();
+    if (playbackCtx && playbackCtx.state === 'suspended') {
+      try { await playbackCtx.resume(); } catch (_) {}
+    }
     return playbackCtx;
   }
 
@@ -1552,14 +1573,25 @@
         try { item.audio?.play?.().catch?.(() => {}); } catch (_) {}
       }
     });
-    room.on(L.RoomEvent.DataReceived, async (payload, participant) => {
+    room.on(L.RoomEvent.DataReceived, (payload, participant) => {
       try {
-        const data = JSON.parse(new TextDecoder().decode(payload));
+        const data = JSON.parse(sharedTextDecoder.decode(payload));
+        if (data.type === 'VISUAL_DATA') {
+          audienceVisualizer?.receiveData(data.bars);
+          return;
+        }
+        if (data.type === 'SYNC_TIME') {
+          const p = typeof data.payload === 'number' ? { currentTime: data.payload, playing: true } : (data.payload || {});
+          lyricClock.hostTime = Number(p.currentTime || 0);
+          lyricClock.receivedPerf = performance.now();
+          lyricClock.playing = p.playing !== false;
+          return;
+        }
         if (data.type === 'ROOM_DISCONTINUED') {
           console.info('[Nirmal] Received ROOM_DISCONTINUED message from host');
           roomDiscontinued = true;
           setStatus('🔴 Broadcast discontinued by host. Live stream has ended.', 'var(--accent-red)');
-          await leaveLiveStage();
+          leaveLiveStage().catch(() => {});
           if (btnTuneIn) btnTuneIn.style.display = 'none';
           alert('The host has ended this live broadcast. The live stage is now closed.');
           return;
@@ -1574,7 +1606,7 @@
         if (data.type === 'APPROVE_MIC') {
           if (data.targetIdentity && data.targetIdentity === room?.localParticipant?.identity) {
             console.info('[Nirmal] Host approved duet mic request!');
-            await promoteToDuet(false);
+            promoteToDuet(false).catch(() => {});
             alert('🎉 The Host accepted your duet request! Tap "Enable Mic" below to sing along!');
           }
           return;
@@ -1600,24 +1632,17 @@
           if (Array.isArray(data.lyrics)) renderAudienceLyrics(data.lyrics);
           if (data.time) {
             const p = data.time;
-            lyricClock = { hostTime: Number(p.currentTime || 0), receivedPerf: performance.now(), playing: p.playing !== false };
+            lyricClock.hostTime = Number(p.currentTime || 0);
+            lyricClock.receivedPerf = performance.now();
+            lyricClock.playing = p.playing !== false;
             updateAudienceScroll(lyricClock.hostTime);
           }
           return;
         }
-        if (data.type === 'SYNC_TIME') {
-          const payload = typeof data.payload === 'number' ? { currentTime: data.payload, playing: true } : (data.payload || {});
-          lyricClock = {
-            hostTime: Number(payload.currentTime || 0),
-            receivedPerf: performance.now(),
-            playing: payload.playing !== false
-          };
-          updateAudienceScroll(lyricClock.hostTime);
+        if (data.type === 'CHAT_BROADCAST') {
+          addChatMessage(data.sender, data.text, data.isSpecial, data.isHost);
+          return;
         }
-        else if (data.type === 'VISUAL_DATA') {
-          audienceVisualizer?.receiveData(data.bars);
-        }
-        else if (data.type === 'CHAT_BROADCAST') addChatMessage(data.sender, data.text, data.isSpecial, data.isHost);
         else if (data.type === 'FORCE_MUTE') {
           hostForcedMute = !!data.state;
           isMicMuted = hostForcedMute;
@@ -1887,7 +1912,6 @@
         state.conceal = state.conceal ? state.conceal * .75 + concealPct * .25 : concealPct;
 
         for (const item of remoteAudio.values()) {
-          // Ensure audio element continues playing smoothly if transiently paused by mobile background policy
           if (item.audio && item.audio.paused && !item.audio.ended && document.visibilityState === 'visible') {
             try { item.audio.play().catch(() => {}); } catch (_) {}
           }
@@ -1906,12 +1930,19 @@
           }
         }
 
-        const effective = remoteAudio.size ? Math.max(...[...remoteAudio.values()].map(i => getAudioJitterTarget(i.track))) : 0;
-        setStatus(`LIVE • ${anyAudio ? 'audio' : 'waiting for audio'} • jitter ${state.jitter.toFixed(1)}ms • target ${effective.toFixed(0)}ms • current ${currentDelayMs.toFixed(0)}ms • min ${minDelayMs.toFixed(0)}ms • loss ${state.loss.toFixed(2)}%${shed ? ' • video reduced' : ''}`, (state.loss > 2 || state.jitter > 30) ? 'var(--accent-orange)' : 'var(--accent-green)');
+        const isDegraded = state.loss > 2 || state.jitter > 30;
+        const statusSummary = `LIVE • ${remoteAudio.size} active audio • ${isDegraded ? 'network adjusting' : 'low-latency WebRTC'}`;
+        if (statusSummary !== lastStatusText) {
+          setStatus(statusSummary, isDegraded ? 'var(--accent-orange)' : 'var(--accent-green)');
+        }
+        const healthEl = document.getElementById('liveAudioHealth');
+        if (healthEl && healthEl.style.display !== 'none') {
+          healthEl.textContent = `Audio: jitter ${state.jitter.toFixed(0)}ms • delay ${currentDelayMs.toFixed(0)}ms • loss ${state.loss.toFixed(1)}%${shed ? ' • video reduced' : ''}`;
+        }
       } catch (e) {
         console.warn('[Nirmal] audio stats monitor error:', e);
       }
-    }, 3500);
+    }, 5000);
   }
 
   function requestStageState() {
@@ -2884,42 +2915,34 @@
     }
   });
 
-  // Mobile / Autoplay policy global unlocker for iOS Safari and mobile simulators
-  let audienceAudioHardwareUnlocked = false;
-  const unlockAudienceAudio = async () => {
+  // Mobile / Autoplay policy unlocker: unlocks audio on first user gesture and self-removes
+  let audienceAudioUnlocked = false;
+  const unlockAudienceAudio = () => {
+    if (audienceAudioUnlocked) return;
+    audienceAudioUnlocked = true;
     if (playbackCtx?.state === 'suspended') {
-      try {
-        await playbackCtx.resume();
-      } catch (_) {}
-    }
-    if (playbackCtx && !audienceAudioHardwareUnlocked) {
-      try {
-        const buf = playbackCtx.createBuffer(1, 1, 22050);
-        const src = playbackCtx.createBufferSource();
-        src.buffer = buf;
-        src.connect(playbackCtx.destination);
-        src.start(0);
-        audienceAudioHardwareUnlocked = true;
-      } catch (_) {}
+      try { playbackCtx.resume().catch(() => {}); } catch (_) {}
     }
     if (liveAudio?.paused) {
-      liveAudio.play().catch(() => {});
+      try { liveAudio.play().catch(() => {}); } catch (_) {}
     }
     for (const item of remoteAudio.values()) {
       if (item.audio?.paused) {
-        item.audio.play().catch(() => {});
+        try { item.audio.play().catch(() => {}); } catch (_) {}
       }
     }
+    ['pointerdown', 'touchstart', 'click'].forEach(ev => {
+      document.removeEventListener(ev, unlockAudienceAudio, true);
+    });
   };
 
-  ['touchstart', 'touchend', 'click', 'pointerdown'].forEach(ev => {
-    window.addEventListener(ev, unlockAudienceAudio, { passive: true });
-    document.addEventListener(ev, unlockAudienceAudio, { passive: true });
+  ['pointerdown', 'touchstart', 'click'].forEach(ev => {
+    document.addEventListener(ev, unlockAudienceAudio, { passive: true, capture: true });
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      unlockAudienceAudio();
+    if (!document.hidden && liveAudio?.paused) {
+      liveAudio.play().catch(() => {});
     }
   });
 
