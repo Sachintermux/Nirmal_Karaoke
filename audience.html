@@ -573,220 +573,280 @@
   let clientSyncOffset = 0.0;
 
   // =========================================================================
-  // BACKGROUND THREAD WORKERS (OFFSCREENCANVAS & ASYNC LYRIC ENGINE)
+  // DIRECT 2D CANVAS AUDIO VISUALIZER (Zero Workers, Admin-Engine Architecture)
   // =========================================================================
-  const audVisWrap = document.getElementById('audienceVisualizerWrap');
-  const audVisCvs = document.getElementById('audienceVisualizer');
-  let visWorker = null;
-  let isOffscreenVisualizerActive = false;
-  let lyricWorker = null;
+  class AudienceVisualizerRenderer {
+    constructor() {
+      this.wrap = document.getElementById('audienceVisualizerWrap');
+      this.cvs = document.getElementById('audienceVisualizer');
+      this.ctx = null;
+      this._rafId = null;
+      this._lastDrawTs = 0;
+      this._silentFrames = 0;
+      this._latestBars = null;
+      this._hasSignal = false;
+      this._isActive = false;
+      this._cachedGrad = null;
+      this._cachedReflGrad = null;
+      this._cachedH = 0;
 
-  let audVisCtx = null;
-  let audVisWidth = 0;
-  let audVisHeight = 0;
-  let audVisGrad = null;
-  let audVisReflGrad = null;
-  let latestVisualBars = null;
-  let visualDirty = false;
-  let visualIsActive = false;
-  let audVisPeaks = new Float32Array(64);
-  let audVisPeakHold = new Int16Array(64);
-  let audVisPeakSpeed = new Float32Array(64);
+      this._isMobile = typeof window !== 'undefined' && (
+        window.innerWidth <= 850 ||
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+      );
+      this.numBars = this._isMobile ? 32 : 48;
+      this.bars = new Float32Array(this.numBars);
+      this.peaks = new Float32Array(this.numBars);
+      this.peakHold = new Int16Array(this.numBars);
+      this.peakSpeed = new Float32Array(this.numBars);
 
-  function initAudienceVisualizerWorker() {
-    if (!audVisCvs || !audVisWrap) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    const cw = audVisWrap.clientWidth || 320;
-    const ch = 48;
+      this.init();
+    }
 
-    if (typeof window.OffscreenCanvas !== 'undefined' && typeof audVisCvs.transferControlToOffscreen === 'function') {
-      try {
-        const offscreen = audVisCvs.transferControlToOffscreen();
-        visWorker = new Worker('./js/workers/audience-visualizer.worker.js?v=35');
-        visWorker.onmessage = (e) => {
-          if (e.data?.type === 'VISIBILITY' && audVisWrap) {
-            audVisWrap.style.display = e.data.visible ? '' : 'none';
-          }
-        };
-        visWorker.postMessage({
-          type: 'INIT',
-          canvas: offscreen,
-          width: cw,
-          height: ch,
-          dpr
-        }, [offscreen]);
-        isOffscreenVisualizerActive = true;
-        console.info('[Audience] Visualizer offloaded to background Web Worker via OffscreenCanvas');
+    init() {
+      if (!this.cvs) return;
+      this.ctx = this.cvs.getContext('2d', { alpha: true });
+      if (!this.ctx) return;
+
+      window.addEventListener('resize', () => this.resize(), { passive: true });
+      window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 150), { passive: true });
+      this.resize();
+    }
+
+    resize() {
+      if (!this.cvs || !this.wrap) return;
+      if (this.wrap.clientWidth <= 0) return;
+
+      this._isMobile = typeof window !== 'undefined' && (
+        window.innerWidth <= 850 ||
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+      );
+      const targetBars = this._isMobile ? 32 : 48;
+      if (this.numBars !== targetBars) {
+        this.numBars = targetBars;
+        this.bars = new Float32Array(this.numBars);
+        this.peaks = new Float32Array(this.numBars);
+        this.peakHold = new Int16Array(this.numBars);
+        this.peakSpeed = new Float32Array(this.numBars);
+      }
+
+      const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 1.75);
+      const targetW = Math.max(80, Math.round(this.wrap.clientWidth * dpr));
+      const targetH = Math.max(40, Math.round(48 * dpr));
+
+      if (this.cvs.width !== targetW || this.cvs.height !== targetH) {
+        this.cvs.width = targetW;
+        this.cvs.height = targetH;
+        this._cachedGrad = null;
+        this._cachedReflGrad = null;
+        this._cachedH = targetH;
+      }
+    }
+
+    receiveData(bars) {
+      if (Array.isArray(bars) && bars.length > 0 && bars.some(v => v > 2)) {
+        this._latestBars = bars;
+        this._hasSignal = true;
+        this._silentFrames = 0;
+        if (!this._isActive) {
+          this._isActive = true;
+          if (this.wrap) this.wrap.style.display = '';
+          this.resize();
+          this.startPump();
+        }
+      } else {
+        this._latestBars = null;
+        this._hasSignal = false;
+      }
+    }
+
+    startPump() {
+      if (this._rafId) return;
+      const pumpLoop = (ts) => {
+        this._rafId = requestAnimationFrame(pumpLoop);
+        if (typeof document !== 'undefined' && document.hidden) return;
+        if (!this._isActive) return;
+
+        const targetInterval = this._isMobile ? 33 : 16;
+        if (ts - this._lastDrawTs < targetInterval) return;
+        this._lastDrawTs = ts;
+
+        this.renderFrame(ts);
+      };
+      this._rafId = requestAnimationFrame(pumpLoop);
+    }
+
+    stopPump() {
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+    }
+
+    clear() {
+      this.stopPump();
+      this._isActive = false;
+      this._latestBars = null;
+      this._hasSignal = false;
+      this._silentFrames = 0;
+      for (let i = 0; i < this.numBars; i++) {
+        this.bars[i] = 0;
+        this.peaks[i] = 0;
+      }
+      if (this.ctx && this.cvs) {
+        this.ctx.clearRect(0, 0, this.cvs.width, this.cvs.height);
+      }
+      if (this.wrap) this.wrap.style.display = 'none';
+    }
+
+    renderFrame() {
+      const cvs = this.cvs;
+      const ctx = this.ctx;
+      if (!cvs || !ctx) return;
+      const w = cvs.width;
+      const h = cvs.height;
+      if (!w || !h) return;
+
+      if (!this._hasSignal) {
+        this._silentFrames++;
+      } else {
+        this._silentFrames = 0;
+      }
+
+      if (this._silentFrames > 20) {
+        this.clear();
         return;
-      } catch (err) {
-        console.warn('[Audience] OffscreenCanvas transfer failed; falling back to main-thread rendering:', err);
+      }
+
+      ctx.clearRect(0, 0, w, h);
+
+      const baseLine = Math.round(h * 0.82);
+      const maxBarH = Math.round(h * 0.70);
+      const numBars = this.numBars;
+
+      // Cyber Horizon Baseline
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.22)';
+      ctx.lineWidth = 1.5;
+      ctx.moveTo(0, baseLine);
+      ctx.lineTo(w, baseLine);
+      ctx.stroke();
+
+      const barSpacing = w / numBars;
+      const barWidth = Math.max(2.5, barSpacing * 0.68);
+      const startX = (w - (numBars * barSpacing)) / 2;
+      const capRadius = Math.max(1.5, Math.min(barWidth / 2, 3));
+
+      const attackRate = this._isMobile ? 0.75 : 0.65;
+      const decayRate = this._isMobile ? 0.22 : 0.17;
+      const gravity = this._isMobile ? 0.38 : 0.28;
+
+      const inBars = this._latestBars;
+      const inLen = inBars ? inBars.length : 0;
+
+      for (let i = 0; i < numBars; i++) {
+        let targetNorm = 0;
+        if (this._hasSignal && inLen > 0) {
+          const normIdx = i / (numBars - 1);
+          const bin = Math.floor(Math.pow(normIdx, 1.35) * (inLen * 0.85));
+          const safeBin = Math.max(0, Math.min(inLen - 1, bin));
+          targetNorm = (inBars[safeBin] || 0) / 255;
+        }
+
+        if (targetNorm > this.bars[i]) {
+          this.bars[i] += (targetNorm - this.bars[i]) * attackRate;
+        } else {
+          this.bars[i] -= (this.bars[i] - targetNorm) * decayRate;
+        }
+
+        const barHeight = Math.max(0, Math.pow(this.bars[i], 1.35) * maxBarH);
+
+        // Neon Peak Cap Physics
+        if (barHeight >= this.peaks[i]) {
+          this.peaks[i] = barHeight;
+          this.peakHold[i] = this._isMobile ? 4 : 7;
+          this.peakSpeed[i] = 0;
+        } else if (this.peakHold[i] > 0) {
+          this.peakHold[i]--;
+        } else {
+          this.peakSpeed[i] += gravity;
+          this.peaks[i] = Math.max(0, this.peaks[i] - this.peakSpeed[i]);
+        }
+      }
+
+      // Cache & Prepare Gen-Z Vibrant Neon Gradient
+      if (!this._cachedGrad || this._cachedH !== h) {
+        this._cachedH = h;
+        this._cachedGrad = ctx.createLinearGradient(0, baseLine - maxBarH, 0, baseLine);
+        this._cachedGrad.addColorStop(0, '#00f0ff');
+        this._cachedGrad.addColorStop(0.32, '#a855f7');
+        this._cachedGrad.addColorStop(0.72, '#ff007f');
+        this._cachedGrad.addColorStop(1, '#ff3366');
+
+        this._cachedReflGrad = ctx.createLinearGradient(0, baseLine, 0, baseLine + Math.round(maxBarH * 0.35));
+        this._cachedReflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.22)');
+        this._cachedReflGrad.addColorStop(0.5, 'rgba(168, 85, 247, 0.10)');
+        this._cachedReflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+      }
+
+      // 1. Draw Mirrored Glassy Stage Reflection
+      ctx.fillStyle = this._cachedReflGrad;
+      for (let i = 0; i < numBars; i++) {
+        const bH = this.bars[i] * maxBarH;
+        if (bH < 3) continue;
+        const x = Math.round(startX + (i * barSpacing) + (barSpacing - barWidth) / 2);
+        const reflH = Math.min(Math.round(bH * 0.32), Math.round(maxBarH * 0.3));
+        this._drawCapsule(ctx, x, baseLine + 1, barWidth, reflH, capRadius);
+      }
+
+      // 2. Draw Main Equalizer Capsule Bars
+      ctx.fillStyle = this._cachedGrad;
+      for (let i = 0; i < numBars; i++) {
+        const bH = Math.max(0, Math.pow(this.bars[i], 1.35) * maxBarH);
+        if (bH < 1.5) continue;
+        const x = Math.round(startX + (i * barSpacing) + (barSpacing - barWidth) / 2);
+        const y = Math.round(baseLine - bH);
+        this._drawCapsule(ctx, x, y, barWidth, bH, capRadius);
+      }
+
+      // 3. Draw Floating Neon Peak Caps
+      ctx.fillStyle = '#00ffff';
+      const peakDotH = Math.max(2, Math.min(barWidth * 0.42, 3));
+      for (let i = 0; i < numBars; i++) {
+        const pH = this.peaks[i];
+        if (pH < 4) continue;
+        const x = Math.round(startX + (i * barSpacing) + (barSpacing - barWidth) / 2);
+        const y = Math.round(baseLine - pH - peakDotH - 2);
+        this._drawPeakPill(ctx, x, y, barWidth, peakDotH, capRadius);
       }
     }
 
-    // Main-thread fallback for browsers without OffscreenCanvas transfer
-    audVisCtx = audVisCvs ? audVisCvs.getContext('2d') : null;
-    updateAudienceVisualizerSize();
-  }
-
-  function initAudienceLyricWorker() {
-    if (typeof window.Worker !== 'undefined') {
-      try {
-        lyricWorker = new Worker('./js/workers/audience-lyric.worker.js?v=35');
-        lyricWorker.onmessage = (e) => {
-          const msg = e.data;
-          if (!msg) return;
-          if (msg.type === 'PARSED') {
-            applyParsedLyrics(msg.lyrics);
-          } else if (msg.type === 'TICK_UPDATE') {
-            applyLyricTick(msg.index, msg.progressInt, msg.indexChanged);
-          }
-        };
-        console.info('[Audience] Lyrics parsing and sync engine offloaded to background Web Worker');
-      } catch (err) {
-        console.warn('[Audience] Lyric worker setup failed, using main-thread fallback:', err);
-        lyricWorker = null;
-      }
-    }
-  }
-
-  initAudienceVisualizerWorker();
-  initAudienceLyricWorker();
-
-  function updateAudienceVisualizerSize() {
-    if (!audVisWrap) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    const cw = audVisWrap.clientWidth || 320;
-    const ch = 48;
-
-    if (visWorker && isOffscreenVisualizerActive) {
-      visWorker.postMessage({ type: 'RESIZE', width: cw, height: ch, dpr });
-      return;
-    }
-
-    if (!audVisCvs) return;
-    const targetW = Math.round(cw * dpr);
-    const targetH = Math.round(ch * dpr);
-    if (audVisCvs.width !== targetW || audVisCvs.height !== targetH) {
-      audVisCvs.width = targetW;
-      audVisCvs.height = targetH;
-      audVisWidth = targetW;
-      audVisHeight = targetH;
-      audVisGrad = null;
-      audVisReflGrad = null;
-    }
-  }
-  window.addEventListener('resize', updateAudienceVisualizerSize, { passive: true });
-
-  function drawAudienceVisualizer() {
-    if (isOffscreenVisualizerActive) return; // 100% rendered off main thread
-    if (!audVisCtx || !audVisWidth || !audVisHeight) return;
-    const bars = latestVisualBars;
-    if (!bars || !Array.isArray(bars) || !bars.length) {
-      audVisCtx.clearRect(0, 0, audVisWidth, audVisHeight);
-      if (audVisWrap && visualIsActive) {
-        audVisWrap.style.display = 'none';
-        visualIsActive = false;
-      }
-      return;
-    }
-
-    if (audVisWrap && !visualIsActive) {
-      audVisWrap.style.display = '';
-      visualIsActive = true;
-    }
-
-    audVisCtx.clearRect(0, 0, audVisWidth, audVisHeight);
-    const numBars = bars.length;
-    const barSpacing = audVisWidth / numBars;
-    const barWidth = Math.max(2.5, barSpacing * 0.70);
-    const baseLine = Math.round(audVisHeight * 0.82);
-    const maxBarH = Math.round(audVisHeight * 0.72);
-    const capRadius = Math.max(1.5, Math.min(barWidth / 2, 3));
-
-    if (!audVisGrad) {
-      audVisGrad = audVisCtx.createLinearGradient(0, baseLine - maxBarH, 0, baseLine);
-      audVisGrad.addColorStop(0, '#00f0ff');
-      audVisGrad.addColorStop(0.35, '#a855f7');
-      audVisGrad.addColorStop(0.75, '#ff007f');
-      audVisGrad.addColorStop(1, '#ff3366');
-
-      audVisReflGrad = audVisCtx.createLinearGradient(0, baseLine, 0, baseLine + Math.round(maxBarH * 0.25));
-      audVisReflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.20)');
-      audVisReflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
-    }
-
-    // Baseline line
-    audVisCtx.strokeStyle = 'rgba(0, 240, 255, 0.2)';
-    audVisCtx.lineWidth = 1;
-    audVisCtx.beginPath();
-    audVisCtx.moveTo(0, baseLine);
-    audVisCtx.lineTo(audVisWidth, baseLine);
-    audVisCtx.stroke();
-
-    // 1. Draw reflected baseline bars
-    audVisCtx.fillStyle = audVisReflGrad;
-    for (let i = 0; i < numBars; i++) {
-      const pct = (bars[i] || 0) / 255;
-      const bH = Math.pow(pct, 1.35) * maxBarH;
-      if (bH < 2) continue;
-      const x = Math.round(i * barSpacing + (barSpacing - barWidth) / 2);
-      const reflH = Math.min(Math.round(bH * 0.26), Math.round(maxBarH * 0.22));
-      if (typeof audVisCtx.roundRect === 'function') {
-        audVisCtx.beginPath();
-        audVisCtx.roundRect(x, baseLine + 1, barWidth, reflH, [1, 1, capRadius, capRadius]);
-        audVisCtx.fill();
+    _drawCapsule(ctx, x, y, w, h, radius) {
+      if (h <= 0 || w <= 0) return;
+      const r = Math.min(radius, w / 2, h / 2);
+      if (typeof ctx.roundRect === 'function') {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, [r, r, 1, 1]);
+        ctx.fill();
       } else {
-        audVisCtx.fillRect(x, baseLine + 1, barWidth, reflH);
+        ctx.fillRect(x, y, w, h);
       }
     }
 
-    // 2. Draw Main Bars
-    audVisCtx.fillStyle = audVisGrad;
-    for (let i = 0; i < numBars; i++) {
-      const pct = (bars[i] || 0) / 255;
-      const bH = Math.max(0, Math.pow(pct, 1.35) * maxBarH);
-
-      // Peak physics
-      if (bH >= audVisPeaks[i]) {
-        audVisPeaks[i] = bH;
-        audVisPeakHold[i] = 5;
-        audVisPeakSpeed[i] = 0;
-      } else if (audVisPeakHold[i] > 0) {
-        audVisPeakHold[i]--;
+    _drawPeakPill(ctx, x, y, w, h, radius) {
+      if (w <= 0 || h <= 0) return;
+      const r = Math.min(radius, w / 2, h / 2);
+      if (typeof ctx.roundRect === 'function') {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        ctx.fill();
       } else {
-        audVisPeakSpeed[i] += 0.3;
-        audVisPeaks[i] = Math.max(0, audVisPeaks[i] - audVisPeakSpeed[i]);
-      }
-
-      if (bH < 1.5) continue;
-      const x = Math.round(i * barSpacing + (barSpacing - barWidth) / 2);
-      const y = Math.round(baseLine - bH);
-      if (typeof audVisCtx.roundRect === 'function') {
-        audVisCtx.beginPath();
-        audVisCtx.roundRect(x, y, barWidth, bH, [capRadius, capRadius, 1, 1]);
-        audVisCtx.fill();
-      } else {
-        audVisCtx.fillRect(x, y, barWidth, bH);
-      }
-    }
-
-    // 3. Draw Floating Peak Dots
-    audVisCtx.fillStyle = '#00ffff';
-    const peakDotH = Math.max(2, Math.min(barWidth * 0.4, 3));
-    for (let i = 0; i < numBars; i++) {
-      const pH = audVisPeaks[i];
-      if (pH < 3) continue;
-      const x = Math.round(i * barSpacing + (barSpacing - barWidth) / 2);
-      const y = Math.round(baseLine - pH - peakDotH - 1.5);
-      if (typeof audVisCtx.roundRect === 'function') {
-        audVisCtx.beginPath();
-        audVisCtx.roundRect(x, y, barWidth, peakDotH, capRadius);
-        audVisCtx.fill();
-      } else {
-        audVisCtx.fillRect(x, y, barWidth, peakDotH);
+        ctx.fillRect(x, y, w, h);
       }
     }
   }
+
+  const audienceVisualizer = new AudienceVisualizerRenderer();
 
   let lastStatusText = '';
   function setStatus(text, tone = 'var(--text-dim)') {
@@ -810,12 +870,8 @@
     // Cancel any pending auto-reconnect timers first
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
-    if (visWorker) {
-      try { visWorker.postMessage({ type: 'CLEAR' }); } catch (_) {}
-    }
-    if (lyricWorker) {
-      try { lyricWorker.postMessage({ type: 'RESET' }); } catch (_) {}
-    }
+    audienceVisualizer?.clear();
+    stopAudienceLyrics();
     // Tear down guest microphone and camera cleanly
     if (isMicEnabled) { try { await disableGuestMic(); } catch (_) {} }
     if (isCameraEnabled) { try { await toggleGuestCamera(); } catch (_) {} }
@@ -1451,12 +1507,7 @@
           if (data.time) {
             const p = data.time;
             lyricClock = { hostTime: Number(p.currentTime || 0), receivedPerf: performance.now(), playing: p.playing !== false };
-            if (lyricWorker) {
-              lyricWorker.postMessage({ type: 'CLOCK_UPDATE', clock: lyricClock });
-              lyricWorker.postMessage({ type: 'EVAL_TIME', time: lyricClock.hostTime });
-            } else {
-              updateAudienceScroll(lyricClock.hostTime);
-            }
+            updateAudienceScroll(lyricClock.hostTime);
           }
           return;
         }
@@ -1467,21 +1518,10 @@
             receivedPerf: performance.now(),
             playing: payload.playing !== false
           };
-          if (lyricWorker) {
-            lyricWorker.postMessage({ type: 'CLOCK_UPDATE', clock: lyricClock });
-            lyricWorker.postMessage({ type: 'EVAL_TIME', time: lyricClock.hostTime });
-          } else {
-            updateAudienceScroll(lyricClock.hostTime);
-          }
+          updateAudienceScroll(lyricClock.hostTime);
         }
         else if (data.type === 'VISUAL_DATA') {
-          if (visWorker && isOffscreenVisualizerActive) {
-            visWorker.postMessage({ type: 'BARS', bars: data.bars });
-          } else {
-            latestVisualBars = data.bars;
-            visualDirty = true;
-            if (!audVisWidth) updateAudienceVisualizerSize();
-          }
+          audienceVisualizer?.receiveData(data.bars);
         }
         else if (data.type === 'CHAT_BROADCAST') addChatMessage(data.sender, data.text, data.isSpecial, data.isHost);
         else if (data.type === 'FORCE_MUTE') {
@@ -1752,27 +1792,7 @@
         state.loss = state.loss ? state.loss * .75 + intervalLossPct * .25 : intervalLossPct;
         state.conceal = state.conceal ? state.conceal * .75 + concealPct * .25 : concealPct;
 
-        let desired = KARAOKE_AUDIO_LATENCY.healthy;
-        if (intervalLossPct >= 4 || jitter >= 45 || concealPct >= 4) desired = KARAOKE_AUDIO_LATENCY.critical;
-        else if (intervalLossPct >= 2.5 || jitter >= 30 || concealPct >= 2.5) desired = KARAOKE_AUDIO_LATENCY.severe;
-        else if (intervalLossPct >= 1.5 || jitter >= 20 || concealPct >= 1.5) desired = KARAOKE_AUDIO_LATENCY.bad;
-        else if (intervalLossPct >= 0.8 || jitter >= 12 || concealPct >= 0.8) desired = KARAOKE_AUDIO_LATENCY.moderate;
-
         for (const item of remoteAudio.values()) {
-          const current = getAudioJitterTarget(item.track) || KARAOKE_AUDIO_LATENCY.healthy;
-          const recentStall = Date.now() - Number(item.__lastStallAt || 0) < 2000;
-          const target = recentStall ? Math.max(desired, KARAOKE_AUDIO_LATENCY.stallFloor) : desired;
-          if (target > current + 8) {
-            item.__stable = 0;
-            setAudioJitterTarget(item.track, Math.min(target, current + 10));
-          } else if (target < current && intervalLossPct < 1 && jitter < 25 && concealPct < 0.5) {
-            item.__stable = (item.__stable || 0) + 1;
-            if (item.__stable >= KARAOKE_AUDIO_LATENCY.recoverySteps) {
-              setAudioJitterTarget(item.track, Math.max(target, current - 10));
-              item.__stable = 0;
-            }
-          } else if (target >= current) item.__stable = 0;
-
           // Ensure audio element continues playing smoothly if transiently paused by mobile background policy
           if (item.audio && item.audio.paused && !item.audio.ended && document.visibilityState === 'visible') {
             try { item.audio.play().catch(() => {}); } catch (_) {}
@@ -2441,6 +2461,8 @@
   const btnAudienceFollowLyrics = document.getElementById('btnAudienceFollowLyrics');
   let isAudienceUserScrolling = false;
   let audienceUserScrollTimeout = null;
+  let currentActiveLyricEl = null;
+  let lastLyricFillInt = -1;
 
   const onAudienceUserScroll = () => {
     isAudienceUserScrolling = true;
@@ -2451,8 +2473,8 @@
     audienceUserScrollTimeout = setTimeout(() => {
       isAudienceUserScrolling = false;
       if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
-      if (currentLyricIndex >= 0) {
-        scrollToAudienceLyric(currentLyricIndex, true);
+      if (currentActiveLyricEl) {
+        scrollToActiveAudienceLyric(true);
       }
     }, 2800);
   };
@@ -2462,89 +2484,27 @@
 
   btnAudienceFollowLyrics?.addEventListener('click', () => {
     isAudienceUserScrolling = false;
-    btnAudienceFollowLyrics.style.display = 'none';
-    if (currentLyricIndex >= 0) {
-      scrollToAudienceLyric(currentLyricIndex, true);
+    if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
+    if (currentActiveLyricEl) {
+      scrollToActiveAudienceLyric(true);
     }
   });
 
-  let cachedLyricEls = [];
-  let cachedLyricScrollTops = [];
-  let lastLyricFillInt = -1;
-
-  function cacheLyricPositions() {
-    if (!audienceLyricsBox || !cachedLyricEls.length) return;
-    const containerH = audienceLyricsBox.clientHeight || 200;
-    cachedLyricScrollTops = cachedLyricEls.map(el => Math.max(0, el.offsetTop - (containerH / 2) + (el.clientHeight / 2)));
-  }
-
-  function scrollToAudienceLyric(idx, smooth = true) {
-    if (isAudienceUserScrolling || !audienceLyricsBox) return;
-    const targetTop = cachedLyricScrollTops[idx];
-    if (targetTop !== undefined) {
-      audienceLyricsBox.scrollTo({
-        top: targetTop,
-        behavior: smooth ? 'smooth' : 'auto'
-      });
-    } else {
-      const el = cachedLyricEls[idx] || document.getElementById(`aud-lyric-${idx}`);
-      el?.scrollIntoView?.({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+  function scrollToActiveAudienceLyric(smooth = true) {
+    if (!currentActiveLyricEl || !audienceLyricsBox || isAudienceUserScrolling) return;
+    const container = audienceLyricsBox;
+    const el = currentActiveLyricEl;
+    let top = 0;
+    let curr = el;
+    while (curr && curr !== container) {
+      top += curr.offsetTop;
+      curr = curr.offsetParent;
     }
-  }
-
-  function applyLyricTick(idx, progressInt, indexChanged) {
-    if (indexChanged) {
-      if (currentLyricIndex >= 0 && cachedLyricEls[currentLyricIndex]) {
-        const oldEl = cachedLyricEls[currentLyricIndex];
-        oldEl.classList.remove('active');
-        oldEl.style.removeProperty('--fill');
-      }
-      currentLyricIndex = idx;
-      lastLyricFillInt = -1;
-      if (idx >= 0 && cachedLyricEls[idx]) {
-        const el = cachedLyricEls[idx];
-        el.classList.add('active');
-        isAudienceUserScrolling = false;
-        if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
-        scrollToAudienceLyric(idx, true);
-      }
-    }
-
-    if (idx >= 0 && cachedLyricEls[idx] && progressInt !== lastLyricFillInt) {
-      lastLyricFillInt = progressInt;
-      cachedLyricEls[idx].style.setProperty('--fill', `${progressInt}%`);
-    }
-  }
-
-  function applyParsedLyrics(lines) {
-    parsedLyrics = lines || [];
-    currentLyricIndex = -1;
-    lastLyricFillInt = -1;
-    cachedLyricEls = [];
-    cachedLyricScrollTops = [];
-    lyricsContent.innerHTML = '';
-    if (!parsedLyrics.length) {
-      lyricsContent.innerHTML = '<div class="lyric-line-aud" style="color:var(--text-dim)">No lyrics loaded for this track.</div>';
-      return;
-    }
-    const frag = document.createDocumentFragment();
-    parsedLyrics.forEach((lyric, i) => {
-      const d = document.createElement('div');
-      d.className = 'lyric-line-aud';
-      d.id = `aud-lyric-${i}`;
-      d.textContent = lyric.text;
-      frag.appendChild(d);
-      cachedLyricEls.push(d);
+    const targetTop = top - (container.clientHeight / 2) + (el.clientHeight / 2);
+    container.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: smooth ? 'smooth' : 'auto'
     });
-    lyricsContent.appendChild(frag);
-    isAudienceUserScrolling = false;
-    if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
-    if (audienceLyricsBox) {
-      audienceLyricsBox.scrollTo({ top: 0, behavior: 'auto' });
-    }
-    // Pre-calculate scroll offsets once in next frame after DOM rendering
-    requestAnimationFrame(cacheLyricPositions);
-    startLyricClock();
   }
 
   function fallbackParseLyrics(lines) {
@@ -2557,35 +2517,87 @@
   }
 
   function renderAudienceLyrics(lines) {
-    if (lyricWorker) {
-      lyricWorker.postMessage({ type: 'PARSE', payload: lines });
-    } else {
-      applyParsedLyrics(fallbackParseLyrics(lines));
+    parsedLyrics = fallbackParseLyrics(lines);
+    currentLyricIndex = -1;
+    lastLyricFillInt = -1;
+    currentActiveLyricEl = null;
+    if (!lyricsContent) return;
+    lyricsContent.innerHTML = '';
+    if (!parsedLyrics.length) {
+      lyricsContent.innerHTML = '<div class="lyric-line-aud" style="color:var(--text-dim)">No lyrics loaded for this track.</div>';
+      return;
     }
+    const frag = document.createDocumentFragment();
+    parsedLyrics.forEach((lyric, i) => {
+      const d = document.createElement('div');
+      d.className = 'lyric-line-aud';
+      d.id = `aud-lyric-${i}`;
+      d.textContent = lyric.text;
+      frag.appendChild(d);
+    });
+    lyricsContent.appendChild(frag);
+    isAudienceUserScrolling = false;
+    if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
+    if (audienceLyricsBox) {
+      audienceLyricsBox.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    startLyricClock();
   }
 
   function updateAudienceScroll(t) {
     if (!parsedLyrics.length) return;
     let idx = -1;
     for (let i = 0; i < parsedLyrics.length; i++) {
-      if (t >= parsedLyrics[i].time) idx = i; else break;
+      if (t >= parsedLyrics[i].time) {
+        idx = i;
+      } else {
+        break;
+      }
     }
-    let progressInt = 0;
-    if (idx >= 0) {
-      const curTime = parsedLyrics[idx].time;
-      const nextTime = idx < parsedLyrics.length - 1 ? Number(parsedLyrics[idx + 1].time) : Number(curTime) + 4;
-      const span = Math.max(.2, nextTime - Number(curTime));
-      const progress = Math.max(0, Math.min(100, ((t - Number(curTime)) / span) * 100));
-      progressInt = Math.round(progress);
+
+    if (idx !== currentLyricIndex) {
+      currentLyricIndex = idx;
+      lastLyricFillInt = -1;
+      if (currentActiveLyricEl) {
+        currentActiveLyricEl.classList.remove('active');
+        currentActiveLyricEl.style.removeProperty('--fill');
+        currentActiveLyricEl = null;
+      }
+      if (idx !== -1) {
+        const el = document.getElementById(`aud-lyric-${idx}`);
+        if (el) {
+          el.classList.add('active');
+          currentActiveLyricEl = el;
+          if (!isAudienceUserScrolling) {
+            if (btnAudienceFollowLyrics) btnAudienceFollowLyrics.style.display = 'none';
+            scrollToActiveAudienceLyric(true);
+          }
+        }
+      }
     }
-    applyLyricTick(idx, progressInt, idx !== currentLyricIndex);
+
+    // Dynamic gradient progress fill for active lyric line (throttled to integer changes)
+    if (idx !== -1 && currentActiveLyricEl) {
+      const current = parsedLyrics[idx];
+      const nextTime = (idx < parsedLyrics.length - 1) ? parsedLyrics[idx + 1].time : (current.time + 4.0);
+      const span = Math.max(0.2, nextTime - current.time);
+      const progress = Math.max(0, Math.min(100, ((t - current.time) / span) * 100));
+      const progressInt = Math.round(progress);
+      if (progressInt !== lastLyricFillInt) {
+        lastLyricFillInt = progressInt;
+        currentActiveLyricEl.style.setProperty('--fill', `${progressInt}%`);
+      }
+    }
   }
 
   function startLyricClock() {
     if (lyricRaf) cancelAnimationFrame(lyricRaf);
     let lastTs = 0;
-    const isMobile = typeof window !== 'undefined' && (window.innerWidth <= 850 || /Android|iPhone|iPad/i.test(navigator.userAgent));
-    const targetInterval = isMobile ? 40 : 25;
+    const isMobile = typeof window !== 'undefined' && (
+      window.innerWidth <= 850 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    );
+    const targetInterval = isMobile ? 35 : 20;
 
     const loop = (ts) => {
       lyricRaf = requestAnimationFrame(loop);
@@ -2596,26 +2608,29 @@
 
       if (lyricClock.receivedPerf && lyricClock.playing) {
         const estimate = Math.max(0, lyricClock.hostTime + Math.max(0, performance.now() - lyricClock.receivedPerf) / 1000 - clientSyncOffset);
-        if (lyricWorker) {
-          lyricWorker.postMessage({ type: 'EVAL_TIME', time: estimate });
-        } else {
-          updateAudienceScroll(estimate);
-        }
-      }
-
-      // If offscreen visualizer is not active, run throttled fallback on main thread
-      if (visualDirty && !isOffscreenVisualizerActive) {
-        visualDirty = false;
-        drawAudienceVisualizer();
+        updateAudienceScroll(estimate);
       }
     };
     lyricRaf = requestAnimationFrame(loop);
   }
+
+  function stopAudienceLyrics() {
+    if (lyricRaf) {
+      cancelAnimationFrame(lyricRaf);
+      lyricRaf = null;
+    }
+    parsedLyrics = [];
+    currentLyricIndex = -1;
+    currentActiveLyricEl = null;
+    lastLyricFillInt = -1;
+    if (lyricsContent) lyricsContent.innerHTML = '';
+  }
+
   startLyricClock();
 
   window.renderAudienceLyrics = renderAudienceLyrics;
   window.updateAudienceScroll = updateAudienceScroll;
-  window.drawAudienceVisualizer = drawAudienceVisualizer;
+  window.drawAudienceVisualizer = () => audienceVisualizer?.renderFrame();
   window.addChatMessage = addChatMessage;
 
   async function promoteToDuet(autoEnableMic = false) {
@@ -2780,12 +2795,8 @@
   }
 
   window.addEventListener('beforeunload', (e) => {
-    if (visWorker) {
-      try { visWorker.terminate(); } catch (_) {}
-    }
-    if (lyricWorker) {
-      try { lyricWorker.terminate(); } catch (_) {}
-    }
+    audienceVisualizer?.clear();
+    stopAudienceLyrics();
     if (shouldWarnAudienceOnReload()) {
       e.preventDefault();
       e.returnValue = 'You are currently connected to the live stage. Reloading will disconnect you.';
