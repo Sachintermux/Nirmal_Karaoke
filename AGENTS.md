@@ -37,7 +37,7 @@ LRCLIB (lrclib.net): synced lyrics, queried straight from the browser
 | **LiveKit Cloud** | Real-time audio/video between host, audience and duet guests | `js/livekit-host.js`, `audience.html`, token in `server.js` + `netlify/functions/livekit-token.mjs` |
 | **Vercel** | JioSaavn data proxy | `js/config.js` (`SAAVN_API_URLS`), `netlify.toml` `/api/saavn/*` |
 
-Production frontend: `https://precious-stardust-3d67c3.netlify.app` (Netlify site). Render backend:
+Production frontend (Netlify): primary domain `https://nirmalkaraoke.site` (`www` redirects to it); the same site is also reachable at `https://nirmalkaraokeaivoicechanger.netlify.app` (canonical tags point at `.site`). Old URL: `https://precious-stardust-3d67c3.netlify.app`. Render backend:
 `https://nirmal-karaoke.onrender.com` (also the default RTMP relay URL and presence origin).
 
 ### Key rule: Netlify functions are stateless
