@@ -1,0 +1,20 @@
+/* Static info pages (/about, /privacy, /terms, /contact, guides). Loaded after style.css + home.css.
+   Every class is nk-page* so nothing collides with the studio or the home page. */
+.nk-page{padding:64px 0 88px}
+.nk-doc .hm-eyebrow{display:block}
+.nk-doc h1{margin:12px 0 0;font-size:clamp(30px,5vw,46px);line-height:1.1;letter-spacing:-.03em}
+.nk-doc h2{margin:38px 0 8px;font-size:clamp(20px,2.6vw,24px);line-height:1.25;letter-spacing:-.02em}
+.nk-doc h3{margin:22px 0 6px;font-size:17px;letter-spacing:-.01em}
+.nk-doc p,.nk-doc li{color:#c2d0e6;line-height:1.7;font-size:15.5px}
+.nk-doc p{margin:12px 0 0}
+.nk-doc ul,.nk-doc ol{margin:12px 0 0;padding-left:22px;display:grid;gap:7px}
+.nk-doc a:not(.button){color:var(--primary-hi);text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+.nk-lede{font-size:18px!important;line-height:1.6!important;color:var(--muted)!important}
+.nk-meta{font:500 12px var(--font-mono);letter-spacing:.06em;color:var(--muted)!important}
+.nk-doc .hm-note{margin-top:18px}
+.nk-doc .hm-faq{margin-top:14px}
+.nk-doc .hm-cta-row{margin-top:26px}
+.nk-doc table{width:100%;border-collapse:collapse;margin-top:14px}
+.nk-doc th,.nk-doc td{padding:11px 10px 11px 0;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:14px;color:#c2d0e6}
+.nk-doc th{width:34%;color:var(--muted);font-weight:600}
+@media (max-width:640px){.nk-page{padding:40px 0 64px}.nk-lede{font-size:16px!important}}

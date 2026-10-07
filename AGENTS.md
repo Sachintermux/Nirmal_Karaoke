@@ -54,6 +54,7 @@ Shared/real-time state belongs in `server.js` (Render, single process) or in Liv
 | `studio.html` | **Studio / host** (was index.html). Mixer, effects, Auto-Tune, lyrics, library, Go Live, lobby modal, multistream, call output. Driven by `js/app.js`. |
 | `audience.html` | Viewer + duet guest page (very large inline `<script type="module">`, ~3000 lines). Connects to a room by `?room=<id>&role=audience|duet&autoJoin=1`. |
 | `users.html` | Standalone "Live Singers" lobby (online users, invite, watch/join). |
+| `about/`, `privacy/`, `terms/`, `contact/`, `voice-changer-for-zoom-discord/` (each `index.html`) | Static info pages for SEO / AdSense trust. Use `/css/style.css` + `home.css` + `pages.css` (`nk-*` classes) and only `/js/home.js` (burger menu). No studio JS, no donation UI. Canonicals/sitemap use the placeholder `https://YOUR-DOMAIN.com`: replace it everywhere (`grep -r YOUR-DOMAIN`) once the real domain is known. |
 | `googleb691adf1eb31de8a.html`, `sitemap.xml`, `robots.txt` | SEO/verification files. |
 
 Mobile uses a tabbed layout (`.mobile-screen` sections with `data-screen-group`, switched by
@@ -210,6 +211,20 @@ music search work locally; LiveKit does not (no credentials).
   `pitch` ratio + high/low cut + one EQ band + drive, applied by `AudioEngine.applyPreset` (host) and
   `applyGuestPreset` (audience). **Policy: do not add presets named after, or tuned to imitate, real people**
   (personality/publicity rights, and impersonation risk with the call-output feature).
+
+## SEO + support message (added Oct 2026)
+
+- Homepage has JSON-LD (WebSite, Organization, WebApplication, FAQPage). The FAQPage text must stay word-for-word equal
+  to the visible `#faq` text: if you edit one, edit the other. `/users.html` is `noindex` and not in the sitemap.
+- `scripts/build-netlify.mjs` has an explicit `FILES` list: **add every new HTML page/asset there** (it also decides which
+  pages get the hoisted Google Fonts link), or it will not reach `dist/`. `_headers` (nosniff + referrer policy only, no CSP).
+- `/studio` (no `.html`) works on Netlify but 404s on the Render Express server (no `extensions` option). The canonical uses `/studio`.
+- **Support / donation (UPI + email)**: `js/donate.js` + `css/donate.css` (all classes `nkd-*`) + `donate/upi-qr.{svg,png}`
+  (generated offline with `segno`, level M, encodes the exact `upi://pay?...` link). Loaded only by `index.html` and `studio.html`.
+  Home: static top strip + bottom section (work without JS) and a modal after 10 s and (60 % scroll or 45 s). Studio: corner card
+  after 5 min visible and 10 s without click/key. Caps in `localStorage.nk_support` `{lastShown, dismissCount, coffeeAt, stripHidden}`:
+  7 days after a dismissal, never after 3, 30 days after copy/coffee, once per session. The script must **never** add a global
+  `keydown` listener except while the popup is open (soundboard hotkeys). Idle detection uses `keyup` + `pointerdown`.
 
 ## Known limitations / ideas
 

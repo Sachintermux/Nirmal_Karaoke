@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport">
+    <title>Real-Time Voice Changer for Zoom &amp; Discord – Nirmal Karaoke</title>
+    <meta name="description" content="Step-by-step guide to using Nirmal Karaoke as a real-time voice changer in Zoom, Meet, Teams and Discord with VB-Cable on Windows or BlackHole on Mac.">
+    <link rel="canonical" href="https://YOUR-DOMAIN.com/voice-changer-for-zoom-discord">
+    <meta name="robots" content="index,follow,max-image-preview:large">
+    <meta name="theme-color" content="#080d17">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Nirmal Karaoke">
+    <meta property="og:url" content="https://YOUR-DOMAIN.com/voice-changer-for-zoom-discord">
+    <meta property="og:title" content="Real-Time Voice Changer for Zoom &amp; Discord – Nirmal Karaoke">
+    <meta property="og:description" content="Step-by-step guide to using Nirmal Karaoke as a real-time voice changer in Zoom, Meet, Teams and Discord with VB-Cable on Windows or BlackHole on Mac.">
+    <meta property="og:image" content="https://YOUR-DOMAIN.com/og-image.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎤</text></svg>">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link href="/css/style.css" rel="stylesheet">
+    <link href="/css/home.css" rel="stylesheet">
+    <link href="/css/pages.css" rel="stylesheet">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Do I need to install anything to use Nirmal Karaoke?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Everything runs in your browser. Only the call-output feature needs a free virtual audio cable on your computer: VB-Cable on Windows or BlackHole on Mac."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it work on a phone?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The studio, voices and soundboard work on phones, but phones cannot provide a virtual microphone to other apps, so sending your voice to a call is desktop-only."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which browser should I use?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Use desktop Chrome or Edge for call output. Other modern browsers run many studio features, but this guide relies on Chrome or Edge."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Will I hear myself while the call app uses the cable?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. The studio sends your effected voice and music to the virtual audio cable while you keep hearing yourself on your own headphones. Use headphones to avoid an echo."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I sound like a specific celebrity?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. The voices are original styles shaped by pitch, tone and effects, and impersonating real people is not something the studio offers. Please use voice effects honestly."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What if something sounds wrong or laggy?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Use headphones, close other heavy tabs, set noise suppression to Low, and press Reset all in the Mixer to return every setting to normal."
+          }
+        }
+      ]
+    }
+    </script>
+</head>
+<body class="hm">
+
+<header class="hm-nav" id="top">
+    <div class="hm-wrap hm-nav-inner">
+        <a class="hm-brand" href="/" aria-label="Nirmal Karaoke home"><span class="hm-logo">N</span><span>NIRMAL <em>KARAOKE</em></span></a>
+        <nav class="hm-links" id="hmLinks" aria-label="Sections">
+            <a href="/#features">Features</a>
+            <a href="/#voices">Voices</a>
+            <a href="/#live">Go live</a>
+            <a href="/#calls">Calls &amp; streaming</a>
+            <a href="/#how">How it works</a>
+            <a href="/#faq">FAQ</a>
+        </nav>
+        <div class="hm-nav-cta">
+            <a class="button button-quiet hm-hide-sm" href="/users.html">Singers lobby</a>
+            <a class="button button-primary" href="/studio.html">Open studio</a>
+            <button class="hm-burger" id="hmBurger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="hmLinks"><span></span><span></span><span></span></button>
+        </div>
+    </div>
+</header>
+
+<main>
+<section class="hm-section nk-page">
+    <div class="hm-wrap hm-narrow nk-doc">
+        <span class="hm-eyebrow">GUIDE</span>
+        <h1>How to use a real-time voice changer in Zoom, Meet, Teams and Discord</h1>
+        <p class="nk-lede">Nirmal Karaoke can send your voice effects, Auto-Tune and music into a call. This guide shows the three steps: install a free virtual audio cable, send the studio's output to it, and choose it as the microphone in your call app.</p>
+
+        <h2>Why you need a virtual audio cable</h2>
+        <p>Web pages cannot create a microphone on their own. A browser can play sound to an output device, but a call app such as Zoom, Meet, Teams or Discord only listens to input devices. A virtual audio cable bridges the gap. It appears to your computer as a playback device and as a microphone at the same time, and whatever is played into one end comes out of the other.</p>
+        <p>Nirmal Karaoke sends its finished output to that cable, and your call app listens to the other end of the cable as if it were a microphone. That is how your effected voice, Auto-Tune, backing music and soundboard sounds reach the other people on the call.</p>
+
+        <h2>What you need</h2>
+        <ul>
+            <li>A desktop or laptop computer. Phones cannot expose a virtual microphone to other apps, so this feature is desktop-only.</li>
+            <li>Desktop Chrome or Edge.</li>
+            <li>A free virtual audio cable: <a href="https://vb-audio.com/Cable/" target="_blank" rel="noopener noreferrer">VB-Cable</a> on Windows or <a href="https://existential.audio/blackhole/" target="_blank" rel="noopener noreferrer">BlackHole</a> on Mac.</li>
+            <li>A microphone, and headphones so you do not hear a feedback echo.</li>
+        </ul>
+
+        <h2>Step by step</h2>
+        <h3>Step 1: install the virtual audio cable</h3>
+        <p>On Windows, install VB-Cable. On Mac, install BlackHole. Both are free to download from the links above. If your computer asks you to restart after installing, do so before continuing so the new audio device is available to your browser and your call app.</p>
+
+        <h3>Step 2: send the studio to the cable</h3>
+        <p>Open the <a href="/studio.html">Nirmal Karaoke studio</a> and allow the microphone. Go to the Mixer and find the "Calls &amp; meetings" card. Under it, choose <b>CABLE Input</b> as the output device (with BlackHole on Mac, choose the matching BlackHole device), then press <b>Send to call</b>.</p>
+        <p>From that moment, the studio's program mix, which contains your voice with its effects and any music or soundboard sounds you play, goes into the cable. You keep hearing yourself on your own headphones.</p>
+
+        <h3>Step 3: choose the cable as your microphone</h3>
+        <p>In Zoom, Meet, Teams or Discord, open the audio or microphone settings and set the microphone to <b>CABLE Output</b>. With BlackHole, pick the BlackHole device as the microphone instead. Speak or sing in the studio and the call app should show input level. Other people on the call now hear what the studio sends.</p>
+
+        <h2>Tips for a clean sound</h2>
+        <ul>
+            <li>Wear headphones. Without them your microphone can pick up the speakers and cause an echo.</li>
+            <li>Try a different voice while you talk. Voices, Auto-Tune and effects are processed live, so you can switch presets in the middle of a call.</li>
+            <li>If the sound is noisy, set noise suppression to Low in the Mixer and tune the noise level for your room.</li>
+            <li>If something sounds wrong or laggy, close other heavy browser tabs and press <b>Reset all</b> in the Mixer to return every setting to normal.</li>
+        </ul>
+
+        <h2>Use voice effects honestly</h2>
+        <p>The voices in Nirmal Karaoke are original styles shaped by pitch, tone and effects. They are not designed to imitate, or named after, any real person. Please do not use them to pass yourself off as someone else on a call, and let the people you speak with know when you are using a voice effect where it matters.</p>
+
+        <h2>Frequently asked questions</h2>
+        <div class="hm-faq">
+            <details><summary>Do I need to install anything to use Nirmal Karaoke?</summary><p>No. Everything runs in your browser. Only the call-output feature needs a free virtual audio cable on your computer: VB-Cable on Windows or BlackHole on Mac.</p></details>
+            <details><summary>Does it work on a phone?</summary><p>The studio, voices and soundboard work on phones, but phones cannot provide a virtual microphone to other apps, so sending your voice to a call is desktop-only.</p></details>
+            <details><summary>Which browser should I use?</summary><p>Use desktop Chrome or Edge for call output. Other modern browsers run many studio features, but this guide relies on Chrome or Edge.</p></details>
+            <details><summary>Will I hear myself while the call app uses the cable?</summary><p>Yes. The studio sends your effected voice and music to the virtual audio cable while you keep hearing yourself on your own headphones. Use headphones to avoid an echo.</p></details>
+            <details><summary>Can I sound like a specific celebrity?</summary><p>No. The voices are original styles shaped by pitch, tone and effects, and impersonating real people is not something the studio offers. Please use voice effects honestly.</p></details>
+            <details><summary>What if something sounds wrong or laggy?</summary><p>Use headphones, close other heavy tabs, set noise suppression to Low, and press Reset all in the Mixer to return every setting to normal.</p></details>
+        </div>
+
+        <div class="hm-cta-row">
+            <a class="button button-primary hm-big" href="/studio.html">🎙 Open the studio</a>
+            <a class="button hm-big" href="/#calls">See Calls &amp; streaming</a>
+        </div>
+    </div>
+</section>
+</main>
+
+<footer class="hm-footer">
+    <div class="hm-wrap hm-foot-grid">
+        <div>
+            <a class="hm-brand" href="/"><span class="hm-logo">N</span><span>NIRMAL <em>KARAOKE</em></span></a>
+            <p>Real-time voice studio, karaoke and live stage in your browser.</p>
+        </div>
+        <nav aria-label="Footer">
+            <a href="/studio.html">Studio</a>
+            <a href="/users.html">Singers lobby</a>
+            <a href="/#features">Features</a>
+            <a href="/#voices">Voices</a>
+            <a href="/#faq">FAQ</a>
+            <a href="/about">About</a>
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+            <a href="/contact">Contact</a>
+        </nav>
+    </div>
+    <div class="hm-wrap hm-legal">© <span id="hmYear">2026</span> Nirmal Karaoke. Voice effects are original styles and are not affiliated with or imitating any real person.</div>
+</footer>
+
+<script src="/js/home.js" defer></script>
+</body>
+</html>

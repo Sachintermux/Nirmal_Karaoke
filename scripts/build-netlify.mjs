@@ -11,7 +11,7 @@
  * Local dev (`npm start`) serves the untouched source and does not use this script.
  */
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { join, extname, dirname } from 'node:path';
 
 const ROOT = process.cwd();
 const OUT = join(ROOT, 'dist');
@@ -19,14 +19,21 @@ const VERSION = (process.env.COMMIT_REF || process.env.DEPLOY_ID || Date.now().t
 
 const FILES = [
   'index.html', 'studio.html', 'audience.html', 'users.html', 'googleb691adf1eb31de8a.html',
-  'favicon.ico', 'icon-192.png', 'icon-512.png', 'robots.txt', 'sitemap.xml'
+  'about/index.html', 'privacy/index.html', 'terms/index.html', 'contact/index.html',
+  'voice-changer-for-zoom-discord/index.html',
+  'favicon.ico', 'icon-192.png', 'icon-512.png', 'og-image.png',
+  'robots.txt', 'sitemap.xml', 'llms.txt', '_headers'
 ];
-const DIRS = ['css', 'js'];
+const DIRS = ['css', 'js', 'donate'];
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
-for (const f of FILES) if (existsSync(join(ROOT, f))) cpSync(join(ROOT, f), join(OUT, f));
-for (const d of DIRS) cpSync(join(ROOT, d), join(OUT, d), { recursive: true });
+for (const f of FILES) {
+  if (!existsSync(join(ROOT, f))) continue;
+  mkdirSync(dirname(join(OUT, f)), { recursive: true });
+  cpSync(join(ROOT, f), join(OUT, f));
+}
+for (const d of DIRS) if (existsSync(join(ROOT, d))) cpSync(join(ROOT, d), join(OUT, d), { recursive: true });
 
 function walk(dir) {
   return readdirSync(dir).flatMap((n) => {
