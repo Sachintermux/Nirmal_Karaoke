@@ -1790,6 +1790,7 @@ function setupEventListeners() {
         const hudCoach = document.getElementById('hudCoach');
         if (hudCoach) hudCoach.textContent = '🎯 COACH: READY';
         if (atPianoStrip) {
+          lastSungNote = null;
           atPianoStrip.querySelectorAll('.current-sung').forEach((k) => k.classList.remove('current-sung'));
         }
       }
@@ -1962,6 +1963,8 @@ function setupEventListeners() {
     };
 
     // Telemetry updates from Worklet DSP
+    let lastSungNote = null;
+    let pianoKeyEls = null;
     audioEngine.onAutoTuneTelemetry((data) => {
       const isEnabled = atToggle?.checked;
 
@@ -2008,12 +2011,14 @@ function setupEventListeners() {
           }
         }
 
-        // Active sung piano key indicator
-        if (atPianoStrip) {
-          atPianoStrip.querySelectorAll('.piano-key').forEach((k) => {
-            const note = parseInt(k.getAttribute('data-note'), 10);
-            k.classList.toggle('current-sung', note === data.noteIndex);
-          });
+        // Active sung piano key indicator (only touch the DOM when the note changes)
+        if (atPianoStrip && lastSungNote !== data.noteIndex) {
+          lastSungNote = data.noteIndex;
+          if (!pianoKeyEls) pianoKeyEls = Array.from(atPianoStrip.querySelectorAll('.piano-key'));
+          for (let i = 0; i < pianoKeyEls.length; i++) {
+            const k = pianoKeyEls[i];
+            k.classList.toggle('current-sung', parseInt(k.getAttribute('data-note'), 10) === data.noteIndex);
+          }
         }
       } else {
         // Natural ease back to center when unvoiced
@@ -2024,7 +2029,8 @@ function setupEventListeners() {
           atStatusBadge.className = 'at-status-badge';
           atStatusBadge.textContent = isEnabled ? 'LOCKING' : 'READY';
         }
-        if (atPianoStrip) {
+        if (atPianoStrip && lastSungNote !== null) {
+          lastSungNote = null;
           atPianoStrip.querySelectorAll('.current-sung').forEach((k) => k.classList.remove('current-sung'));
         }
       }
