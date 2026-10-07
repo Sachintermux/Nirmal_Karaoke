@@ -2,8 +2,8 @@
 > Browser-based online karaoke and real-time voice studio. Sing with synced lyrics, change your voice with 30+ live effects and Auto-Tune, use a hotkey soundboard, host live duets, stream to YouTube/Twitch/Facebook, and send your sound to Zoom, Meet, Teams or Discord via a virtual audio cable. No install.
 
 ## Key pages
-- [Home](https://YOUR-DOMAIN.com/): overview, features, FAQ
-- [Studio](https://YOUR-DOMAIN.com/studio): the web app
-- [Voice changer for Zoom, Meet, Teams and Discord](https://YOUR-DOMAIN.com/voice-changer-for-zoom-discord): step-by-step guide using VB-Cable or BlackHole
-- [About](https://YOUR-DOMAIN.com/about)
-- [Privacy](https://YOUR-DOMAIN.com/privacy)
+- [Home](https://nirmalkaraoke.site/): overview, features, FAQ
+- [Studio](https://nirmalkaraoke.site/studio): the web app
+- [Voice changer for Zoom, Meet, Teams and Discord](https://nirmalkaraoke.site/voice-changer-for-zoom-discord): step-by-step guide using VB-Cable or BlackHole
+- [About](https://nirmalkaraoke.site/about)
+- [Privacy](https://nirmalkaraoke.site/privacy)

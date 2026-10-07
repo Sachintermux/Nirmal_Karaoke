@@ -12,7 +12,12 @@
  * home modal). While the popup is closed nothing listens to keydown, so soundboard hotkeys are untouched.
  * Idle detection uses keyup (an observer that cannot pre-empt a hotkey) plus pointerdown.
  *
- * Storage: localStorage "nk_support" = { lastShown, dismissCount, coffeeAt, stripHidden }.
+ * Phones also get a small floating "Buy me a coffee" button after PILL_AFTER_SEC of cumulative visible time on the
+ * site (counted across pages in sessionStorage "nkd_vis"). It is a plain upi:// link, so tapping it opens the
+ * payment-app chooser directly. It can be hidden with its own x (back after 7 days) and never shows for 30 days
+ * after a coffee/copy.
+ *
+ * Storage: localStorage "nk_support" = { lastShown, dismissCount, coffeeAt, stripHidden, pillHiddenAt }.
  */
 (function () {
   try {
@@ -25,6 +30,7 @@
     var UPI_ID = 'nirmalkaraoke@ybl';
     var MAIL = 'mailto:sachindss2000@gmail.com?subject=Nirmal%20Karaoke';
     var DAY = 86400000;
+    var PILL_AFTER_SEC = 300; // 5 minutes of visible time before the phone button appears
 
     var path = location.pathname;
     var isHome = /^\/(index\.html)?$/.test(path);
@@ -250,7 +256,61 @@
       }
     }
 
-    function init() { try { wireStatic(); startAuto(); } catch (e) { /* silent */ } }
+    // ── phone button: floating "Buy me a coffee" that opens the payment apps directly ──
+    var pillEl = null;
+    function readVis() {
+      try { return parseInt(sessionStorage.getItem('nkd_vis') || '0', 10) || 0; } catch (e) { return 0; }
+    }
+    function writeVis(n) {
+      try { sessionStorage.setItem('nkd_vis', String(n)); } catch (e) { /* ignore */ }
+    }
+    function pillEligible() {
+      var o = read(), now = Date.now();
+      if (o.coffeeAt && now - o.coffeeAt < 30 * DAY) return false;
+      if (o.pillHiddenAt && now - o.pillHiddenAt < 7 * DAY) return false;
+      return true;
+    }
+    function hidePill() {
+      if (pillEl && pillEl.parentNode) pillEl.parentNode.removeChild(pillEl);
+      pillEl = null;
+    }
+    function showPill() {
+      if (pillEl) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'nkd-pill' + (isStudio ? ' nkd-pill--studio' : '');
+      var a = document.createElement('a');
+      a.className = 'nkd-btn';
+      a.href = UPI;
+      a.textContent = '☕ Buy me a coffee';
+      a.addEventListener('click', function () { noteCoffee(); setTimeout(hidePill, 400); });
+      var x = document.createElement('button');
+      x.className = 'nkd-pill-x';
+      x.type = 'button';
+      x.setAttribute('aria-label', 'Hide the Buy me a coffee button');
+      x.textContent = '✕';
+      x.addEventListener('click', function () { patch(function (o) { o.pillHiddenAt = Date.now(); }); hidePill(); });
+      wrap.appendChild(a);
+      wrap.appendChild(x);
+      document.body.appendChild(wrap);
+      pillEl = wrap;
+    }
+    function startPill() {
+      if (!(isHome || isStudio)) return;
+      if (navigator.webdriver || window.top !== window.self) return;
+      if (!window.matchMedia || !window.matchMedia('(hover:none) and (pointer:coarse)').matches) return; // phones/tablets only
+      if (!storageOk() || !pillEligible()) return;
+      var secs = readVis();
+      var t = setInterval(function () {
+        try {
+          if (document.hidden) return;
+          secs += 5;
+          writeVis(secs);
+          if (secs >= PILL_AFTER_SEC) { clearInterval(t); if (pillEligible()) showPill(); }
+        } catch (e) { clearInterval(t); }
+      }, 5000);
+    }
+
+    function init() { try { wireStatic(); startAuto(); startPill(); } catch (e) { /* silent */ } }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
   } catch (e) { /* silent: the support message must never affect the site */ }
 })();

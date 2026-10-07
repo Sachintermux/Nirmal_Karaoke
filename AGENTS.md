@@ -54,7 +54,7 @@ Shared/real-time state belongs in `server.js` (Render, single process) or in Liv
 | `studio.html` | **Studio / host** (was index.html). Mixer, effects, Auto-Tune, lyrics, library, Go Live, lobby modal, multistream, call output. Driven by `js/app.js`. |
 | `audience.html` | Viewer + duet guest page (very large inline `<script type="module">`, ~3000 lines). Connects to a room by `?room=<id>&role=audience|duet&autoJoin=1`. |
 | `users.html` | Standalone "Live Singers" lobby (online users, invite, watch/join). |
-| `about/`, `privacy/`, `terms/`, `contact/`, `voice-changer-for-zoom-discord/` (each `index.html`) | Static info pages for SEO / AdSense trust. Use `/css/style.css` + `home.css` + `pages.css` (`nk-*` classes) and only `/js/home.js` (burger menu). No studio JS, no donation UI. Canonicals/sitemap use the placeholder `https://YOUR-DOMAIN.com`: replace it everywhere (`grep -r YOUR-DOMAIN`) once the real domain is known. |
+| `about/`, `privacy/`, `terms/`, `contact/`, `voice-changer-for-zoom-discord/` (each `index.html`) | Static info pages for SEO / AdSense trust. Use `/css/style.css` + `home.css` + `pages.css` (`nk-*` classes) and only `/js/home.js` (burger menu). No studio JS, no donation UI. Canonicals, sitemap, OG tags and JSON-LD use the production domain `https://nirmalkaraoke.site`; if the domain changes, `grep -r nirmalkaraoke.site` and replace. |
 | `googleb691adf1eb31de8a.html`, `sitemap.xml`, `robots.txt` | SEO/verification files. |
 
 Mobile uses a tabbed layout (`.mobile-screen` sections with `data-screen-group`, switched by
@@ -225,6 +225,8 @@ music search work locally; LiveKit does not (no credentials).
   after 5 min visible and 10 s without click/key. Caps in `localStorage.nk_support` `{lastShown, dismissCount, coffeeAt, stripHidden}`:
   7 days after a dismissal, never after 3, 30 days after copy/coffee, once per session. The script must **never** add a global
   `keydown` listener except while the popup is open (soundboard hotkeys). Idle detection uses `keyup` + `pointerdown`.
+  Phones (`(hover:none) and (pointer:coarse)`) also get a floating "Buy me a coffee" `upi://` link after `PILL_AFTER_SEC` (300 s) of
+  cumulative visible time (`sessionStorage.nkd_vis`, counted across pages); its own x sets `nk_support.pillHiddenAt` (7 days).
 
 ## Known limitations / ideas
 

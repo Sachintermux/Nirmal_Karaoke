@@ -74,6 +74,15 @@
   .nkd-pop--card .nkd-later{justify-self:start;padding-left:0}
 }
 
+/* Phone button (appears after ~5 min of use). Small, bottom-right, above the studio's tab bar. */
+.nkd-pill{position:fixed;z-index:155;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:2px;padding:4px;border:1px solid var(--nkd-line);border-radius:999px;background:#0d1422;box-shadow:0 10px 30px rgba(0,0,0,.5);animation:nkd-in .25s ease-out}
+.nkd-pill--studio{bottom:calc(80px + env(safe-area-inset-bottom,0px))}
+.nkd-pill .nkd-btn{border-radius:999px;min-height:40px;padding:8px 14px}
+.nkd-pill-x{width:34px;height:34px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:var(--nkd-muted);font-size:14px;cursor:pointer}
+.nkd-pill-x:hover{color:var(--nkd-text);background:rgba(255,255,255,.08)}
+.nkd-pill-x:focus-visible{outline:2px solid var(--nkd-accent-hi);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.nkd-pill{animation:none}}
+
 @keyframes nkd-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.nkd-card{animation:none}}
 
