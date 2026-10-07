@@ -2082,7 +2082,10 @@
     if (audioCtx.state === 'suspended') await audioCtx.resume();
     rawMicStream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        channelCount: { ideal: 2 },
+        // A single voice: capture mono (the graph pins the source to 1 channel
+        // anyway) so the browser's echo-cancel/noise-suppress stage processes
+        // one channel instead of two.
+        channelCount: { ideal: 1 },
         sampleRate: { ideal: 48000 },
         sampleSize: { ideal: 16 },
         latency: { ideal: 0.01 },

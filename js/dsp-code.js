@@ -213,20 +213,30 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
 
   // Get frequency search bounds based on Pro X input vocal range
   getPitchBounds() {
+    // Cached per input type so the audio thread does not allocate on every hop.
+    if (this._boundsType === this.inputType && this._bounds) return this._bounds;
     const sr = sampleRate || 48000;
+    let b;
     switch (this.inputType) {
       case 'soprano':
-        return { minLag: Math.floor(sr / 1150), maxLag: Math.ceil(sr / 200) };
+        b = { minLag: Math.floor(sr / 1150), maxLag: Math.ceil(sr / 200) };
+        break;
       case 'lowMale':
-        return { minLag: Math.floor(sr / 400), maxLag: Math.ceil(sr / 65) };
+        b = { minLag: Math.floor(sr / 400), maxLag: Math.ceil(sr / 65) };
+        break;
       case 'instrument':
-        return { minLag: Math.floor(sr / 1400), maxLag: Math.ceil(sr / 50) };
+        b = { minLag: Math.floor(sr / 1400), maxLag: Math.ceil(sr / 50) };
+        break;
       case 'bassInst':
-        return { minLag: Math.floor(sr / 350), maxLag: Math.ceil(sr / 30) };
+        b = { minLag: Math.floor(sr / 350), maxLag: Math.ceil(sr / 30) };
+        break;
       case 'altoTenor':
       default:
-        return { minLag: Math.floor(sr / 750), maxLag: Math.ceil(sr / 125) };
+        b = { minLag: Math.floor(sr / 750), maxLag: Math.ceil(sr / 125) };
     }
+    this._boundsType = this.inputType;
+    this._bounds = b;
+    return b;
   }
 
   // McLeod / Normalized Square Difference Function (NSDF) pitch estimation
@@ -545,7 +555,10 @@ class AutoTuneProXProcessor extends AudioWorkletProcessor {
       this.inBufIdx = (this.inBufIdx + 1) % this.analysisSize;
 
       this.hopCounter++;
-      if (this.hopCounter >= this.hopSize) {
+      // While auto-tune is bypassed the analysis only feeds the pitch HUD, which
+      // updates at ~35 Hz, so a 4x longer hop (~47 Hz) costs nothing visible but
+      // removes most of the always-on pitch-search load from the audio thread.
+      if (this.hopCounter >= (this.enabled ? this.hopSize : this.hopSize * 4)) {
         this.hopCounter = 0;
         const analysis = this.detectPitch(this.inBuffer, this.inBufIdx);
 
