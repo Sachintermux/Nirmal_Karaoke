@@ -460,7 +460,7 @@ export class FaceFilterEngine {
         this.updateFaceTracking();
       }
     } else {
-      ctx.fillStyle = '#0a0812';
+      ctx.fillStyle = '#0a0d12';
       ctx.fillRect(0, 0, w, h);
     }
 
@@ -916,8 +916,8 @@ export class FaceFilterEngine {
       const bx = cx + dir * (fw * 0.28);
       const by = cy + fh * 0.12;
       const grad = ctx.createRadialGradient(bx, by, 0, bx, by, blushR);
-      grad.addColorStop(0, 'rgba(255, 105, 180, 0.45)');
-      grad.addColorStop(1, 'rgba(255, 105, 180, 0)');
+      grad.addColorStop(0, 'rgba(39, 169, 255, 0.45)');
+      grad.addColorStop(1, 'rgba(39, 169, 255, 0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(bx, by, blushR, 0, Math.PI * 2);
@@ -1096,10 +1096,10 @@ export class FaceFilterEngine {
     ctx.translate(cx, eyeY);
 
     // Neon Cyber Visor
-    ctx.shadowColor = '#00f0ff';
+    ctx.shadowColor = '#52c4ff';
     ctx.shadowBlur = 18;
-    ctx.fillStyle = 'rgba(0, 240, 255, 0.25)';
-    ctx.strokeStyle = '#00f0ff';
+    ctx.fillStyle = 'rgba(82, 196, 255, 0.25)';
+    ctx.strokeStyle = '#52c4ff';
     ctx.lineWidth = 3;
 
     // Angled sci-fi polygon
@@ -1116,8 +1116,8 @@ export class FaceFilterEngine {
 
     // Target reticle on one eye
     const retX = vw * 0.22;
-    ctx.strokeStyle = '#ff007f';
-    ctx.shadowColor = '#ff007f';
+    ctx.strokeStyle = '#27a9ff';
+    ctx.shadowColor = '#27a9ff';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(retX, 0, 14, 0, Math.PI * 2);
@@ -1128,7 +1128,7 @@ export class FaceFilterEngine {
     ctx.stroke();
 
     // HUD Tech Text
-    ctx.fillStyle = '#00f0ff';
+    ctx.fillStyle = '#52c4ff';
     ctx.font = '700 9px monospace';
     ctx.fillText('STAGE://AUDIO.ACTIVE', -vw * 0.4, -vh * 0.15);
     ctx.fillText('TARGET: LOCKED 100%', -vw * 0.4, vh * 0.25);
@@ -1153,8 +1153,8 @@ export class FaceFilterEngine {
       const bx = cx + dir * (fw * 0.26);
       const by = cy + fh * 0.08;
       const grad = ctx.createRadialGradient(bx, by, 0, bx, by, blushR);
-      grad.addColorStop(0, 'rgba(255, 75, 130, 0.42)');
-      grad.addColorStop(1, 'rgba(255, 75, 130, 0)');
+      grad.addColorStop(0, 'rgba(39, 169, 255, 0.42)');
+      grad.addColorStop(1, 'rgba(39, 169, 255, 0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(bx, by, blushR, 0, Math.PI * 2);
@@ -1172,7 +1172,7 @@ export class FaceFilterEngine {
       const ang = time * 1.2 + (i * Math.PI * 0.5);
       const hx = cx + Math.cos(ang) * (fw * 0.52);
       const hy = cy - fh * 0.25 + Math.sin(ang) * (fh * 0.35);
-      this.drawMiniHeart(ctx, hx, hy, 8, 'rgba(255, 105, 180, 0.7)');
+      this.drawMiniHeart(ctx, hx, hy, 8, 'rgba(39, 169, 255, 0.7)');
     }
   }
 
@@ -1237,7 +1237,7 @@ export class FaceFilterEngine {
 
     ctx.save();
     ctx.lineWidth = 6;
-    const colors = ['#ff0055', '#ff9900', '#ffee00', '#00ff66', '#00ccff', '#aa00ff'];
+    const colors = ['#ff0055', '#ff9900', '#ffee00', '#00ff66', '#00ccff', '#2f7cf6'];
     colors.forEach((color, i) => {
       ctx.strokeStyle = color;
       ctx.beginPath();

@@ -203,7 +203,7 @@
           text-transform: uppercase;
           letter-spacing: 1px;
         }
-        .badge-listen { background: rgba(0, 229, 255, 0.15); color: var(--accent-blue); border: 1px solid var(--accent-blue); }
+        .badge-listen { background: rgba(79, 195, 255, 0.15); color: var(--accent-blue); border: 1px solid var(--accent-blue); }
         .badge-duet { background: rgba(0, 255, 136, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
 
         /* =========================================================================
@@ -217,8 +217,8 @@
           margin: 6px 0;
           border-radius: 12px;
           overflow: hidden;
-          background: radial-gradient(ellipse 70% 60% at 50% 80%, rgba(0, 240, 255, 0.06), transparent 75%), linear-gradient(180deg, rgba(8, 5, 16, 0.4), rgba(4, 2, 8, 0.7));
-          border: 1px solid rgba(0, 240, 255, 0.15);
+          background: radial-gradient(ellipse 70% 60% at 50% 80%, rgba(82, 196, 255, 0.06), transparent 75%), linear-gradient(180deg, rgba(7, 10, 16, 0.4), rgba(3, 5, 8, 0.7));
+          border: 1px solid rgba(82, 196, 255, 0.15);
           box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
           display: none;
         }
@@ -243,7 +243,7 @@
           border-radius: 8px;
           margin: 0;
           scrollbar-width: thin;
-          scrollbar-color: rgba(0, 229, 255, 0.4) transparent;
+          scrollbar-color: rgba(79, 195, 255, 0.4) transparent;
         }
         .lyrics-content-audience {
           display: flex;
@@ -271,7 +271,7 @@
         .lyric-line-aud.active {
           color: #ffffff;
           font-weight: 800;
-          text-shadow: 0 0 16px rgba(0, 229, 255, 0.6), 0 0 24px rgba(168, 85, 247, 0.4);
+          text-shadow: 0 0 16px rgba(79, 195, 255, 0.6), 0 0 24px rgba(47, 124, 246, 0.4);
           transform: scale(1.05);
         }
 
@@ -319,7 +319,7 @@
           font-size: 0.72rem;
           line-height: 1.4;
           scrollbar-width: thin;
-          scrollbar-color: rgba(0, 229, 255, 0.3) transparent;
+          scrollbar-color: rgba(79, 195, 255, 0.3) transparent;
         }
 
         /* 5. GUEST VOICE / EFFECTS PANEL */
@@ -357,8 +357,8 @@
           bottom: 10px;
           right: 10px;
           z-index: 10;
-          background: rgba(0, 229, 255, 0.85);
-          color: #07060d;
+          background: rgba(79, 195, 255, 0.85);
+          color: #07090d;
           border: 1px solid rgba(255, 255, 255, 0.6);
           border-radius: 20px;
           padding: 4px 10px;
@@ -373,7 +373,7 @@
           transition: transform 0.2s, background 0.2s;
         }
         .btn-follow-lyrics-aud:hover {
-          background: rgba(0, 229, 255, 1);
+          background: rgba(79, 195, 255, 1);
           transform: translateY(-1px);
         }
 
@@ -427,7 +427,7 @@
         }
         .chat-msg-user { color: #cbd5e1; }
         .chat-msg-host { color: var(--accent-blue); font-weight: 700; }
-        .chat-msg-req { color: var(--accent-purple); font-weight: 800; background: rgba(168,85,247,0.1); padding: 2px 6px; border-radius: 4px; }
+        .chat-msg-req { color: var(--accent-purple); font-weight: 800; background: rgba(47,124,246,0.1); padding: 2px 6px; border-radius: 4px; }
         .search-pick-item {
           padding: 6px 8px;
           background: var(--bg-dark);
@@ -454,7 +454,7 @@
         }
         .preset-grid-guest .preset-btn .emoji { font-size: 20px; line-height:1; }
         .preset-grid-guest .preset-btn:hover { transform:translateY(-1px); border-color:var(--accent-purple); color:#fff; }
-        .preset-grid-guest .preset-btn.active { border-color:var(--accent-purple); color:#fff; background:rgba(168,85,247,.16); box-shadow:0 0 14px rgba(168,85,247,.15); }
+        .preset-grid-guest .preset-btn.active { border-color:var(--accent-purple); color:#fff; background:rgba(47,124,246,.16); box-shadow:0 0 14px rgba(47,124,246,.15); }
         .preset-grid-guest .preset-btn:disabled { opacity:.42; filter:grayscale(.25); cursor:not-allowed; transform:none; }
         .preset-grid-guest .preset-btn.is-disabled { opacity:.42; filter:grayscale(.25); cursor:not-allowed; transform:none; }
         @media (max-width:420px){ .preset-grid-guest{grid-template-columns:repeat(2,minmax(0,1fr));} }
@@ -572,6 +572,20 @@
 <button type="button" class="preset-btn" data-preset="husky" title="Breathy, smoky alto"><span class="emoji">🌙</span><span>Husky</span></button>
 <button type="button" class="preset-btn" data-preset="diva" title="Powerful, projecting diva"><span class="emoji">👑</span><span>Diva</span></button>
 <button type="button" class="preset-btn" data-preset="popstar" title="Glossy, airy pop vocal"><span class="emoji">⭐</span><span>Pop Star</span></button>
+<div style="grid-column:1/-1;font-size:.6rem;color:var(--text-dim);margin-top:4px;">Effect voices</div>
+<button type="button" class="preset-btn" data-preset="drone" title="Metallic ring-modulated robot"><span class="emoji">🔩</span><span>Drone</span></button>
+<button type="button" class="preset-btn" data-preset="cyborg" title="Half human, half machine"><span class="emoji">🦾</span><span>Cyborg</span></button>
+<button type="button" class="preset-btn" data-preset="underwater" title="Wobbly, muffled, underwater"><span class="emoji">🌊</span><span>Underwater</span></button>
+<button type="button" class="preset-btn" data-preset="ghost" title="Haunting echo and wobble"><span class="emoji">👻</span><span>Ghost</span></button>
+<button type="button" class="preset-btn" data-preset="helium" title="Very high, squeaky"><span class="emoji">🎈</span><span>Helium</span></button>
+<button type="button" class="preset-btn" data-preset="demon" title="Deep, growling, echoing"><span class="emoji">😈</span><span>Demon</span></button>
+<button type="button" class="preset-btn" data-preset="villain" title="Dark, menacing low voice"><span class="emoji">🦹</span><span>Villain</span></button>
+<button type="button" class="preset-btn" data-preset="monster" title="Huge, growling"><span class="emoji">👹</span><span>Monster</span></button>
+<button type="button" class="preset-btn" data-preset="megaphone" title="Loud-hailer"><span class="emoji">📢</span><span>Megaphone</span></button>
+<button type="button" class="preset-btn" data-preset="telephone" title="Narrow band, crunchy line"><span class="emoji">☎️</span><span>Telephone</span></button>
+<button type="button" class="preset-btn" data-preset="retro8bit" title="Retro chiptune crunch"><span class="emoji">👾</span><span>8-bit</span></button>
+<button type="button" class="preset-btn" data-preset="cave" title="Big echoing space"><span class="emoji">🕳️</span><span>Cave</span></button>
+<button type="button" class="preset-btn" data-preset="nervous" title="Trembling voice"><span class="emoji">😰</span><span>Nervous</span></button>
 </div>
 </div>
 </div>
@@ -591,7 +605,7 @@
 </div>
 <div style="display:flex; gap:6px; position:relative; flex-wrap:wrap;">
   <input id="songSearchRequestInput" placeholder="Search song to request..." style="flex:1 1 180px; min-width:0; box-sizing:border-box; margin:0; padding:8px; min-height:38px; border-color:var(--accent-purple);" type="text"/>
-  <button class="btn" id="btnSearchSongRequest" style="width:auto; min-height:38px; margin:0; padding:0 12px; font-size:0.75rem; border-color:var(--accent-purple); color:var(--accent-purple); background:rgba(168,85,247,0.1);">🔍 Find &amp; Request</button>
+  <button class="btn" id="btnSearchSongRequest" style="width:auto; min-height:38px; margin:0; padding:0 12px; font-size:0.75rem; border-color:var(--accent-purple); color:var(--accent-purple); background:rgba(47,124,246,0.1);">🔍 Find &amp; Request</button>
 </div>
 <div id="songSearchSuggestions" style="max-height:100px; overflow-y:auto; display:none; margin-top:4px; background:var(--bg-dark); border:1px solid var(--border); border-radius:4px; padding:4px;"></div>
 </div>
@@ -608,6 +622,7 @@
   import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=31';
   import { PresenceManager } from './js/presence-manager.js?v=31';
   import { ensureSingerName } from './js/name-prompt.js?v=1';
+  import { createVoiceModStage } from './js/voice-fx.js?v=1';
   import { acquireWakeLock, releaseWakeLock } from './js/wake-lock.js?v=31';
   import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './js/media-session.js?v=31';
 
@@ -927,7 +942,7 @@
 
       // Cyber Horizon Baseline
       ctx.beginPath();
-      ctx.strokeStyle = 'rgba(0, 240, 255, 0.22)';
+      ctx.strokeStyle = 'rgba(82, 196, 255, 0.22)';
       ctx.lineWidth = 1.5;
       ctx.moveTo(0, baseLine);
       ctx.lineTo(w, baseLine);
@@ -979,15 +994,15 @@
       if (!this._cachedGrad || this._cachedH !== h) {
         this._cachedH = h;
         this._cachedGrad = ctx.createLinearGradient(0, baseLine - maxBarH, 0, baseLine);
-        this._cachedGrad.addColorStop(0, '#00f0ff');
-        this._cachedGrad.addColorStop(0.32, '#a855f7');
-        this._cachedGrad.addColorStop(0.72, '#ff007f');
-        this._cachedGrad.addColorStop(1, '#ff3366');
+        this._cachedGrad.addColorStop(0, '#7fdcff');
+        this._cachedGrad.addColorStop(0.32, '#27a9ff');
+        this._cachedGrad.addColorStop(0.72, '#2f7cf6');
+        this._cachedGrad.addColorStop(1, '#5b5cf0');
 
         this._cachedReflGrad = ctx.createLinearGradient(0, baseLine, 0, baseLine + Math.round(maxBarH * 0.35));
-        this._cachedReflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.22)');
-        this._cachedReflGrad.addColorStop(0.5, 'rgba(168, 85, 247, 0.10)');
-        this._cachedReflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+        this._cachedReflGrad.addColorStop(0, 'rgba(39, 169, 255, 0.22)');
+        this._cachedReflGrad.addColorStop(0.5, 'rgba(47, 124, 246, 0.10)');
+        this._cachedReflGrad.addColorStop(1, 'rgba(82, 196, 255, 0.0)');
       }
 
       const hasRoundRect = typeof ctx.roundRect === 'function';
@@ -1031,7 +1046,7 @@
       if (hasBars) ctx.fill();
 
       // 3. Draw Floating Neon Peak Caps (batched single path)
-      ctx.fillStyle = '#00ffff';
+      ctx.fillStyle = '#7fdcff';
       const peakDotH = Math.max(2, Math.min(barWidth * 0.42, 3));
       ctx.beginPath();
       let hasPeaks = false;
@@ -2133,13 +2148,13 @@
   if (params.get('autoJoin') === '1' && roomId) {
     const overlay = document.createElement('div');
     overlay.id = 'autoJoinGestureModal';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(4,2,8,0.85);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(3,5,8,0.85);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;';
     overlay.innerHTML = `
-      <div style="background:linear-gradient(145deg, #1c152b, #0f0b18); border:1px solid #ff007f; border-radius:20px; padding:28px 22px; max-width:380px; width:100%; box-shadow:0 0 35px rgba(255,0,127,0.35); text-align:center;">
+      <div style="background:linear-gradient(145deg, #181f2b, #0d1118); border:1px solid #27a9ff; border-radius:20px; padding:28px 22px; max-width:380px; width:100%; box-shadow:0 0 35px rgba(39,169,255,0.35); text-align:center;">
         <div style="font-size:3rem; margin-bottom:12px;">🎤</div>
         <h2 style="color:#fff; font-size:1.25rem; font-weight:800; margin:0 0 8px;">Duet Invitation Accepted!</h2>
         <p style="color:var(--text-dim, #a39cb5); font-size:0.85rem; line-height:1.4; margin:0 0 20px;">Tap below to connect your microphone and join the host on the live stage.</p>
-        <button id="btnTriggerGestureJoin" class="button button-live" style="width:100%; min-height:48px; font-size:1rem; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:#ff007f; border:none; border-radius:12px; color:#fff;">
+        <button id="btnTriggerGestureJoin" class="button button-live" style="width:100%; min-height:48px; font-size:1rem; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:#27a9ff; border:none; border-radius:12px; color:#fff;">
           ● Join Live Stage Now
         </button>
       </div>
@@ -2273,6 +2288,7 @@
     dspNodes.waveshaper.oversample = '4x';
     dspNodes.fxBypassGain = audioCtx.createGain(); dspNodes.fxBypassGain.gain.value = 1;
     dspNodes.fxActiveGain = audioCtx.createGain(); dspNodes.fxActiveGain.gain.value = 0;
+    dspNodes.voiceMod = createVoiceModStage(audioCtx);
     dspNodes.dest = audioCtx.createMediaStreamDestination();
     try {
       dspNodes.dest.channelCount = 2;
@@ -2282,7 +2298,9 @@
 
     micSource.connect(micGain);
     micGain.connect(dspNodes.fxBypassGain).connect(dspNodes.dest);
-    micGain.connect(dspNodes.fxActiveGain).connect(dspNodes.pitcher).connect(dspNodes.hp).connect(dspNodes.lp).connect(dspNodes.formantEq).connect(dspNodes.waveshaper).connect(dspNodes.dest);
+    micGain.connect(dspNodes.fxActiveGain).connect(dspNodes.pitcher).connect(dspNodes.hp).connect(dspNodes.lp).connect(dspNodes.formantEq).connect(dspNodes.waveshaper);
+    dspNodes.waveshaper.connect(dspNodes.voiceMod.input);
+    dspNodes.voiceMod.output.connect(dspNodes.dest);
 
     const processedTrack = dspNodes.dest.stream.getAudioTracks()[0];
     if (!processedTrack) throw new Error('Could not create the processed microphone stream. Please reload and try again.');
@@ -2580,6 +2598,7 @@
     }
     if (dspNodes.pitcher && p.isBypass) dspNodes.pitcher.parameters.get('pitch')?.setTargetAtTime(1, t, .01);
     if (dspNodes.waveshaper) dspNodes.waveshaper.curve = p.drive > 0 ? makeGuestDistortionCurve(p.drive * 1.5) : null;
+    try { dspNodes.voiceMod?.apply(p.isBypass ? {} : p); } catch (_) {}
     return true;
   }
 
@@ -2923,16 +2942,16 @@
 
     const overlay = document.createElement('div');
     overlay.id = 'hostDuetInviteModal';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(4,2,8,0.85);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(3,5,8,0.85);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;';
     overlay.innerHTML = `
-      <div style="background:linear-gradient(145deg, #1c152b, #0f0b18); border:1px solid #ff007f; border-radius:20px; padding:28px 22px; max-width:380px; width:100%; box-shadow:0 0 35px rgba(255,0,127,0.4); text-align:center;">
+      <div style="background:linear-gradient(145deg, #181f2b, #0d1118); border:1px solid #27a9ff; border-radius:20px; padding:28px 22px; max-width:380px; width:100%; box-shadow:0 0 35px rgba(39,169,255,0.4); text-align:center;">
         <div style="font-size:3rem; margin-bottom:12px;">🎤</div>
         <h2 style="color:#fff; font-size:1.25rem; font-weight:800; margin:0 0 8px;">Duet Stage Invitation!</h2>
         <p style="color:var(--text-dim, #a39cb5); font-size:0.88rem; line-height:1.45; margin:0 0 20px;">
-          <strong style="color:#00e5ff;">${escapeHtml(hostName || 'The Host')}</strong> has invited you to join the stage as a duet singer!
+          <strong style="color:#4fc3ff;">${escapeHtml(hostName || 'The Host')}</strong> has invited you to join the stage as a duet singer!
         </p>
         <div style="display:flex; flex-direction:column; gap:10px;">
-          <button id="btnAcceptDuetInvite" style="width:100%; min-height:46px; font-size:0.95rem; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:linear-gradient(135deg, #ff007f, #9b51e0); border:none; border-radius:12px; color:#fff; box-shadow:0 4px 15px rgba(255,0,127,0.3);">
+          <button id="btnAcceptDuetInvite" style="width:100%; min-height:46px; font-size:0.95rem; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:linear-gradient(135deg, #27a9ff, #2f7cf6); border:none; border-radius:12px; color:#fff; box-shadow:0 4px 15px rgba(39,169,255,0.3);">
             🎤 Accept & Sing Now
           </button>
           <button id="btnDeclineDuetInvite" style="width:100%; min-height:40px; font-size:0.85rem; font-weight:600; cursor:pointer; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:12px; color:#cbd5e1;">

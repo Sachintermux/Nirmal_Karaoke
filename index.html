@@ -148,7 +148,7 @@
             </div>
 
             <!-- EXPANDABLE FIND MUSIC & LIVE AUTOSEARCH PANEL -->
-            <div class="expand-box" id="musicSearchBox" style="display:none; margin:10px 0 14px; border-color:rgba(0, 229, 255, 0.35); box-shadow:0 4px 18px rgba(0,0,0,0.35);">
+            <div class="expand-box" id="musicSearchBox" style="display:none; margin:10px 0 14px; border-color:rgba(79, 195, 255, 0.35); box-shadow:0 4px 18px rgba(0,0,0,0.35);">
                 <div class="search-row" style="position:relative;">
                     <input id="musicSearchInput" placeholder="Search song, artist, film... (live autosearch)" autocomplete="off">
                     <button id="btnClearMusicSearch" style="position:absolute; right:74px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--muted, #8e82a6); font-size:14px; cursor:pointer; padding:4px 8px; display:none;" title="Clear search">✕</button>
@@ -229,16 +229,51 @@
                 <button class="preset-btn" data-preset="diva" title="Powerful, projecting diva">👑<span>Diva</span></button>
                 <button class="preset-btn" data-preset="popstar" title="Glossy, airy pop vocal">⭐<span>Pop Star</span></button>
             </div>
-            <div class="soundboard">
-                <button class="sfx-btn" id="sfxCheer">👏 Cheer</button>
-                <button class="sfx-btn" id="sfxAirhorn">🎺 Airhorn</button>
-                <button class="sfx-btn" id="sfxDrumroll">🥁 Drumroll</button>
-                <button class="sfx-btn" id="sfxBeatdrop">💥 808 Drop</button>
-                <button class="sfx-btn" id="sfxGuitar">🎸 Chime</button>
-                <button class="sfx-btn" id="sfxSparkle">✨ Sparkle</button>
-                <button class="sfx-btn" id="sfxScratch">🎚️ Scratch</button>
-                <button class="sfx-btn" id="sfxBleep">🔇 Bleep</button>
+            <p class="eyebrow" style="margin:16px 0 0">CUSTOM VOICE</p>
+            <p class="help-text" style="margin:4px 0 0">Build your own voice. Moving a slider switches to it.</p>
+            <div class="custom-voice" id="customVoiceBox">
+                <button class="preset-btn" data-preset="custom" title="Your own voice, shaped with the sliders">🎛️<span>Custom</span></button>
+                <div class="custom-voice-sliders">
+                    <div class="control"><label>Pitch <b id="valCvPitch">0 st</b></label><input id="cvPitch" type="range" min="-12" max="12" step="0.5" value="0"></div>
+                    <div class="control"><label>Body ⇄ Presence <b id="valCvTone">0 dB</b></label><input id="cvTone" type="range" min="-6" max="6" step="0.5" value="0"></div>
+                    <div class="control"><label>Grit <b id="valCvGrit">0%</b></label><input id="cvGrit" type="range" min="0" max="100" step="1" value="0"></div>
+                    <div class="control"><label>Brightness limit <b id="valCvBright">16 kHz</b></label><input id="cvBright" type="range" min="2000" max="20000" step="500" value="16000"></div>
+                    <div class="control"><label>Echo <b id="valCvEcho">0%</b></label><input id="cvEcho" type="range" min="0" max="100" step="1" value="0"></div>
+                </div>
             </div>
+            <p class="eyebrow" style="margin:16px 0 0">EFFECT VOICES</p>
+            <p class="help-text" style="margin:4px 0 0">Robot, creature and sound-design voices from the voice modulator (ring mod, vibrato, echo, bit-crush).</p>
+            <div class="preset-grid preset-grid-characters">
+                <button class="preset-btn" data-preset="drone" title="Metallic ring-modulated robot">🔩<span>Drone</span></button>
+                <button class="preset-btn" data-preset="cyborg" title="Half human, half machine">🦾<span>Cyborg</span></button>
+                <button class="preset-btn" data-preset="underwater" title="Wobbly, muffled, underwater">🌊<span>Underwater</span></button>
+                <button class="preset-btn" data-preset="ghost" title="Haunting echo and wobble">👻<span>Ghost</span></button>
+                <button class="preset-btn" data-preset="helium" title="Very high, squeaky">🎈<span>Helium</span></button>
+                <button class="preset-btn" data-preset="demon" title="Deep, growling, echoing">😈<span>Demon</span></button>
+                <button class="preset-btn" data-preset="villain" title="Dark, menacing low voice">🦹<span>Villain</span></button>
+                <button class="preset-btn" data-preset="monster" title="Huge, growling">👹<span>Monster</span></button>
+                <button class="preset-btn" data-preset="megaphone" title="Loud-hailer">📢<span>Megaphone</span></button>
+                <button class="preset-btn" data-preset="telephone" title="Narrow band, crunchy line">☎️<span>Telephone</span></button>
+                <button class="preset-btn" data-preset="retro8bit" title="Retro chiptune crunch">👾<span>8-bit</span></button>
+                <button class="preset-btn" data-preset="cave" title="Big echoing space">🕳️<span>Cave</span></button>
+                <button class="preset-btn" data-preset="nervous" title="Trembling voice">😰<span>Nervous</span></button>
+            </div>
+        </section>
+
+        <!-- SOUNDBOARD: built-in sounds + your own uploads, with hotkeys (rendered by js/soundboard.js) -->
+        <section class="card mobile-screen" id="soundboardCard" data-screen-group="effects">
+            <div class="card-heading">
+                <div><p class="eyebrow">SOUNDBOARD</p><h2>Sounds &amp; hotkeys</h2></div>
+                <button class="button button-quiet" id="btnSbStop" type="button" title="Silence every sound that is playing">⏹ Stop all</button>
+            </div>
+            <p class="help-text">Tap a sound, or press its hotkey while the page is focused. Add your own audio files; they are saved on this device and play into your stream and call output.</p>
+            <div class="control"><label>Soundboard volume <b id="valSbVol">100%</b></label><input id="sliderSbVol" max="1.5" min="0" step=".05" type="range" value="1"></div>
+            <div class="sb-grid" id="sbGrid"></div>
+            <div class="button-row" style="margin-top:12px">
+                <label class="button button-primary" for="sbFileInput" style="cursor:pointer">＋ Add your sounds</label>
+                <input id="sbFileInput" type="file" accept="audio/*" multiple hidden>
+            </div>
+            <p class="help-text" id="sbMsg" style="display:none"></p>
         </section>
 
         <!-- PRO ARTIST LIVE SUITE CARD -->
@@ -248,7 +283,7 @@
                     <p class="eyebrow">LIVE PERFORMING ARTIST SUITE</p>
                     <h2>Stage Master & Tools</h2>
                 </div>
-                <span class="pro-tag" style="background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;font-size:0.65rem;font-weight:900;padding:3px 8px;border-radius:12px;">PRO STAGE</span>
+                <span class="pro-tag" style="background:linear-gradient(135deg,#2f7cf6,#27a9ff);color:#fff;font-size:0.65rem;font-weight:900;padding:3px 8px;border-radius:12px;">PRO STAGE</span>
             </div>
 
             <!-- Precision Digital Metronome & Beat Clock -->
@@ -268,7 +303,7 @@
                     <button class="button button-quiet metro-btn-nudge" id="btnMetroMinus" type="button" title="Decrease 1 BPM">-1</button>
                     <input class="metro-slider" id="sliderMetronomeBpm" max="240" min="40" step="1" type="range" value="120">
                     <button class="button button-quiet metro-btn-nudge" id="btnMetroPlus" type="button" title="Increase 1 BPM">+1</button>
-                    <button class="button button-quiet" id="btnMetroTap" type="button" style="font-size:0.75rem; font-weight:800; color:#00e5ff; border-color:rgba(0,229,255,0.4); white-space:nowrap;">⚡ Tap Tempo</button>
+                    <button class="button button-quiet" id="btnMetroTap" type="button" style="font-size:0.75rem; font-weight:800; color:#4fc3ff; border-color:rgba(79,195,255,0.4); white-space:nowrap;">⚡ Tap Tempo</button>
                 </div>
                 <div class="metronome-action-row">
                     <div style="display:flex; align-items:center; gap:8px;">
@@ -307,7 +342,7 @@
             <div class="artist-section">
                 <div class="artist-section-header">
                     <span class="artist-section-title">🎹 1-TAP QUICK TRANSPOSE KEY BAR</span>
-                    <span id="lblQuickKeyShift" style="font-size:0.72rem; font-weight:800; color:#00e5ff;">Original (0)</span>
+                    <span id="lblQuickKeyShift" style="font-size:0.72rem; font-weight:800; color:#4fc3ff;">Original (0)</span>
                 </div>
                 <div class="quick-transpose-row" id="quickTransposeRow">
                     <button class="transpose-pill" data-semitone="-3" type="button">-3</button>
@@ -331,7 +366,7 @@
                         <input id="chkAutoDucking" type="checkbox"><span class="switch"></span>
                     </label>
                 </div>
-                <div id="lblDuckingStatus" style="font-size:0.68rem; color:#00e5ff; font-weight:600; margin-top:4px; display:none;">
+                <div id="lblDuckingStatus" style="font-size:0.68rem; color:#4fc3ff; font-weight:600; margin-top:4px; display:none;">
                     ⚡ Auto-Ducking Active: Music ducks dynamically with vocals
                 </div>
             </div>
@@ -340,7 +375,7 @@
             <div class="artist-section" style="margin-bottom:0;">
                 <div class="artist-section-header">
                     <span class="artist-section-title">🛡️ BROADCAST SAFETY VU PEAK & CLIP GUARD</span>
-                    <span id="lblVuPeakDb" style="font-size:0.72rem; font-family:monospace; font-weight:800; color:#00e5ff;">-48.0 dB</span>
+                    <span id="lblVuPeakDb" style="font-size:0.72rem; font-family:monospace; font-weight:800; color:#4fc3ff;">-48.0 dB</span>
                 </div>
                 <div class="vu-meter-track" style="height:10px; background:rgba(0,0,0,0.5); border-radius:5px; overflow:hidden; border:1px solid var(--border); position:relative;">
                     <div id="vuMeterBar" style="width:100%; height:100%; background:linear-gradient(90deg, #10b981 0%, #eab308 75%, #ef4444 100%); transform:scaleX(0); transform-origin:left center; transition:transform 60ms ease-out; will-change:transform; border-radius:4px;"></div>
@@ -418,6 +453,23 @@
                         <li>Wear headphones and keep this site's main <b>Audio output</b> on them, not on the cable.</li>
                     </ol>
                 </details>
+            </div>
+        </section>
+        <!-- MIC BOOST + NOISE SUPPRESSION + LEVEL METERS -->
+        <section class="card mobile-screen" id="micToolsCard" data-screen-group="mixer">
+            <div class="card-heading"><div><p class="eyebrow">MIC BOOST &amp; NOISE</p><h2>Clean, loud, clear</h2></div></div>
+            <div class="meter-row"><span>IN</span><div class="meter"><i id="meterIn"></i></div><b id="dbIn">-∞ dB</b></div>
+            <div class="meter-row"><span>OUT</span><div class="meter"><i id="meterOut"></i></div><b id="dbOut">-∞ dB</b></div>
+            <div class="control"><label>Mic boost <b id="valMicBoost">+0 dB</b></label><input id="sliderMicBoost" max="24" min="0" step="1" type="range" value="0"></div>
+            <div class="control">
+                <label>Noise suppression <b id="valNs">Low</b></label>
+                <div class="seg" id="nsSeg" role="group" aria-label="Noise suppression strength">
+                    <button type="button" data-ns="0">Off</button>
+                    <button type="button" data-ns="1" class="active">Low</button>
+                    <button type="button" data-ns="2">Medium</button>
+                    <button type="button" data-ns="3">High</button>
+                </div>
+                <p class="help-text" id="nsHelp" style="margin-top:8px"></p>
             </div>
         </section>
         <section class="card mobile-screen" id="proVocalRack" data-screen-group="mixer">
@@ -726,6 +778,24 @@
                                                                                       min=".05" step=".01" type="range"
                                                                                       value=".22"></div>
         </section>
+        <!-- USAGE STATS (this device only) -->
+        <section class="card mobile-screen" id="statsCard" data-screen-group="mixer">
+            <div class="card-heading">
+                <div><p class="eyebrow">YOUR STATS</p><h2>Usage</h2></div>
+                <button class="button button-quiet" id="btnResetStats" type="button">Reset stats</button>
+            </div>
+            <div class="st-grid">
+                <div class="st-kpi"><span>Mic today</span><b id="stMicToday">0s</b></div>
+                <div class="st-kpi"><span>Mic total</span><b id="stMicTotal">0s</b></div>
+                <div class="st-kpi"><span>Broadcasts</span><b id="stLiveCount">0</b></div>
+                <div class="st-kpi"><span>Time live</span><b id="stLiveTime">0s</b></div>
+                <div class="st-kpi"><span>Songs played</span><b id="stSongs">0</b></div>
+                <div class="st-kpi"><span>Sounds played</span><b id="stSfx">0</b></div>
+            </div>
+            <p class="eyebrow" style="margin:16px 0 8px">TOP VOICES</p>
+            <div class="st-voices" id="stVoices"></div>
+            <p class="help-text" style="margin-top:10px">Stored only on this device. Nothing is uploaded.</p>
+        </section>
         <section class="card mobile-screen" id="recording" data-screen-group="audience"><p class="eyebrow">CAPTURE THE MOMENT</p>
             <h2>Recording & Monitor</h2><label class="switch-label">Mic monitor (Headphones only) <input id="monitorToggle"
                                                                                     type="checkbox"><span class="switch"></span></label>
@@ -772,7 +842,7 @@
         <button class="button button-quiet" id="btnModalSwitchCamera" style="display:none;">🔄 Switch camera</button>
         <button class="button button-quiet danger" id="btnStopLive" style="display:none; margin-top:8px; border-color:var(--accent-red); color:var(--accent-red); width:100%;">⏹ End broadcast</button>
         <details id="detailsLiveKitConfig" style="margin-top:10px; font-size:0.75rem; color:var(--text-dim); text-align:left; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px;">
-            <summary style="cursor:pointer; font-weight:700; user-select:none; color:var(--accent-cyan, #00f0ff);">⚙️ Cloud LiveKit Configuration</summary>
+            <summary style="cursor:pointer; font-weight:700; user-select:none; color:var(--accent-cyan, #52c4ff);">⚙️ Cloud LiveKit Configuration</summary>
             <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
                 <span style="font-size:0.68rem; color:var(--text-dim);">Optional: If Netlify environment variables are not configured, save your Cloud LiveKit credentials here:</span>
                 <input id="inputLiveKitUrl" placeholder="LiveKit URL: wss://your-project.livekit.cloud" style="padding:6px 8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:6px; color:#fff; font-size:0.75rem;">
@@ -842,22 +912,22 @@
         </p>
 
         <!-- Live Broadcast Scene Monitor (Interactive Preview Screen) -->
-        <div style="position:relative; width:100%; aspect-ratio:16/9; background:#05070e; border-radius:10px; overflow:hidden; border:1px solid rgba(0,229,255,0.35); margin-bottom:8px; box-shadow:0 8px 24px rgba(0,0,0,0.6); user-select:none; touch-action:none;">
+        <div style="position:relative; width:100%; aspect-ratio:16/9; background:#05070e; border-radius:10px; overflow:hidden; border:1px solid rgba(79,195,255,0.35); margin-bottom:8px; box-shadow:0 8px 24px rgba(0,0,0,0.6); user-select:none; touch-action:none;">
             <canvas id="broadcastScenePreview" width="640" height="360" style="width:100%; height:100%; display:block; object-fit:cover; pointer-events:none;"></canvas>
             <!-- OBS Studio Interactive Draggable & Resizable Overlay -->
             <div id="obsCanvasOverlay" class="obs-canvas-overlay"></div>
-            <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; font-weight:800; color:#00e5ff; display:flex; align-items:center; gap:5px; pointer-events:none; z-index:12;">
-                <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#00e5ff;"></span> LIVE MONITOR (VIEWER FEED)
+            <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; font-weight:800; color:#4fc3ff; display:flex; align-items:center; gap:5px; pointer-events:none; z-index:12;">
+                <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#4fc3ff;"></span> LIVE MONITOR (VIEWER FEED)
             </div>
-            <div id="previewActiveLayoutBadge" style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; color:#00e5ff; font-weight:700; pointer-events:none; z-index:12;">
+            <div id="previewActiveLayoutBadge" style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; color:#4fc3ff; font-weight:700; pointer-events:none; z-index:12;">
                 Spotlight Layout
             </div>
         </div>
 
         <!-- OBS Studio Custom Canvas Toolbar (Visible when OBS Custom layout is active) -->
-        <div id="obsStudioToolbar" style="display:none; margin-bottom:12px; background:rgba(0,229,255,0.06); border:1px solid rgba(0,229,255,0.25); border-radius:8px; padding:10px 12px; flex-direction:column; gap:8px;">
+        <div id="obsStudioToolbar" style="display:none; margin-bottom:12px; background:rgba(79,195,255,0.06); border:1px solid rgba(79,195,255,0.25); border-radius:8px; padding:10px 12px; flex-direction:column; gap:8px;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                <span style="font-size:0.75rem; font-weight:800; color:#00e5ff; display:flex; align-items:center; gap:5px;">
+                <span style="font-size:0.75rem; font-weight:800; color:#4fc3ff; display:flex; align-items:center; gap:5px;">
                     🎨 OBS CUSTOM CANVAS STUDIO
                 </span>
                 <div style="display:flex; gap:6px;">
@@ -871,20 +941,20 @@
             <div style="display:flex; gap:6px; align-items:center;">
                 <span style="font-size:0.7rem; font-weight:700; color:var(--text-dim); white-space:nowrap;">📣 Live Ticker:</span>
                 <input id="inputObsTickerText" placeholder="Artist announcements, social handles or UPI/tips…" style="flex:1; padding:6px 8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:6px; color:#fff; font-size:0.74rem;">
-                <button type="button" class="button button-quiet" id="btnApplyObsTicker" style="padding:6px 10px; font-size:0.7rem; color:#00e5ff; border-color:rgba(0,229,255,0.3); font-weight:700;">Set</button>
+                <button type="button" class="button button-quiet" id="btnApplyObsTicker" style="padding:6px 10px; font-size:0.7rem; color:#4fc3ff; border-color:rgba(79,195,255,0.3); font-weight:700;">Set</button>
             </div>
         </div>
 
         <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px;">
             <!-- Real-Time Layout Switcher -->
             <div>
-                <label style="font-size:0.72rem; font-weight:800; color:#00e5ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">LAYOUT PRESET</label>
+                <label style="font-size:0.72rem; font-weight:800; color:#4fc3ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">LAYOUT PRESET</label>
                 <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;" id="broadcastLayoutPills">
-                    <button type="button" class="button button-quiet" data-layout="spotlight" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px; background:rgba(0,229,255,0.15); border:1px solid #00e5ff; color:#00e5ff;">🎤 Spotlight</button>
+                    <button type="button" class="button button-quiet" data-layout="spotlight" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px; background:rgba(79,195,255,0.15); border:1px solid #4fc3ff; color:#4fc3ff;">🎤 Spotlight</button>
                     <button type="button" class="button button-quiet" data-layout="karaoke" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">🎼 Karaoke</button>
                     <button type="button" class="button button-quiet" data-layout="duet" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">👥 Duet</button>
                     <button type="button" class="button button-quiet" data-layout="visualizer" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">📊 Visualizer</button>
-                    <button type="button" class="button button-quiet" data-layout="custom" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px; color:#ff007f;">🎨 OBS Custom</button>
+                    <button type="button" class="button button-quiet" data-layout="custom" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px; color:#27a9ff;">🎨 OBS Custom</button>
                 </div>
             </div>
 
@@ -934,32 +1004,32 @@
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
                     <span style="font-size:0.68rem; color:var(--text-dim); flex:1;">🔑 <b>How to connect:</b> In YouTube Studio, copy the secret <b>Stream key</b> (`••••••••••••`) from <i>Stream settings</i>.</span>
-                    <button class="button button-quiet" id="btnTestStreamKey" type="button" style="padding:4px 10px; font-size:0.72rem; border-radius:6px; background:rgba(0,229,255,0.12); color:#00e5ff; border:1px solid rgba(0,229,255,0.3); font-weight:700; white-space:nowrap; cursor:pointer;">🧪 Test Connection</button>
+                    <button class="button button-quiet" id="btnTestStreamKey" type="button" style="padding:4px 10px; font-size:0.72rem; border-radius:6px; background:rgba(79,195,255,0.12); color:#4fc3ff; border:1px solid rgba(79,195,255,0.3); font-weight:700; white-space:nowrap; cursor:pointer;">🧪 Test Connection</button>
                 </div>
                 <div id="testStreamResult" style="display:none; font-size:0.75rem; padding:8px 10px; border-radius:6px; margin-top:6px;"></div>
-                <div style="margin-top:6px; padding:6px 10px; background:rgba(0,229,255,0.06); border:1px solid rgba(0,229,255,0.2); border-radius:6px; font-size:0.68rem; color:var(--text-dim); line-height:1.4;">
+                <div style="margin-top:6px; padding:6px 10px; background:rgba(79,195,255,0.06); border:1px solid rgba(79,195,255,0.2); border-radius:6px; font-size:0.68rem; color:var(--text-dim); line-height:1.4;">
                     ⚡ <b>Zero-Buffering Tips:</b> In YouTube Studio, set <b>Stream latency</b> to <i>Low-latency</i> or <i>Normal latency</i>. For mobile/budget devices, <b>480p Smooth</b> or <b>360p Ultra-Light</b> keeps live streams completely lag-free.
                 </div>
             </div>
 
             <!-- Broadcast Scene Content Selector -->
             <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
-                <label style="font-size:0.72rem; font-weight:800; color:#00e5ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">🎬 BROADCAST SCENE LAYERS (TOGGLE ON/OFF)</label>
+                <label style="font-size:0.72rem; font-weight:800; color:#4fc3ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">🎬 BROADCAST SCENE LAYERS (TOGGLE ON/OFF)</label>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:0.78rem;">
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                        <input type="checkbox" id="chkStreamVisualizer" checked style="accent-color:#00e5ff;">
+                        <input type="checkbox" id="chkStreamVisualizer" checked style="accent-color:#4fc3ff;">
                         <span>📊 Audio Visualizer</span>
                     </label>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                        <input type="checkbox" id="chkStreamLyrics" checked style="accent-color:#00e5ff;">
+                        <input type="checkbox" id="chkStreamLyrics" checked style="accent-color:#4fc3ff;">
                         <span>🎤 Live Lyrics</span>
                     </label>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                        <input type="checkbox" id="chkStreamHostCam" checked style="accent-color:#00e5ff;">
+                        <input type="checkbox" id="chkStreamHostCam" checked style="accent-color:#4fc3ff;">
                         <span>📹 My Camera</span>
                     </label>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                        <input type="checkbox" id="chkStreamGuestCam" checked style="accent-color:#00e5ff;">
+                        <input type="checkbox" id="chkStreamGuestCam" checked style="accent-color:#4fc3ff;">
                         <span>👥 Guest Duet Cam</span>
                     </label>
                 </div>
@@ -969,9 +1039,9 @@
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                     <label for="inputCloudRelayUrl" style="font-size:0.75rem; font-weight:700; color:#fff; display:flex; align-items:center; gap:6px;">
                         <span>📡 Render Streaming Relay URL</span>
-                        <span id="relayStatusIndicator" style="font-size:0.65rem; padding:2px 6px; border-radius:10px; background:rgba(0,229,255,0.15); color:#00e5ff;">Ready</span>
+                        <span id="relayStatusIndicator" style="font-size:0.65rem; padding:2px 6px; border-radius:10px; background:rgba(79,195,255,0.15); color:#4fc3ff;">Ready</span>
                     </label>
-                    <button type="button" class="text-button" id="btnPingRelayServer" style="font-size:0.7rem; color:var(--accent-cyan, #00f0ff); cursor:pointer; background:none; border:none; padding:2px 6px;">⚡ Ping Server</button>
+                    <button type="button" class="text-button" id="btnPingRelayServer" style="font-size:0.7rem; color:var(--accent-cyan, #52c4ff); cursor:pointer; background:none; border:none; padding:2px 6px;">⚡ Ping Server</button>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px;">
                     <input id="inputCloudRelayUrl" placeholder="https://your-relay.onrender.com" style="width:100%; padding:8px 10px; background:var(--bg-surface); border:1px solid var(--border); border-radius:6px; color:#fff; font-size:0.78rem;">
@@ -982,9 +1052,9 @@
 
         <div id="streamErrorNotice" style="display:none; margin-top:10px; padding:10px 12px; background:rgba(255,51,102,0.15); border:1px solid #ff3366; border-radius:8px; color:#ff3366; font-size:0.76rem;"></div>
 
-        <div style="position:sticky; bottom:-26px; margin:10px -26px -26px -26px; padding:14px 26px; background:rgba(16, 12, 24, 0.96); backdrop-filter:blur(14px); border-top:1px solid rgba(255,255,255,0.08); border-radius:0 0 25px 25px; display:flex; justify-content:space-between; align-items:center; z-index:15;">
+        <div style="position:sticky; bottom:-26px; margin:10px -26px -26px -26px; padding:14px 26px; background:rgba(14, 18, 24, 0.96); backdrop-filter:blur(14px); border-top:1px solid rgba(255,255,255,0.08); border-radius:0 0 25px 25px; display:flex; justify-content:space-between; align-items:center; z-index:15;">
             <div style="font-size:0.8rem; font-weight:700; color:var(--text-dim);">
-                Uptime: <span id="streamTimer" style="color:#00e5ff; font-family:monospace; font-size:0.9rem;">00:00</span>
+                Uptime: <span id="streamTimer" style="color:#4fc3ff; font-family:monospace; font-size:0.9rem;">00:00</span>
             </div>
             <div style="display:flex; gap:8px;">
                 <button class="button button-primary" id="btnStartExternalStream" style="background:linear-gradient(135deg, #ff0055 0%, #ff5500 100%); border:none; font-weight:900;">🚀 Start Live Stream</button>
@@ -996,11 +1066,11 @@
 
 <!-- Developer Diagnostics HUD Modal -->
 <div class="modal" id="diagnosticsModal" style="display:none;">
-    <div class="modal-card" style="max-width:760px; width:95%; max-height:88vh; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--accent-cyan, #00f0ff); box-shadow:0 0 40px rgba(0,240,255,0.25);">
+    <div class="modal-card" style="max-width:760px; width:95%; max-height:88vh; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--accent-cyan, #52c4ff); box-shadow:0 0 40px rgba(82,196,255,0.25);">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px; margin-bottom:16px;">
             <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-size:1.4rem;">📊</span>
-                <h2 style="margin:0; font-size:1.15rem; font-weight:800; color:var(--accent-cyan, #00f0ff); letter-spacing:0.5px;">AUDIO & WEBRTC DIAGNOSTICS HUD</h2>
+                <h2 style="margin:0; font-size:1.15rem; font-weight:800; color:var(--accent-cyan, #52c4ff); letter-spacing:0.5px;">AUDIO & WEBRTC DIAGNOSTICS HUD</h2>
             </div>
             <button class="button button-quiet" id="btnCloseDiagnostics" style="padding:4px 10px; font-size:0.9rem;">✕ Close</button>
         </div>
@@ -1023,7 +1093,7 @@
 
             <!-- Microphone Hardware -->
             <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
-                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-pink, #ff007f); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">🎤 Microphone Hardware Input</div>
+                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-pink, #27a9ff); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">🎤 Microphone Hardware Input</div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
                     <div><span style="color:var(--text-dim);">Track Active:</span> <b id="diagMicActive">--</b></div>
                     <div><span style="color:var(--text-dim);">Hardware Rate:</span> <b id="diagMicRate">--</b></div>
@@ -1036,7 +1106,7 @@
 
             <!-- LiveKit Real-time SFU -->
             <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
-                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-cyan, #00f0ff); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">📡 LiveKit SFU Real-Time Transport</div>
+                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-cyan, #52c4ff); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">📡 LiveKit SFU Real-Time Transport</div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
                     <div><span style="color:var(--text-dim);">Connection:</span> <b id="diagLkState">--</b></div>
                     <div><span style="color:var(--text-dim);">Room ID:</span> <b id="diagLkRoom">--</b></div>
@@ -1049,7 +1119,7 @@
 
             <!-- Stage Recording & Broadcasting -->
             <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
-                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-purple, #b34bff); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">⏺️ Stage Recording & Stream Bus</div>
+                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-purple, #2f7cf6); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">⏺️ Stage Recording & Stream Bus</div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
                     <div><span style="color:var(--text-dim);">Recording Bus:</span> <b id="diagRecState">--</b></div>
                     <div><span style="color:var(--text-dim);">Recording Stream:</span> <b id="diagRecStream">--</b></div>

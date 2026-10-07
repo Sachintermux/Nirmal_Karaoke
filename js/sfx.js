@@ -21,6 +21,46 @@ export function spawnSFXParticles(emojiArr) {
   }
 }
 
+// ── Shared soundboard bus ─────────────────────────────────────────────────────────────────────
+// Every soundboard sound (built-in synth or user upload) goes through ONE master gain that feeds the
+// program mix (stream / call output) and the local speakers. That gives a master volume and a
+// "stop all" (disconnect the master, which silences everything that is still playing).
+export function getSfxMaster(audioEngine) {
+  const ctx = audioEngine?.ctx;
+  if (!ctx) return null;
+  const mixBus = audioEngine.engine?.mixBus || null;
+  let m = audioEngine._sfxMaster;
+  if (!m || m.context !== ctx || m.__mixBus !== mixBus) {
+    try { m?.disconnect(); } catch (_) {}
+    m = ctx.createGain();
+    m.gain.value = audioEngine._sfxVolume ?? 1;
+    if (mixBus) m.connect(mixBus);
+    // Also play locally so the host hears their soundboard triggers
+    m.connect(ctx.destination);
+    m.__mixBus = mixBus;
+    audioEngine._sfxMaster = m;
+  }
+  return m;
+}
+
+export function setSfxVolume(audioEngine, value) {
+  const v = Math.max(0, Math.min(2, Number(value) || 0));
+  audioEngine._sfxVolume = v;
+  const m = audioEngine._sfxMaster;
+  if (m && audioEngine.ctx) {
+    try { m.gain.setTargetAtTime(v, audioEngine.ctx.currentTime, 0.01); } catch (_) { m.gain.value = v; }
+  }
+}
+
+export function stopAllSfx(audioEngine) {
+  try { audioEngine._sfxMaster?.disconnect(); } catch (_) {}
+  audioEngine._sfxMaster = null; // recreated on the next trigger
+  if (audioEngine._sfxSources) {
+    for (const src of audioEngine._sfxSources) { try { src.stop(); } catch (_) {} }
+    audioEngine._sfxSources.clear();
+  }
+}
+
 export async function playSFX(type, audioEngine) {
   try {
     if (!audioEngine) return;
@@ -31,15 +71,11 @@ export async function playSFX(type, audioEngine) {
       await ctx.resume().catch(() => {});
     }
 
-    const mixBus = audioEngine.engine?.mixBus;
     const sfxOut = ctx.createGain();
     sfxOut.gain.value = 1.0;
-    if (mixBus) {
-      sfxOut.connect(mixBus);
-    }
-    // Also connect to local audio output so the host hears their soundboard triggers
-    sfxOut.connect(ctx.destination);
+    sfxOut.connect(getSfxMaster(audioEngine)); // -> program mix + local output, with master volume / stop-all
     const bus = sfxOut;
+    try { document.dispatchEvent(new CustomEvent('nirmal:sfx', { detail: { type } })); } catch (_) {}
     const t = ctx.currentTime;
 
     switch (type) {

@@ -1,4 +1,5 @@
 import { PRESETS, SCALE_MAP } from './config.js?v=24';
+import { createVoiceModStage, hasModEffects } from './voice-fx.js?v=1';
 import { dspWorkletCode } from './dsp-code.js?v=24';
 
 export class AudioEngine {
@@ -286,7 +287,7 @@ export class AudioEngine {
               } else {
                 coachText = `⬇ COACH: SHARP (${note})`;
                 coachColor = "var(--accent-pink)";
-                coachBorder = "rgba(255, 0, 127, 0.4)";
+                coachBorder = "rgba(39, 169, 255, 0.4)";
               }
               if (this._lastCoachText !== coachText) {
                 this._lastCoachText = coachText;
@@ -435,7 +436,24 @@ export class AudioEngine {
       // Vocal noise gate
       e.gateGain = this.ctx.createGain();
       e.gateGain.gain.value = 1.0;
-      e.micOutBus.connect(e.gateGain);
+      // Mic conditioning ahead of the gate: rumble filter (noise-suppression level) -> boost -> (limiter when boosting)
+      e.nsHighpass = this.ctx.createBiquadFilter();
+      e.nsHighpass.type = 'highpass';
+      e.nsHighpass.frequency.value = 20;
+      e.nsHighpass.Q.value = 0.707;
+      e.micBoostGain = this.ctx.createGain();
+      e.micBoostGain.gain.value = 1.0;
+      // Chrome's compressor adds ~6 ms look-ahead latency, so it is only in the path while boosting.
+      e.micBoostLimiter = this.ctx.createDynamicsCompressor();
+      e.micBoostLimiter.threshold.value = -2;
+      e.micBoostLimiter.knee.value = 0;
+      e.micBoostLimiter.ratio.value = 20;
+      e.micBoostLimiter.attack.value = 0.002;
+      e.micBoostLimiter.release.value = 0.08;
+      e.micOutBus.connect(e.nsHighpass);
+      e.nsHighpass.connect(e.micBoostGain);
+      e.micBoostGain.connect(e.gateGain); // default route: no limiter
+      this._micLimiterRouted = false;
       e.gateGain.connect(e.proInput);
 
       e.fxInBus = this.ctx.createGain();
@@ -479,7 +497,11 @@ export class AudioEngine {
       e.formantEq.connect(e.waveshaper);
 
       e.fxOutBus = this.ctx.createGain();
-      e.waveshaper.connect(e.fxOutBus);
+      // Character-effect stage (ring mod / vibrato / tremolo / bit-crush / echo); a plain
+      // pass-through (no extra nodes) unless the active preset asks for those effects.
+      e.voiceMod = createVoiceModStage(this.ctx);
+      e.waveshaper.connect(e.voiceMod.input);
+      e.voiceMod.output.connect(e.fxOutBus);
       e.fxBypassGain.connect(e.fxOutBus);
 
       // Mix Bus: sums processed media track + vocal FX + dry vocal
@@ -694,6 +716,7 @@ export class AudioEngine {
 
       this.startGateAndVoiceAssists();
       this.updateAutoTuneSettings();
+      this._applyMicConditioning();
       if (this.currentPreset) {
         this.applyPreset(this.currentPreset);
       }
@@ -921,8 +944,34 @@ export class AudioEngine {
       }
     }
 
+    // 1b. Character effects (ring mod / vibrato / tremolo / crush / echo)
+    try { this.engine.voiceMod?.apply(p.isBypass ? {} : p); } catch (_) {}
+
     // 2. Backing Track FX Chain
     this._updateMediaPitchAndFx(p);
+  }
+
+  /**
+   * Build and apply the user's custom voice.
+   * @param {{semitones?:number, tone?:number, grit?:number, highCut?:number, echo?:number}} v
+   *   semitones -12..12, tone -6..6 dB (negative = more body at 160 Hz, positive = more presence at 3.2 kHz),
+   *   grit 0..100, highCut Hz, echo 0..100 (%)
+   */
+  applyCustomVoice(v = {}) {
+    const semis = Math.max(-12, Math.min(12, Number(v.semitones) || 0));
+    const tone = Math.max(-6, Math.min(6, Number(v.tone) || 0));
+    const echo = Math.max(0, Math.min(100, Number(v.echo) || 0));
+    PRESETS.custom = {
+      pitch: Math.max(0.5, Math.min(2, Math.pow(2, semis / 12))),
+      lowCut: semis < 0 ? 50 : 90,
+      highCut: Math.max(2000, Math.min(20000, Number(v.highCut) || 16000)),
+      eqFreq: tone < 0 ? 160 : 3200,
+      eqGain: Math.abs(tone),
+      drive: Math.max(0, Math.min(100, Number(v.grit) || 0)) / 100 * 1.5,
+      echoMs: 180, echoFb: 0.35, echoMix: echo / 100 * 0.6,
+      isBypass: false
+    };
+    this.applyPreset('custom');
   }
 
   _updateMediaPitchAndFx(preset = null) {
@@ -1300,6 +1349,56 @@ export class AudioEngine {
     if (Number.isFinite(v) && this.engine.warmthEq?.gain) {
       this.engine.warmthEq.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
     }
+  }
+
+  // ── Mic boost + noise suppression ────────────────────────────────────────────────────────────────
+  // Noise suppression levels: 0 off, 1 low (browser DSP + rumble filter), 2 medium (+ noise gate),
+  // 3 high (stronger gate + higher rumble cut). The gate itself is driven by the UI so its controls stay in sync.
+  static NS_RUMBLE_HZ = [20, 60, 90, 130];
+
+  _applyMicConditioning() {
+    const e = this.engine;
+    if (!e?.micBoostGain || !this.ctx) return;
+    const db = Math.max(0, Math.min(24, Number(this._micBoostDb) || 0));
+    const t = this.ctx.currentTime;
+    try { e.micBoostGain.gain.setTargetAtTime(Math.pow(10, db / 20), t, 0.02); } catch (_) { e.micBoostGain.gain.value = Math.pow(10, db / 20); }
+
+    // Route through the safety limiter only while boosting
+    const wantLimiter = db > 0;
+    if (wantLimiter !== !!this._micLimiterRouted) {
+      try { e.micBoostGain.disconnect(); } catch (_) {}
+      if (wantLimiter) {
+        e.micBoostGain.connect(e.micBoostLimiter);
+        e.micBoostLimiter.connect(e.gateGain);
+      } else {
+        try { e.micBoostLimiter.disconnect(); } catch (_) {}
+        e.micBoostGain.connect(e.gateGain);
+      }
+      this._micLimiterRouted = wantLimiter;
+    }
+
+    const level = Math.max(0, Math.min(3, Number.isFinite(this._nsLevel) ? this._nsLevel : 1));
+    try { e.nsHighpass.frequency.setTargetAtTime(AudioEngine.NS_RUMBLE_HZ[level], t, 0.02); } catch (_) {}
+    const track = this.activeMicStream?.getAudioTracks?.()[0];
+    if (track?.applyConstraints) {
+      let echo;
+      try { echo = track.getSettings?.().echoCancellation; } catch (_) {}
+      track.applyConstraints({
+        noiseSuppression: level >= 1,
+        autoGainControl: false,
+        ...(typeof echo === 'boolean' ? { echoCancellation: echo } : {})
+      }).catch(() => {});
+    }
+  }
+
+  setMicBoostDb(db) {
+    this._micBoostDb = Math.max(0, Math.min(24, Number(db) || 0));
+    this._applyMicConditioning();
+  }
+
+  setNoiseSuppression(level) {
+    this._nsLevel = Math.max(0, Math.min(3, Math.round(Number(level))));
+    this._applyMicConditioning();
   }
 
   setMonitorVocal(enabled) {

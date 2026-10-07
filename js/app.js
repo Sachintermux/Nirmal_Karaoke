@@ -12,6 +12,8 @@ import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=31';
 import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=31';
 import { CallOutputManager } from './call-output.js?v=1';
 import { ensureSingerName } from './name-prompt.js?v=1';
+import { SoundboardManager } from './soundboard.js?v=1';
+import { StatsManager } from './stats.js?v=1';
 
 const audioEngine = new AudioEngine();
 if (typeof window !== 'undefined') window.audioEngine = audioEngine;
@@ -242,7 +244,7 @@ function setupLiveShareUI() {
         <div style="display:flex;gap:4px;align-items:center;">
           ${g.hasMic ? `<button class="btn-listen-guest" data-id="${g.id}" style="background:var(--accent-blue); color:#fff; border:none; border-radius:3px; padding:3px 7px; font-size:0.65rem; cursor:pointer;">Listen</button>` : ''}
           ${g.hasMic ? `<button class="btn-mute-guest" data-id="${g.id}" style="background:var(--accent-red); color:#fff; border:none; border-radius:3px; padding:3px 8px; font-size:0.65rem; cursor:pointer;">Mute Mic</button>` : ''}
-          ${!g.hasMic ? `<button class="btn-invite-guest-stage" data-id="${g.id}" style="background:linear-gradient(135deg,#ff007f,#a855f7); color:#fff; border:none; border-radius:4px; padding:3px 8px; font-size:0.65rem; font-weight:700; cursor:pointer;" title="Invite this listener to sing onstage">🎤 Invite Duet</button>` : ''}
+          ${!g.hasMic ? `<button class="btn-invite-guest-stage" data-id="${g.id}" style="background:linear-gradient(135deg,#27a9ff,#2f7cf6); color:#fff; border:none; border-radius:4px; padding:3px 8px; font-size:0.65rem; font-weight:700; cursor:pointer;" title="Invite this listener to sing onstage">🎤 Invite Duet</button>` : ''}
         </div>
       `;
 
@@ -261,7 +263,7 @@ function setupLiveShareUI() {
               if (btnInviteDuet.isConnected) {
                 btnInviteDuet.disabled = false;
                 btnInviteDuet.textContent = '🎤 Invite Duet';
-                btnInviteDuet.style.background = 'linear-gradient(135deg,#ff007f,#a855f7)';
+                btnInviteDuet.style.background = 'linear-gradient(135deg,#27a9ff,#2f7cf6)';
                 btnInviteDuet.style.color = '#fff';
               }
             }, 6000);
@@ -380,7 +382,7 @@ function setupLiveShareUI() {
     const msg = document.createElement('div');
     if (isSpecial) {
       msg.innerHTML = `
-        <div style="background:rgba(168,85,247,0.15); border:1px solid var(--accent-purple); padding:4px 6px; border-radius:4px; margin-bottom:2px;">
+        <div style="background:rgba(47,124,246,0.15); border:1px solid var(--accent-purple); padding:4px 6px; border-radius:4px; margin-bottom:2px;">
           🎵 <strong>${safeSender}</strong> requested: <em>${safeText}</em>
           <button class="btn-accept-req" style="background:var(--accent-purple); color:#fff; border:none; border-radius:3px; padding:2px 6px; font-size:0.65rem; margin-left:6px; cursor:pointer;">Accept & Queue</button>
         </div>
@@ -456,9 +458,9 @@ function setupLiveShareUI() {
     }
 
     const toast = document.createElement('div');
-    toast.style.cssText = 'background:linear-gradient(135deg, #1c152b, #0f0b18);border:2px solid var(--accent-pink, #ff007f);border-radius:12px;padding:14px 16px;box-shadow:0 0 25px rgba(255,0,127,0.4);color:#fff;font-size:0.85rem;pointer-events:auto;';
+    toast.style.cssText = 'background:linear-gradient(135deg, #181f2b, #0d1118);border:2px solid var(--accent-pink, #27a9ff);border-radius:12px;padding:14px 16px;box-shadow:0 0 25px rgba(39,169,255,0.4);color:#fff;font-size:0.85rem;pointer-events:auto;';
     toast.innerHTML = `
-      <div style="font-weight:800;font-size:0.95rem;color:var(--accent-pink, #ff007f);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+      <div style="font-weight:800;font-size:0.95rem;color:var(--accent-pink, #27a9ff);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
         <span>🎤</span> Duet Mic Request
       </div>
       <div style="margin-bottom:12px;line-height:1.4;">
@@ -816,15 +818,15 @@ function setupLiveShareUI() {
       return;
     }
     avatarPickerPopover = document.createElement('div');
-    avatarPickerPopover.style.cssText = 'position:absolute; top:45px; left:0; z-index:300; background:#1c162b; border:1px solid rgba(0,229,255,0.4); border-radius:12px; padding:8px; display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; box-shadow:0 8px 30px rgba(0,0,0,0.8);';
+    avatarPickerPopover.style.cssText = 'position:absolute; top:45px; left:0; z-index:300; background:#19202b; border:1px solid rgba(79,195,255,0.4); border-radius:12px; padding:8px; display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; box-shadow:0 8px 30px rgba(0,0,0,0.8);';
     avatarList.forEach((av) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = av;
       btn.style.cssText = 'background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:8px; font-size:1.3rem; padding:6px; cursor:pointer; transition:all 0.15s;';
       if (av === presence.user.avatar) {
-        btn.style.borderColor = '#00e5ff';
-        btn.style.background = 'rgba(0,229,255,0.2)';
+        btn.style.borderColor = '#4fc3ff';
+        btn.style.background = 'rgba(79,195,255,0.2)';
       }
       btn.addEventListener('click', (ev) => {
         ev.stopPropagation();
@@ -1338,14 +1340,7 @@ function setupEventListeners() {
   });
 
   // ─── Live Stage Performance 8-Pad Soundboard ─────────────────────────────
-  document.getElementById('sfxCheer')?.addEventListener('click', () => playSFX('cheer', audioEngine));
-  document.getElementById('sfxAirhorn')?.addEventListener('click', () => playSFX('airhorn', audioEngine));
-  document.getElementById('sfxDrumroll')?.addEventListener('click', () => playSFX('drumroll', audioEngine));
-  document.getElementById('sfxBeatdrop')?.addEventListener('click', () => playSFX('beatdrop', audioEngine));
-  document.getElementById('sfxGuitar')?.addEventListener('click', () => playSFX('guitar', audioEngine));
-  document.getElementById('sfxSparkle')?.addEventListener('click', () => playSFX('sparkle', audioEngine));
-  document.getElementById('sfxScratch')?.addEventListener('click', () => playSFX('scratch', audioEngine));
-  document.getElementById('sfxBleep')?.addEventListener('click', () => playSFX('bleep', audioEngine));
+  // Soundboard (built-ins + uploads + hotkeys) is rendered and handled by js/soundboard.js
 
   // ─── Pro Artist Live Suite: Metronome ────────────────────────────────────
   const sliderMetro = document.getElementById('sliderMetronomeBpm');
@@ -1494,7 +1489,7 @@ function setupEventListeners() {
         lastPeakTextTs = nowTs;
         lastPeakText = peakText;
         lblPeak.textContent = peakText;
-        lblPeak.style.color = isClipping ? '#ef4444' : (peakDb > -6 ? '#eab308' : '#00e5ff');
+        lblPeak.style.color = isClipping ? '#ef4444' : (peakDb > -6 ? '#eab308' : '#4fc3ff');
       }
     }
     if (lblClip && isClipping !== lastClipState) {
@@ -1948,9 +1943,9 @@ function setupEventListeners() {
 
       // Draw Auto-Tuned Output Pitch curve (Neon Cyan)
       ctx2d.beginPath();
-      ctx2d.strokeStyle = '#45e6ff';
+      ctx2d.strokeStyle = '#52c4ff';
       ctx2d.lineWidth = 2.5;
-      ctx2d.shadowColor = '#45e6ff';
+      ctx2d.shadowColor = '#52c4ff';
       ctx2d.shadowBlur = 6;
       isFirst = true;
       for (let i = 0; i < pitchHistory.length; i++) {
@@ -2487,6 +2482,7 @@ function setupEventListeners() {
       try { audioEngine.activeMicNode.channelCountMode = 'explicit'; } catch (_) {}
       try { audioEngine.activeMicNode.channelInterpretation = 'discrete'; } catch (_) {}
       audioEngine.activeMicNode.connect(audioEngine.engine.micGain);
+      audioEngine._applyMicConditioning?.(); // apply the chosen noise-suppression level to the new mic track
       stream.getAudioTracks()[0]?.addEventListener('ended', killMic, { once: true });
 
       const btnMic = document.getElementById('btnMic');
@@ -2670,11 +2666,200 @@ function setupCallOutput() {
   populate();
 }
 
+// Custom voice builder: sliders -> AudioEngine.applyCustomVoice.
+function setupCustomVoice() {
+  const box = document.getElementById('customVoiceBox');
+  if (!box) return null;
+  const KEY = 'nirmal_custom_voice';
+  const $ = (id) => document.getElementById(id);
+  const sl = { pitch: $('cvPitch'), tone: $('cvTone'), grit: $('cvGrit'), bright: $('cvBright'), echo: $('cvEcho') };
+  const tile = box.querySelector('.preset-btn[data-preset="custom"]');
+
+  const values = () => ({
+    semitones: parseFloat(sl.pitch.value), tone: parseFloat(sl.tone.value), grit: parseFloat(sl.grit.value),
+    highCut: parseFloat(sl.bright.value), echo: parseFloat(sl.echo.value)
+  });
+  const labels = () => {
+    const v = values();
+    $('valCvPitch').textContent = `${v.semitones > 0 ? '+' : ''}${v.semitones} st`;
+    $('valCvTone').textContent = `${v.tone > 0 ? '+' : ''}${v.tone} dB`;
+    $('valCvGrit').textContent = `${Math.round(v.grit)}%`;
+    $('valCvBright').textContent = `${(v.highCut / 1000).toFixed(v.highCut % 1000 ? 1 : 0)} kHz`;
+    $('valCvEcho').textContent = `${Math.round(v.echo)}%`;
+  };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(values())); } catch (_) {} };
+
+  const onChange = async (e) => {
+    labels();
+    save();
+    if (window.__nirmalResetting) return; // Reset all restores the sliders without (re)activating the custom voice
+    const isCustom = audioEngine.currentPreset === 'custom';
+    // A person moving a slider switches to the custom voice; programmatic resets (Reset all) do not.
+    if (!isCustom && !(e && e.isTrusted)) return;
+    try { await audioEngine.boot(); } catch (_) {}
+    audioEngine.applyCustomVoice(values());
+    document.querySelectorAll('.preset-btn').forEach((b) => b.classList.toggle('active', b === tile));
+  };
+  Object.values(sl).forEach((el) => el.addEventListener('input', onChange));
+  // The generic preset-button handler applies the stored custom preset; rebuild it from the sliders first.
+  tile?.addEventListener('click', async () => {
+    try { await audioEngine.boot(); } catch (_) {}
+    audioEngine.applyCustomVoice(values());
+  });
+  labels();
+
+  // Restore the last custom voice after the Reset-all snapshot (see initApp)
+  return () => {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (_) {}
+    if (!saved) return;
+    const map = { pitch: saved.semitones, tone: saved.tone, grit: saved.grit, bright: saved.highCut, echo: saved.echo };
+    for (const [k, v] of Object.entries(map)) if (Number.isFinite(v)) sl[k].value = String(v);
+    labels();
+  };
+}
+
+// Mic boost, noise suppression strength and live level meters (Mixer tab).
+function setupMicTools() {
+  const card = document.getElementById('micToolsCard');
+  const slider = document.getElementById('sliderMicBoost');
+  const seg = document.getElementById('nsSeg');
+  if (!card || !slider || !seg) return;
+
+  const KEY = 'nirmal_mic_tools';
+  const lblBoost = document.getElementById('valMicBoost');
+  const lblNs = document.getElementById('valNs');
+  const help = document.getElementById('nsHelp');
+  const NS_NAMES = ['Off', 'Low', 'Medium', 'High'];
+  const NS_HELP = [
+    'No processing: your raw microphone.',
+    'Browser noise suppression plus a gentle rumble filter (60 Hz). Best for quiet rooms.',
+    'Adds a noise gate that closes between words and a stronger rumble filter. Good for fans and keyboards.',
+    'Strongest: tighter gate and a higher rumble cut. Use if your room is noisy; very quiet singing may be cut.'
+  ];
+  // Gate thresholds (dB) forced by Medium / High
+  const NS_GATE_DB = { 2: -52, 3: -42 };
+
+  const gateToggle = document.getElementById('gateToggle');
+  const gateSlider = document.getElementById('sliderGate');
+  let savedGate = null; // the user's own gate settings, restored when leaving Medium/High
+
+  const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
+
+  const applyGateForLevel = (level) => {
+    if (!gateToggle || !gateSlider) return;
+    if (level >= 2) {
+      if (!savedGate) savedGate = { on: gateToggle.checked, value: gateSlider.value };
+      gateToggle.checked = true;
+      gateSlider.value = String(NS_GATE_DB[level]);
+      fire(gateSlider, 'input');
+      fire(gateToggle, 'change');
+    } else if (savedGate) {
+      gateToggle.checked = savedGate.on;
+      gateSlider.value = savedGate.value;
+      fire(gateSlider, 'input');
+      fire(gateToggle, 'change');
+      savedGate = null;
+    }
+  };
+
+  const setLevel = (level, { persist = true } = {}) => {
+    level = Math.max(0, Math.min(3, level));
+    seg.querySelectorAll('button').forEach((b) => b.classList.toggle('active', Number(b.dataset.ns) === level));
+    if (lblNs) lblNs.textContent = NS_NAMES[level];
+    if (help) help.textContent = NS_HELP[level];
+    applyGateForLevel(level);
+    audioEngine.setNoiseSuppression(level);
+    if (persist) save();
+  };
+
+  const setBoost = (db, { persist = true } = {}) => {
+    db = Math.max(0, Math.min(24, db));
+    slider.value = String(db);
+    if (lblBoost) lblBoost.textContent = `+${db} dB`;
+    audioEngine.setMicBoostDb(db);
+    if (persist) save();
+  };
+
+  const save = () => {
+    try { localStorage.setItem(KEY, JSON.stringify({ boost: Number(slider.value), ns: audioEngine._nsLevel ?? 1 })); } catch (_) {}
+  };
+
+  // Defaults first (no boost, Low suppression): this is the "start-up state" that Reset all snapshots.
+  setBoost(0, { persist: false });
+  setLevel(1, { persist: false });
+
+  // Last used settings are restored afterwards (see initApp) so they never become the Reset baseline.
+  const restore = () => {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (_) {}
+    if (Number.isFinite(saved.boost) && saved.boost !== 0) setBoost(saved.boost, { persist: false });
+    if (Number.isFinite(saved.ns) && saved.ns !== 1) setLevel(saved.ns, { persist: false });
+  };
+
+  slider.addEventListener('input', (e) => setBoost(parseInt(e.target.value, 10) || 0));
+  seg.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-ns]');
+    if (btn) setLevel(Number(btn.dataset.ns));
+  });
+
+  // ── level meters ──────────────────────────────────────────────────────────────────────────────
+  const meterIn = document.getElementById('meterIn');
+  const meterOut = document.getElementById('meterOut');
+  const dbIn = document.getElementById('dbIn');
+  const dbOut = document.getElementById('dbOut');
+  const bufIn = new Float32Array(256);
+  const bufOut = new Float32Array(512);
+  let visible = false;
+  try {
+    new IntersectionObserver((entries) => { for (const en of entries) visible = en.isIntersecting; }).observe(card);
+  } catch (_) { visible = true; }
+
+  const level = (an, buf) => {
+    an.getFloatTimeDomainData(buf);
+    let peak = 0;
+    for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > peak) peak = a; }
+    return 20 * Math.log10(Math.max(peak, 1e-5));
+  };
+  const toFill = (db) => Math.max(0, Math.min(1, (db + 60) / 60));
+  let shownIn = 0;
+  let shownOut = 0;
+  let lastDraw = 0;
+  let lastText = 0;
+
+  const loop = (ts) => {
+    requestAnimationFrame(loop);
+    if (!visible || document.hidden || ts - lastDraw < 40) return; // ~25 fps, only while the card is on screen
+    lastDraw = ts;
+    const e = audioEngine.engine;
+    let inDb = -60;
+    let outDb = -60;
+    try {
+      if (e?.micAnalyser && audioEngine.activeMicStream?.active) inDb = level(e.micAnalyser, bufIn);
+      if (e?.analyser) outDb = level(e.analyser, bufOut);
+    } catch (_) {}
+    // fast attack, slow release
+    shownIn = Math.max(toFill(inDb), shownIn * 0.86);
+    shownOut = Math.max(toFill(outDb), shownOut * 0.86);
+    if (meterIn) meterIn.style.clipPath = `inset(0 ${(100 - shownIn * 100).toFixed(1)}% 0 0)`;
+    if (meterOut) meterOut.style.clipPath = `inset(0 ${(100 - shownOut * 100).toFixed(1)}% 0 0)`;
+    if (ts - lastText > 250) {
+      lastText = ts;
+      if (dbIn) dbIn.textContent = inDb <= -59 ? '-∞ dB' : `${inDb.toFixed(0)} dB`;
+      if (dbOut) dbOut.textContent = outDb <= -59 ? '-∞ dB' : `${outDb.toFixed(0)} dB`;
+    }
+  };
+  requestAnimationFrame(loop);
+
+  window.setNoiseLevel = (l) => setLevel(l);
+  return restore;
+}
+
 // "Reset all": puts every sound / effect / Auto-Tune control back to its start-up state.
 // Mic, music playback and the live stream keep running; only settings are reset.
 function setupResetAllSettings() {
   const SCOPE = ['#mixer', '#proVocalRack', '#karaokeToolsCard', '#trackToolsCard', '#studioFxCard',
-    '#effects', '#artistSuiteCard', '#recording', '#lyrics'];
+    '#effects', '#artistSuiteCard', '#recording', '#lyrics', '#soundboardCard', '#micToolsCard'];
   // Hardware choices, not settings: keep the user's selected devices.
   const KEEP = new Set(['speakerSelect', 'callOutputSelect']);
   // Their change handlers overwrite other sliders, so restore the value without firing them.
@@ -2692,12 +2877,14 @@ function setupResetAllSettings() {
     if (!window.confirm('Reset all sound, voice-effect and Auto-Tune settings to their start-up defaults? Your mic, music and live stream keep running.')) return;
 
     try { await audioEngine.boot(); } catch (_) {}
+    window.__nirmalResetting = true;
 
     // 1. Restore dropdowns whose handlers would otherwise rewrite other controls.
     for (const el of controls) if (SILENT.has(el.id)) el.value = snapshot.get(el).value;
 
     // 2. Voice effect back to Bypass, track key and lyric sync back to zero.
     document.querySelector('.preset-btn[data-preset="normal"]')?.click();
+    window.setNoiseLevel?.(1); // noise suppression back to its default (Low); also restores the user's gate settings
     document.getElementById('btnKeyReset')?.click();
     document.getElementById('btnSyncReset')?.click();
 
@@ -2725,6 +2912,10 @@ function setupResetAllSettings() {
     try { audioEngine.updateMonitorRouting?.(); } catch (_) {}
     try { audioEngine.applyPreset?.('normal'); } catch (_) {}
 
+    // The voice-effect click above is async; make sure Bypass is the final word and the tile highlight matches.
+    document.querySelectorAll('.preset-btn').forEach((b) => b.classList.toggle('active', b.dataset.preset === 'normal'));
+    setTimeout(() => { window.__nirmalResetting = false; }, 600);
+
     document.querySelectorAll('[data-reset-all]').forEach((btn) => {
       const original = btn.dataset.label || (btn.dataset.label = btn.textContent);
       btn.textContent = '✔ Reset done';
@@ -2742,7 +2933,17 @@ function initApp() {
   setupEventListeners();
   setupLiveShareUI();
   setupCallOutput();
+  const restoreMicTools = setupMicTools();
+  const restoreCustomVoice = setupCustomVoice();
+  const soundboard = new SoundboardManager(audioEngine);
+  if (typeof window !== 'undefined') window.soundboard = soundboard;
+  soundboard.init().catch((err) => console.warn('[Soundboard] init failed:', err));
+  const stats = new StatsManager({ audioEngine, presence, filePlayer: document.getElementById('filePlayer') });
+  if (typeof window !== 'undefined') window.stats = stats;
+  stats.start();
   setupResetAllSettings();
+  restoreMicTools?.(); // after the Reset-all snapshot
+  restoreCustomVoice?.();
 }
 
 if (document.readyState === 'loading') {

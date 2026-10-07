@@ -78,7 +78,10 @@ unless you really want it duplicated** (it used to be duplicated between Mixer a
 | `broadcast-compositor.js`, `multistream.js` | 1280×720 canvas scene + audio → MediaRecorder → WebSocket → server FFmpeg → RTMP. |
 | `artist-tools.js` | Metronome, auto-ducking, peak/VU meter. |
 | `call-output.js` | `CallOutputManager`: plays the finished program mix to a chosen output device (virtual cable) so call apps can use it as a mic. Desktop Chrome/Edge only (`setSinkId`). |
-| `face-filters.js`, `sfx.js`, `media-session.js`, `wake-lock.js`, `config.js` | Camera filters, soundboard, mobile background keep-alive, wake lock, presets/constants. |
+| `voice-fx.js` | **Voice modulator stage** (ring mod, vibrato/chorus, tremolo, bit-crush, echo) shared by the studio chain and the audience guest chain. A plain pass-through (no nodes in the path) unless the active preset sets `ringMix/vibMix/tremDepth/crushMix/echoMix`. |
+| `soundboard.js` | Soundboard: built-in synth sounds + user uploads (IndexedDB `nirmal-karaoke/sounds`), per-sound volume, page-level hotkeys (`localStorage.nirmal_soundboard_keys`, `KeyboardEvent.code`), Stop all. Plays through the shared master bus in `sfx.js`. |
+| `stats.js` | `StatsManager`: local-only usage stats (`localStorage.nirmal_stats_v1`): mic time, live time/broadcasts, songs, sounds, top voices. Counts via a 1 s tick and the `nirmal:sfx` event. |
+| `face-filters.js`, `sfx.js`, `media-session.js`, `wake-lock.js`, `config.js` | Camera filters, built-in SFX + master sound bus (`getSfxMaster/stopAllSfx`), mobile background keep-alive, wake lock, presets/constants. |
 
 `visualizer-engine.js` / `visualizer-worker.js` are stubs kept for compatibility.
 
@@ -189,6 +192,18 @@ music search work locally; LiveKit does not (no credentials).
 - Lyrics: new song clears old lyrics (also on audience), stale searches ignored, search box prefilled with the song.
 - Mobile: Auto-Tune card only in Effects; "Track & Karaoke Tools" card (`#trackToolsCard`) only in Mixer.
 - Presence/invite rework, name prompt, LiveKit join reliability (see sections above).
+- **Theme v2 (navy + sky blue, Inter / JetBrains Mono)**: tokens in `:root` of `css/style.css` (`--primary`, `--primary-hi`,
+  `--primary-dim`, `--font-sans/-mono`, glows) plus a "THEME V2" override block at the end of that file. The legacy
+  `--pink/--purple/--cyan` variable names remain as aliases of the new palette (`--pink` = primary blue, `--accent-pink` = red
+  for live/record). `scripts/retheme-colors.py` is the one-off record of the old-pink/purple → blue remap. Reds are kept for
+  live/record/error. Do not reintroduce neon pink/purple.
+- **Voice lab**: 13 effect voices (Drone, Cyborg, Underwater, Ghost, Helium, Demon, Villain, Monster, Megaphone, Telephone,
+  8-bit, Cave, Nervous), the 9 character voices, and a **Custom voice** builder (pitch, body/presence, grit, brightness, echo →
+  `AudioEngine.applyCustomVoice`, saved in `localStorage.nirmal_custom_voice`). Presets may use the modulator fields listed in
+  `voice-fx.js`; the audience guest chain applies them too.
+- **Soundboard card** (Effects tab), **Mic boost & noise suppression + IN/OUT meters** (Mixer tab; engine nodes `nsHighpass →
+  micBoostGain → (limiter only when boosting) → gateGain`; levels Off/Low/Medium/High drive the rumble filter, the browser
+  `noiseSuppression` constraint and the noise gate), **Stats** card (Mixer tab). All are included in Reset all.
 - **Character voices**: 9 original voice archetypes (Baritone, Romantic, Gravel, Announcer, Hero, Melody, Husky,
   Diva, Pop Star) in `PRESETS` (`js/config.js`) with buttons in the studio and audience pages. Presets are only
   `pitch` ratio + high/low cut + one EQ band + drive, applied by `AudioEngine.applyPreset` (host) and
@@ -196,6 +211,9 @@ music search work locally; LiveKit does not (no credentials).
   (personality/publicity rights, and impersonation risk with the call-output feature).
 
 ## Known limitations / ideas
+
+- Not implemented on purpose: neural voice cloning / celebrity voices (consent + personality-rights + impersonation risk),
+  AI music generation, Whisper dictation, system-wide hotkeys (a web page can only bind keys while focused).
 
 - Phones cannot expose a virtual microphone to other apps; the call-output feature is desktop-only by design.
 - Presence is in-memory on one Render process: restarting it clears the user list (clients re-register on the next heartbeat).

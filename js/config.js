@@ -22,7 +22,25 @@ export const PRESETS = {
   melody:    { pitch: 1.1892, lowCut: 120, highCut: 16000, eqFreq: 3200, eqGain: 2.0, drive: 0,    isBypass: false }, // sweet, clear female lead
   husky:     { pitch: 1.0595, lowCut: 100, highCut: 8000,  eqFreq: 700,  eqGain: 2.5, drive: 0.5,  isBypass: false }, // breathy, smoky alto
   diva:      { pitch: 1.1225, lowCut: 130, highCut: 17000, eqFreq: 2600, eqGain: 3.0, drive: 0.25, isBypass: false }, // powerful, projecting
-  popstar:   { pitch: 1.2599, lowCut: 150, highCut: 18000, eqFreq: 4000, eqGain: 2.5, drive: 0,    isBypass: false }  // glossy, airy pop vocal
+  popstar:   { pitch: 1.2599, lowCut: 150, highCut: 18000, eqFreq: 4000, eqGain: 2.5, drive: 0,    isBypass: false }, // glossy, airy pop vocal
+
+  // ── Effect voices (use the voice modulator stage in js/voice-fx.js) ──────────────────────────────
+  drone:      { pitch: 0.9439, lowCut: 250, highCut: 4500,  eqFreq: 1500, eqGain: 2,   drive: 0.6, ringHz: 30, ringMix: 0.85, isBypass: false },       // metallic ring-mod robot
+  cyborg:     { pitch: 0.9439, lowCut: 200, highCut: 6500,  eqFreq: 2200, eqGain: 2.5, drive: 0.4, ringHz: 55, ringMix: 0.55, isBypass: false },       // half human, half machine
+  underwater: { pitch: 0.9439, lowCut: 100, highCut: 1700,  eqFreq: 600,  eqGain: 2,   drive: 0,   vibHz: 5, vibDepth: 0.0035, vibMix: 1, isBypass: false }, // wobbly, muffled
+  ghost:      { pitch: 0.9439, lowCut: 300, highCut: 9000,  eqFreq: 3000, eqGain: 2,   drive: 0,   vibHz: 6, vibDepth: 0.002, vibMix: 0.5, echoMs: 240, echoFb: 0.5, echoMix: 0.5, isBypass: false },
+  helium:     { pitch: 1.7818, lowCut: 180, highCut: 18000, eqFreq: 3800, eqGain: 3,   drive: 0,   isBypass: false },                                  // +10 semitones
+  demon:      { pitch: 0.63,   lowCut: 50,  highCut: 6000,  eqFreq: 140,  eqGain: 4,   drive: 1.2, vibHz: 3, vibDepth: 0.0015, vibMix: 0.4, echoMs: 90, echoFb: 0.35, echoMix: 0.3, isBypass: false },
+  villain:    { pitch: 0.7492, lowCut: 50,  highCut: 7000,  eqFreq: 120,  eqGain: 4,   drive: 0.6, echoMs: 120, echoFb: 0.25, echoMix: 0.2, isBypass: false },
+  monster:    { pitch: 0.5946, lowCut: 45,  highCut: 4500,  eqFreq: 110,  eqGain: 5,   drive: 1.5, ringHz: 20, ringMix: 0.25, isBypass: false },       // -9 semitones, growl
+  megaphone:  { pitch: 1.0,    lowCut: 500, highCut: 3500,  eqFreq: 1800, eqGain: 4,   drive: 1.4, isBypass: false },
+  telephone:  { pitch: 1.0,    lowCut: 400, highCut: 3000,  eqFreq: 1500, eqGain: 3,   drive: 0.2, crushSteps: 64, crushMix: 0.5, isBypass: false },
+  retro8bit:  { pitch: 1.0,    lowCut: 200, highCut: 5000,  eqFreq: 2000, eqGain: 2,   drive: 0,   crushSteps: 16, crushMix: 1, isBypass: false },    // chiptune-style crunch
+  cave:       { pitch: 0.9439, lowCut: 100, highCut: 5000,  eqFreq: 400,  eqGain: 1.5, drive: 0,   echoMs: 170, echoFb: 0.55, echoMix: 0.5, isBypass: false },
+  nervous:    { pitch: 1.0595, lowCut: 120, highCut: 12000, eqFreq: 3000, eqGain: 1.5, drive: 0,   tremHz: 7, tremDepth: 0.7, isBypass: false },      // trembling voice
+
+  // User-built voice (rewritten by AudioEngine.applyCustomVoice from the Custom voice sliders)
+  custom:     { pitch: 1.0,    lowCut: 60,  highCut: 16000, eqFreq: 3200, eqGain: 0,   drive: 0,   isBypass: false }
 };
 
 export const SCALE_MAP = {

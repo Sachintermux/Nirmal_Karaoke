@@ -314,7 +314,7 @@ export class BroadcastCompositor {
     switch (this.theme) {
       case 'sunset':
         return {
-          bg1: '#15081c', bg2: '#280c26', bg3: '#0f0516',
+          bg1: '#0b111c', bg2: '#101928', bg3: '#080d16',
           accent1: '#ffaa00', accent2: '#ff3366',
           glow1: 'rgba(255, 170, 0, 0.12)', glow2: 'rgba(255, 51, 102, 0.10)',
           border: 'rgba(255, 170, 0, 0.45)', textGlow: '#ffaa00'
@@ -336,10 +336,10 @@ export class BroadcastCompositor {
       case 'cyberpunk':
       default:
         return {
-          bg1: '#0a0a14', bg2: '#120c1f', bg3: '#05070e',
-          accent1: '#00e5ff', accent2: '#ff007f',
-          glow1: 'rgba(0, 229, 255, 0.12)', glow2: 'rgba(255, 0, 128, 0.10)',
-          border: 'rgba(0, 229, 255, 0.45)', textGlow: '#00e5ff'
+          bg1: '#0b0f14', bg2: '#0f151f', bg3: '#05070e',
+          accent1: '#4fc3ff', accent2: '#27a9ff',
+          glow1: 'rgba(79, 195, 255, 0.12)', glow2: 'rgba(39, 169, 255, 0.10)',
+          border: 'rgba(79, 195, 255, 0.45)', textGlow: '#4fc3ff'
         };
     }
   }
@@ -630,7 +630,7 @@ export class BroadcastCompositor {
     const radius = Math.min(12, Math.max(6, Math.round(height * 0.05)));
     ctx.save();
     ctx.fillStyle = 'rgba(10, 14, 26, 0.75)';
-    ctx.strokeStyle = colors?.border || 'rgba(0, 229, 255, 0.45)';
+    ctx.strokeStyle = colors?.border || 'rgba(79, 195, 255, 0.45)';
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
     ctx.beginPath();
@@ -673,9 +673,9 @@ export class BroadcastCompositor {
 
     ctx.save();
     const grad = ctx.createLinearGradient(0, y, 0, baseY);
-    grad.addColorStop(0, colors?.accent1 || '#00e5ff');
-    grad.addColorStop(0.5, '#a855f7');
-    grad.addColorStop(1, colors?.accent2 || '#ff007f');
+    grad.addColorStop(0, colors?.accent1 || '#4fc3ff');
+    grad.addColorStop(0.5, '#2f7cf6');
+    grad.addColorStop(1, colors?.accent2 || '#27a9ff');
     ctx.fillStyle = grad;
 
     ctx.beginPath();
@@ -704,7 +704,7 @@ export class BroadcastCompositor {
     ctx.save();
     // Background pill container
     ctx.fillStyle = 'rgba(8, 12, 24, 0.88)';
-    ctx.strokeStyle = colors?.border || 'rgba(0, 229, 255, 0.5)';
+    ctx.strokeStyle = colors?.border || 'rgba(79, 195, 255, 0.5)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, radius);
@@ -731,7 +731,7 @@ export class BroadcastCompositor {
     const time = performance.now() * 0.001;
     ctx.save();
 
-    ctx.fillStyle = 'rgba(5, 5, 15, 0.88)';
+    ctx.fillStyle = 'rgba(6, 10, 15, 0.88)';
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -764,7 +764,7 @@ export class BroadcastCompositor {
     // Song Title
     const songName = this._cachedSongName || 'Live Karaoke Session';
     ctx.textAlign = 'right';
-    ctx.fillStyle = colors?.accent1 || '#00e5ff';
+    ctx.fillStyle = colors?.accent1 || '#4fc3ff';
     ctx.font = `bold ${tagSize}px sans-serif`;
     ctx.fillText('♫ ' + songName.slice(0, 32), x + width - 12, y + height * 0.62);
 
@@ -778,8 +778,8 @@ export class BroadcastCompositor {
 
     ctx.save();
     // Ticker Background
-    ctx.fillStyle = 'rgba(10, 8, 20, 0.94)';
-    ctx.strokeStyle = colors?.accent2 || '#ff007f';
+    ctx.fillStyle = 'rgba(10, 14, 20, 0.94)';
+    ctx.strokeStyle = colors?.accent2 || '#27a9ff';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, Math.min(6, height * 0.1));
@@ -854,7 +854,7 @@ export class BroadcastCompositor {
 
     // Border Glow
     ctx.save();
-    ctx.strokeStyle = colors?.border || 'rgba(0, 229, 255, 0.45)';
+    ctx.strokeStyle = colors?.border || 'rgba(79, 195, 255, 0.45)';
     ctx.lineWidth = Math.max(2, Math.round(width * 0.005));
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, radius);
@@ -871,7 +871,7 @@ export class BroadcastCompositor {
     ctx.beginPath();
     ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
     ctx.fill();
-    ctx.fillStyle = colors?.accent1 || '#00e5ff';
+    ctx.fillStyle = colors?.accent1 || '#4fc3ff';
     ctx.font = `bold ${badgeFont}px sans-serif`;
     ctx.fillText(label, badgeX + 8, badgeY + badgeH * 0.7);
     ctx.restore();
@@ -923,15 +923,15 @@ export class BroadcastCompositor {
 
     ctx.save();
     const grad = ctx.createLinearGradient(0, baseY - maxBarHeight, 0, baseY);
-    grad.addColorStop(0, colors?.accent1 || '#00e5ff');
-    grad.addColorStop(0.35, '#a855f7');
-    grad.addColorStop(0.75, colors?.accent2 || '#ff007f');
-    grad.addColorStop(1, '#ff3366');
+    grad.addColorStop(0, colors?.accent1 || '#4fc3ff');
+    grad.addColorStop(0.35, '#2f7cf6');
+    grad.addColorStop(0.75, colors?.accent2 || '#27a9ff');
+    grad.addColorStop(1, '#5b5cf0');
 
     // 1. Draw mirrored reflection below baseline
     const reflGrad = ctx.createLinearGradient(0, baseY, 0, baseY + Math.round(maxBarHeight * 0.25));
-    reflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.20)');
-    reflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+    reflGrad.addColorStop(0, 'rgba(39, 169, 255, 0.20)');
+    reflGrad.addColorStop(1, 'rgba(82, 196, 255, 0.0)');
     ctx.fillStyle = reflGrad;
     for (let i = 0; i < numBars; i++) {
       let val = 0;
@@ -982,7 +982,7 @@ export class BroadcastCompositor {
     }
 
     // 3. Draw Floating Peak Caps
-    ctx.fillStyle = '#00ffff';
+    ctx.fillStyle = '#7fdcff';
     const peakDotH = Math.max(2, Math.min(barWidth * 0.4, 4));
     for (let i = 0; i < numBars; i++) {
       const pH = this._visPeaks[i];
@@ -1032,7 +1032,7 @@ export class BroadcastCompositor {
       const pillH = mainFontSize + Math.round(h * 0.045);
 
       ctx.fillStyle = 'rgba(8, 12, 24, 0.88)';
-      ctx.strokeStyle = colors?.border || 'rgba(0, 229, 255, 0.5)';
+      ctx.strokeStyle = colors?.border || 'rgba(79, 195, 255, 0.5)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.roundRect((w - pillW) / 2, y, pillW, pillH, 12);
@@ -1060,7 +1060,7 @@ export class BroadcastCompositor {
     ctx.save();
 
     // Top Header Bar
-    ctx.fillStyle = 'rgba(5, 5, 15, 0.85)';
+    ctx.fillStyle = 'rgba(6, 10, 15, 0.85)';
     ctx.fillRect(0, 0, w, headerH);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.lineWidth = 1;
@@ -1096,7 +1096,7 @@ export class BroadcastCompositor {
     const songName = this._cachedSongName || 'Live Karaoke Session';
 
     ctx.textAlign = 'right';
-    ctx.fillStyle = colors?.accent1 || '#00e5ff';
+    ctx.fillStyle = colors?.accent1 || '#4fc3ff';
     ctx.font = `bold ${songSize}px sans-serif`;
     ctx.fillText('♫ ' + songName.slice(0, 38), w - 20, headerH * 0.62);
 

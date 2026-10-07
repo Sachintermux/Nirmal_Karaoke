@@ -184,7 +184,7 @@ function drawAdmin(freq) {
   if (silentFrames > 20) {
     ctx.clearRect(0, 0, w, h);
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.16)';
+    ctx.strokeStyle = 'rgba(82, 196, 255, 0.16)';
     ctx.lineWidth = 1.5;
     ctx.moveTo(0, baseLine);
     const stepX = Math.max(8, Math.round(w / 40));
@@ -193,7 +193,7 @@ function drawAdmin(freq) {
       ctx.lineTo(x, baseLine + wave);
     }
     ctx.stroke();
-    ctx.fillStyle = 'rgba(0, 240, 255, 0.35)';
+    ctx.fillStyle = 'rgba(82, 196, 255, 0.35)';
     for (const d of [0.2, 0.5, 0.8]) {
       ctx.beginPath();
       ctx.arc(w * d, baseLine, 2, 0, Math.PI * 2);
@@ -209,8 +209,8 @@ function drawAdmin(freq) {
     const auraIntensity = Math.min(0.24, (smoothedBass - 0.12) * 0.45);
     const auraRadius = Math.round(w * (0.22 + smoothedBass * 0.16));
     const g = ctx.createRadialGradient(w / 2, baseLine - 10, 0, w / 2, baseLine - 10, auraRadius);
-    g.addColorStop(0, `rgba(0, 240, 255, ${auraIntensity.toFixed(3)})`);
-    g.addColorStop(0.45, `rgba(255, 0, 127, ${(auraIntensity * 0.6).toFixed(3)})`);
+    g.addColorStop(0, `rgba(82, 196, 255, ${auraIntensity.toFixed(3)})`);
+    g.addColorStop(0.45, `rgba(39, 169, 255, ${(auraIntensity * 0.6).toFixed(3)})`);
     g.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = g;
     ctx.beginPath();
@@ -219,7 +219,7 @@ function drawAdmin(freq) {
   }
 
   ctx.beginPath();
-  ctx.strokeStyle = 'rgba(0, 240, 255, 0.22)';
+  ctx.strokeStyle = 'rgba(82, 196, 255, 0.22)';
   ctx.lineWidth = 1.5;
   ctx.moveTo(0, baseLine);
   ctx.lineTo(w, baseLine);
@@ -260,14 +260,14 @@ function drawAdmin(freq) {
   if (!cachedGrad || cachedH !== h) {
     cachedH = h;
     cachedGrad = ctx.createLinearGradient(0, baseLine - maxBarH, 0, baseLine);
-    cachedGrad.addColorStop(0, '#00f0ff');
-    cachedGrad.addColorStop(0.32, '#a855f7');
-    cachedGrad.addColorStop(0.72, '#ff007f');
-    cachedGrad.addColorStop(1, '#ff3366');
+    cachedGrad.addColorStop(0, '#7fdcff');
+    cachedGrad.addColorStop(0.32, '#27a9ff');
+    cachedGrad.addColorStop(0.72, '#2f7cf6');
+    cachedGrad.addColorStop(1, '#5b5cf0');
     cachedReflGrad = ctx.createLinearGradient(0, baseLine, 0, baseLine + Math.round(maxBarH * 0.35));
-    cachedReflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.22)');
-    cachedReflGrad.addColorStop(0.5, 'rgba(168, 85, 247, 0.10)');
-    cachedReflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+    cachedReflGrad.addColorStop(0, 'rgba(39, 169, 255, 0.22)');
+    cachedReflGrad.addColorStop(0.5, 'rgba(47, 124, 246, 0.10)');
+    cachedReflGrad.addColorStop(1, 'rgba(82, 196, 255, 0.0)');
   }
 
   ctx.fillStyle = cachedReflGrad;
@@ -287,7 +287,7 @@ function drawAdmin(freq) {
     capsule(x, Math.round(baseLine - bH), barWidth, bH, capRadius);
   }
 
-  ctx.fillStyle = '#00ffff';
+  ctx.fillStyle = '#7fdcff';
   const peakDotH = Math.max(2.5, Math.min(barWidth * 0.42, 4));
   for (let i = 0; i < numBars; i++) {
     const pH = peaks[i];
@@ -316,7 +316,7 @@ function drawAudience() {
   const maxBarH = Math.round(h * 0.70);
 
   ctx.beginPath();
-  ctx.strokeStyle = 'rgba(0, 240, 255, 0.22)';
+  ctx.strokeStyle = 'rgba(82, 196, 255, 0.22)';
   ctx.lineWidth = 1.5;
   ctx.moveTo(0, baseLine);
   ctx.lineTo(w, baseLine);
@@ -358,14 +358,14 @@ function drawAudience() {
   if (!cachedGrad || cachedH !== h) {
     cachedH = h;
     cachedGrad = ctx.createLinearGradient(0, baseLine - maxBarH, 0, baseLine);
-    cachedGrad.addColorStop(0, '#00f0ff');
-    cachedGrad.addColorStop(0.32, '#a855f7');
-    cachedGrad.addColorStop(0.72, '#ff007f');
-    cachedGrad.addColorStop(1, '#ff3366');
+    cachedGrad.addColorStop(0, '#7fdcff');
+    cachedGrad.addColorStop(0.32, '#27a9ff');
+    cachedGrad.addColorStop(0.72, '#2f7cf6');
+    cachedGrad.addColorStop(1, '#5b5cf0');
     cachedReflGrad = ctx.createLinearGradient(0, baseLine, 0, baseLine + Math.round(maxBarH * 0.35));
-    cachedReflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.22)');
-    cachedReflGrad.addColorStop(0.5, 'rgba(168, 85, 247, 0.10)');
-    cachedReflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+    cachedReflGrad.addColorStop(0, 'rgba(39, 169, 255, 0.22)');
+    cachedReflGrad.addColorStop(0.5, 'rgba(47, 124, 246, 0.10)');
+    cachedReflGrad.addColorStop(1, 'rgba(82, 196, 255, 0.0)');
   }
 
   const hasRoundRect = typeof ctx.roundRect === 'function';
@@ -399,7 +399,7 @@ function drawAudience() {
   }
   if (any) ctx.fill();
 
-  ctx.fillStyle = '#00ffff';
+  ctx.fillStyle = '#7fdcff';
   const peakDotH = Math.max(2, Math.min(barWidth * 0.42, 3));
   ctx.beginPath();
   any = false;

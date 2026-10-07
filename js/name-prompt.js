@@ -21,10 +21,10 @@ export function ensureSingerName(presence, opts = {}) {
     overlay.id = 'singerNamePrompt';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(4,2,8,0.85);display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(3,5,8,0.85);display:flex;align-items:center;justify-content:center;padding:20px;';
 
     const card = document.createElement('div');
-    card.style.cssText = 'background:linear-gradient(145deg,#1c152b,#0f0b18);border:1px solid #ff007f;border-radius:20px;padding:26px 22px;max-width:380px;width:100%;box-shadow:0 0 35px rgba(255,0,127,0.35);text-align:center;color:#fff;font-family:inherit;';
+    card.style.cssText = 'background:linear-gradient(145deg,#181f2b,#0d1118);border:1px solid #27a9ff;border-radius:20px;padding:26px 22px;max-width:380px;width:100%;box-shadow:0 0 35px rgba(39,169,255,0.35);text-align:center;color:#fff;font-family:inherit;';
 
     const emoji = document.createElement('div');
     emoji.textContent = presence.user.avatar || '🎤';
@@ -51,7 +51,7 @@ export function ensureSingerName(presence, opts = {}) {
     const ok = document.createElement('button');
     ok.type = 'button';
     ok.textContent = opts.confirmLabel || 'Continue';
-    ok.style.cssText = 'width:100%;min-height:46px;font-size:0.95rem;font-weight:800;cursor:pointer;background:linear-gradient(135deg,#ff007f,#9b51e0);border:none;border-radius:12px;color:#fff;';
+    ok.style.cssText = 'width:100%;min-height:46px;font-size:0.95rem;font-weight:800;cursor:pointer;background:linear-gradient(135deg,#27a9ff,#2f7cf6);border:none;border-radius:12px;color:#fff;';
 
     const skip = document.createElement('button');
     skip.type = 'button';

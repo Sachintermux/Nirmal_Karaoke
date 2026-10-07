@@ -345,18 +345,18 @@ export class MusicSearchManager {
         : `<div class="music-thumb-wrap">🎵</div>`;
 
       item.innerHTML = `
-        <span style="font-size:11px; font-weight:800; min-width:18px; color:${isCurrent ? 'var(--accent-cyan, #00f0ff)' : 'var(--accent-purple, #b34bff)'}; text-align:center;">${idx + 1}.</span>
+        <span style="font-size:11px; font-weight:800; min-width:18px; color:${isCurrent ? 'var(--accent-cyan, #52c4ff)' : 'var(--accent-purple, #2f7cf6)'}; text-align:center;">${idx + 1}.</span>
         ${thumbHtml}
         <div class="music-item-info">
           <div class="music-item-title">${escapeHtml(track.title)}</div>
           <div class="music-item-artist">
             <span>${escapeHtml(track.artist)}</span>
             ${durText ? `<span class="music-duration-badge">(${durText})</span>` : ''}
-            ${isCurrent ? '<b style="color:var(--accent-cyan,#00f0ff); font-size:10px; margin-left:4px;">▶ PLAYING</b>' : ''}
+            ${isCurrent ? '<b style="color:var(--accent-cyan,#52c4ff); font-size:10px; margin-left:4px;">▶ PLAYING</b>' : ''}
           </div>
         </div>
         <div class="music-item-actions">
-          <button data-idx="${idx}" class="btn-play-item" title="Play track" style="background:none; border:none; color:var(--accent-cyan, #00f0ff); cursor:pointer; font-size:13px; font-weight:bold; padding:4px 6px;">▶</button>
+          <button data-idx="${idx}" class="btn-play-item" title="Play track" style="background:none; border:none; color:var(--accent-cyan, #52c4ff); cursor:pointer; font-size:13px; font-weight:bold; padding:4px 6px;">▶</button>
           <button data-idx="${idx}" class="btn-del-item" title="Remove track" style="background:none; border:none; color:var(--accent-red, #ff3b30); cursor:pointer; font-size:13px; font-weight:bold; padding:4px 6px;">✕</button>
         </div>
       `;
@@ -393,7 +393,7 @@ export class MusicSearchManager {
 
     if (this.lyricsManager?.lblLyricsStatus) {
       this.lyricsManager.lblLyricsStatus.textContent = `➕ Added "${trackObj.title}" to Up-Next Queue!`;
-      this.lyricsManager.lblLyricsStatus.style.color = 'var(--accent-purple, #b34bff)';
+      this.lyricsManager.lblLyricsStatus.style.color = 'var(--accent-purple, #2f7cf6)';
     }
   }
 

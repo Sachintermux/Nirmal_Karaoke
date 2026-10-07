@@ -187,8 +187,8 @@ export class MultiStreamManager {
         const cleanHost = url.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
         const proto = url.startsWith('http://') ? 'http:' : 'https:';
         if (relayBadge) {
-          relayBadge.style.background = 'rgba(0, 229, 255, 0.15)';
-          relayBadge.style.color = '#00e5ff';
+          relayBadge.style.background = 'rgba(79, 195, 255, 0.15)';
+          relayBadge.style.color = '#4fc3ff';
           relayBadge.textContent = 'Pinging…';
         }
         try {
@@ -245,9 +245,9 @@ export class MultiStreamManager {
         pills.forEach(btn => {
           const isMatch = btn.getAttribute('data-layout') === activeLayout;
           if (isMatch) {
-            btn.style.background = isMatch && activeLayout === 'custom' ? 'rgba(255,0,127,0.18)' : 'rgba(0,229,255,0.15)';
-            btn.style.border = isMatch && activeLayout === 'custom' ? '1px solid #ff007f' : '1px solid #00e5ff';
-            btn.style.color = isMatch && activeLayout === 'custom' ? '#ff007f' : '#00e5ff';
+            btn.style.background = isMatch && activeLayout === 'custom' ? 'rgba(39,169,255,0.18)' : 'rgba(79,195,255,0.15)';
+            btn.style.border = isMatch && activeLayout === 'custom' ? '1px solid #27a9ff' : '1px solid #4fc3ff';
+            btn.style.color = isMatch && activeLayout === 'custom' ? '#27a9ff' : '#4fc3ff';
           } else {
             btn.style.background = 'transparent';
             btn.style.border = '1px solid var(--border)';
@@ -368,9 +368,9 @@ export class MultiStreamManager {
     if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
     if (resultBox) {
       resultBox.style.display = 'block';
-      resultBox.style.background = 'rgba(0, 229, 255, 0.1)';
-      resultBox.style.color = '#00e5ff';
-      resultBox.style.border = '1px solid rgba(0, 229, 255, 0.25)';
+      resultBox.style.background = 'rgba(79, 195, 255, 0.1)';
+      resultBox.style.color = '#4fc3ff';
+      resultBox.style.border = '1px solid rgba(79, 195, 255, 0.25)';
       resultBox.textContent = '⏳ Testing live connection to YouTube ingestion server…';
     }
 

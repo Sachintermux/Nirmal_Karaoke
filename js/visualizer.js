@@ -2,9 +2,9 @@
  * Gen-Z Cyberpunk Audio Visualizer for Nirmal Karaoke Live Studio
  *
  * Direct, high-performance 2D Canvas rendering with:
- * - Electric Neon Gradient: Cyan (#00f0ff) -> Cyber Violet (#a855f7) -> Cyberpunk Magenta (#ff007f) -> Neon Coral (#ff3366)
+ * - Sky-to-indigo gradient (#7fdcff -> #27a9ff -> #2f7cf6 -> #5b5cf0)
  * - Capsule Equalizer Bars with smooth non-linear frequency mapping
- * - Floating Neon Peak Caps (#00ffff) with peak hold & gravity physics
+ * - Floating Neon Peak Caps (#7fdcff) with peak hold & gravity physics
  * - Dynamic Sub-Bass Radial Aura (reactive glow on kicks)
  * - Mirrored Glassy Stage Floor Reflection
  * - Ambient Cyber Breathing Wave when audio is silent
@@ -339,7 +339,7 @@ export class VisualizerRenderer {
 
       // Ambient breathing Cyber Horizon Wave
       ctx.beginPath();
-      ctx.strokeStyle = 'rgba(0, 240, 255, 0.16)';
+      ctx.strokeStyle = 'rgba(82, 196, 255, 0.16)';
       ctx.lineWidth = 1.5;
       ctx.moveTo(0, baseLine);
       const stepX = Math.max(8, Math.round(w / 40));
@@ -350,7 +350,7 @@ export class VisualizerRenderer {
       ctx.stroke();
 
       // Cyber tick dots
-      ctx.fillStyle = 'rgba(0, 240, 255, 0.35)';
+      ctx.fillStyle = 'rgba(82, 196, 255, 0.35)';
       const dots = [0.2, 0.5, 0.8];
       for (const d of dots) {
         ctx.beginPath();
@@ -373,8 +373,8 @@ export class VisualizerRenderer {
       const auraIntensity = Math.min(0.24, (this._smoothedBass - 0.12) * 0.45);
       const auraRadius = Math.round(w * (0.22 + this._smoothedBass * 0.16));
       const auraGrad = ctx.createRadialGradient(w / 2, baseLine - 10, 0, w / 2, baseLine - 10, auraRadius);
-      auraGrad.addColorStop(0, `rgba(0, 240, 255, ${auraIntensity.toFixed(3)})`);
-      auraGrad.addColorStop(0.45, `rgba(255, 0, 127, ${(auraIntensity * 0.6).toFixed(3)})`);
+      auraGrad.addColorStop(0, `rgba(82, 196, 255, ${auraIntensity.toFixed(3)})`);
+      auraGrad.addColorStop(0.45, `rgba(39, 169, 255, ${(auraIntensity * 0.6).toFixed(3)})`);
       auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = auraGrad;
       ctx.beginPath();
@@ -384,7 +384,7 @@ export class VisualizerRenderer {
 
     // 2. Cyber Horizon Baseline
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.22)';
+    ctx.strokeStyle = 'rgba(82, 196, 255, 0.22)';
     ctx.lineWidth = 1.5;
     ctx.moveTo(0, baseLine);
     ctx.lineTo(w, baseLine);
@@ -438,15 +438,15 @@ export class VisualizerRenderer {
     if (!this._cachedGrad || this._cachedH !== h) {
       this._cachedH = h;
       this._cachedGrad = ctx.createLinearGradient(0, baseLine - maxBarH, 0, baseLine);
-      this._cachedGrad.addColorStop(0, '#00f0ff');     // Electric Neon Cyan
-      this._cachedGrad.addColorStop(0.32, '#a855f7');  // Cyber Violet
-      this._cachedGrad.addColorStop(0.72, '#ff007f');  // Cyberpunk Magenta
-      this._cachedGrad.addColorStop(1, '#ff3366');     // Neon Coral
+      this._cachedGrad.addColorStop(0, '#7fdcff');     // sky
+      this._cachedGrad.addColorStop(0.32, '#27a9ff');  // blue
+      this._cachedGrad.addColorStop(0.72, '#2f7cf6');  // deep blue
+      this._cachedGrad.addColorStop(1, '#5b5cf0');     // indigo
 
       this._cachedReflGrad = ctx.createLinearGradient(0, baseLine, 0, baseLine + Math.round(maxBarH * 0.35));
-      this._cachedReflGrad.addColorStop(0, 'rgba(255, 0, 127, 0.22)');
-      this._cachedReflGrad.addColorStop(0.5, 'rgba(168, 85, 247, 0.10)');
-      this._cachedReflGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+      this._cachedReflGrad.addColorStop(0, 'rgba(39, 169, 255, 0.22)');
+      this._cachedReflGrad.addColorStop(0.5, 'rgba(47, 124, 246, 0.10)');
+      this._cachedReflGrad.addColorStop(1, 'rgba(82, 196, 255, 0.0)');
     }
 
     // 5. Draw Mirrored Glassy Stage Reflection
@@ -470,7 +470,7 @@ export class VisualizerRenderer {
     }
 
     // 7. Draw Floating Neon Peak Caps (hanging glowing dots)
-    ctx.fillStyle = '#00ffff';
+    ctx.fillStyle = '#7fdcff';
     const peakDotH = Math.max(2.5, Math.min(barWidth * 0.42, 4));
     for (let i = 0; i < numBars; i++) {
       const pH = this.peaks[i];
