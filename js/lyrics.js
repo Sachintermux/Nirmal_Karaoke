@@ -125,7 +125,16 @@ export class LyricsManager {
 
   parseLRC(text) {
     this.parsedLyrics = [];
-    if (!text) return;
+    if (!text) {
+      // Nothing to show: clear the previous song's lines from the stage, controls and audience.
+      this.currentLyricIndex = -1;
+      this.currentActiveLyricEl = null;
+      this.renderLyrics();
+      if (this.lyricSyncControls) this.lyricSyncControls.style.display = 'none';
+      if (this.btnDownloadAutoLrc) this.btnDownloadAutoLrc.style.display = 'none';
+      if (this.onLyricsUpdated) this.onLyricsUpdated([]);
+      return;
+    }
 
     const tagRegex = /\[(\d{2}):(\d{2}(?:\.\d{1,3})?)\]/g;
     text.split('\n').forEach((line) => {
@@ -313,6 +322,8 @@ export class LyricsManager {
   }
 
   async triggerLRCLibSearch(cleanTitle, displayArtist, audioDuration) {
+    // A newer song may be selected while this request is in flight; only the latest search may apply.
+    const token = (this._searchToken = (this._searchToken || 0) + 1);
     if (this.lblLyricsStatus) {
       this.lblLyricsStatus.textContent = `Searching lyrics for: "${cleanTitle}"...`;
       this.lblLyricsStatus.style.color = 'var(--text-dim)';
@@ -327,8 +338,10 @@ export class LyricsManager {
     for (const q of searchQueries) {
       try {
         const response = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(q)}`);
+        if (token !== this._searchToken) return;
         if (!response.ok) continue;
         const data = await response.json();
+        if (token !== this._searchToken) return;
         if (Array.isArray(data) && data.length > 0) {
           candidates = data.filter((t) => t.syncedLyrics);
           if (candidates.length > 0) break;
@@ -338,12 +351,15 @@ export class LyricsManager {
       }
     }
 
+    if (token !== this._searchToken) return;
+
     if (candidates.length === 0) {
+      // No lyrics for this song: make sure the previous song's lyrics are gone everywhere.
+      this.reset();
       if (this.lblLyricsStatus) {
         this.lblLyricsStatus.textContent = `No synced lyrics found for "${cleanTitle}".`;
         this.lblLyricsStatus.style.color = 'var(--text-dim)';
       }
-      this.parseLRC('');
       return;
     }
 
@@ -369,7 +385,21 @@ export class LyricsManager {
   async autoFetchLyricsFromData(title, artist, duration) {
     const cleanTitle = this.sanitizeSongTitle(title);
     const cleanArtist = this.sanitizeSongTitle(artist || '');
+    // New song: drop the previous song's lyrics right away (also from the audience) and
+    // pre-fill the manual "Search lyrics" box with this song so it is one click to refine.
+    this.reset();
+    this.prefillSearchQuery(cleanTitle, cleanArtist);
     this.triggerLRCLibSearch(cleanTitle, cleanArtist, duration);
+  }
+
+  prefillSearchQuery(title, artist) {
+    const input = document.getElementById('lrcSearchInput');
+    if (!input) return;
+    const query = `${title || ''} ${artist || ''}`.replace(/\s+/g, ' ').trim();
+    if (query) input.value = query;
+    // Clear results from the previous song's manual search
+    const res = document.getElementById('lrcSearchResults');
+    if (res) res.innerHTML = '';
   }
 
   async autoFetchLyricsWithLengthMatch(audioFile, audioDuration) {
@@ -381,6 +411,7 @@ export class LyricsManager {
 
   reset() {
     this.parsedLyrics = [];
+    this.currentActiveLyricEl = null;
     this.currentLyricIndex = -1;
     this.lyricSyncOffset = 0.0;
     this.updateSyncUI();

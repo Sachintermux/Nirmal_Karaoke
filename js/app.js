@@ -2281,6 +2281,13 @@ function setupEventListeners() {
   document.getElementById('btnSearchLrc')?.addEventListener('click', () => {
     const box = document.getElementById('lrcSearchBox');
     if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    // Pre-fill with the current song if the box is empty (e.g. nothing was auto-searched yet)
+    const lrcInput = document.getElementById('lrcSearchInput');
+    const npTitle = document.getElementById('nowPlayingTitle')?.textContent?.trim();
+    const npArtist = document.getElementById('nowPlayingArtist')?.textContent?.trim();
+    if (lrcInput && !lrcInput.value.trim() && npTitle && npTitle !== 'Choose a song to begin') {
+      lyricsManager.prefillSearchQuery(lyricsManager.sanitizeSongTitle(npTitle), lyricsManager.sanitizeSongTitle(npArtist || ''));
+    }
     const createBox = document.getElementById('lrcCreateBox');
     if (createBox) createBox.style.display = 'none';
   });
