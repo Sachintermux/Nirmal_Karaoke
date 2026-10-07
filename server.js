@@ -449,6 +449,7 @@ function issueLiveKitToken(req, res) {
       const room = String(src.roomName || src.room || '').trim();
       const identity = String(src.identity || '').trim();
       const role = String(src.role || 'audience').trim();
+      const displayName = String(src.name || '').replace(/\p{Cc}/gu, '').trim().slice(0, 32);
       if (!room || !identity) return res.status(400).json({ error: 'room and identity are required' });
       if (!['host', 'duet', 'audience'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
 
@@ -483,7 +484,7 @@ function issueLiveKitToken(req, res) {
 
       const token = new AccessToken(apiKey, apiSecret, {
         identity,
-        name: identity,
+        name: displayName || identity,
         ttl: '24h'
       });
       token.addGrant({

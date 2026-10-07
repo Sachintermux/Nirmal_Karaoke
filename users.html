@@ -752,12 +752,13 @@
         // Filter out myself and my own active live stage
         let list = users.filter(u => {
             if (u.id === presence.user.id) return false;
-            if (presence.currentRoomId && (u.roomId === presence.currentRoomId || u.id === `host_${presence.currentRoomId}`)) return false;
+            if (String(u.id).startsWith('host_')) return false; // legacy phantom "Live Host" entries
+            if (presence.currentRoomId && u.roomId === presence.currentRoomId) return false;
             return true;
         });
 
         if (lblOnlineCount) {
-            lblOnlineCount.textContent = `${users.length} Online`;
+            lblOnlineCount.textContent = `${list.length} Online`;
         }
 
         // Apply search query
@@ -835,6 +836,13 @@
             const btnInvite = card.querySelector('.btn-action-invite');
             if (btnInvite) {
                 btnInvite.addEventListener('click', async () => {
+                    // An invite must point at a real live stage; going live happens in the studio.
+                    if (!presence.isHostingLive()) {
+                        if (confirm('You need to be live to invite someone to your stage. Open the Karaoke Studio now, press "Go live", then invite from the Live Users list?')) {
+                            window.location.href = './index.html#stage';
+                        }
+                        return;
+                    }
                     btnInvite.disabled = true;
                     btnInvite.textContent = 'Sending...';
                     try {
@@ -896,12 +904,8 @@
     // Refresh button
     btnRefreshList?.addEventListener('click', async () => {
         try {
-            const r = await fetch('/api/presence/users');
-            const data = await r.json();
-            if (data?.users) {
-                presence.onlineUsers = data.users;
-                renderRoster(data.users);
-            }
+            const users = await presence.fetchUsers();
+            renderRoster(users);
         } catch (err) {
             console.warn('[Users] Failed to refresh user roster:', err);
         }

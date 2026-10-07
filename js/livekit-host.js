@@ -16,28 +16,60 @@ const NIRMAL_LOW_LATENCY_AUDIO = {
   lowerAfterHealthySamples: 3
 };
 
+// Token endpoints in order of preference; the always-on backend is the last resort so a cold or
+// failing serverless function does not stop the host from going live.
+function livekitTokenEndpoints() {
+  const list = ['/api/livekit/token', '/.netlify/functions/livekit-token'];
+  const add = (host, proto) => {
+    const url = `${proto}//${host}/api/livekit/token`;
+    if (!list.includes(url)) list.push(url);
+  };
+  const savedRelay = (localStorage.getItem('nirmal_stream_relay_url') || '').trim();
+  if (savedRelay) {
+    const cleanHost = savedRelay.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+    add(cleanHost, savedRelay.startsWith('http://') ? 'http:' : 'https:');
+  }
+  const h = location.hostname;
+  if (h !== 'localhost' && h !== '127.0.0.1' && !h.endsWith('.onrender.com')) add('nirmal-karaoke.onrender.com', 'https:');
+  return list;
+}
+
+// One failed handshake should not leave the host stuck: retry with a short backoff.
+async function connectRoomWithRetry(room, url, token, options = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await room.connect(url, token, { autoSubscribe: true, maxRetries: 2, ...options });
+      return;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[Nirmal] LiveKit connect attempt ${attempt + 1} failed:`, e?.message || e);
+      if (attempt < 2) await new Promise((res) => setTimeout(res, 900 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 async function fetchToken(room, identity, role) {
   let customLk = null;
   try {
     customLk = JSON.parse(localStorage.getItem('nirmal_livekit_config') || '{}');
   } catch (_) {}
 
+  let singerName = '';
+  try { singerName = JSON.parse(localStorage.getItem('nirmal_singer_profile') || '{}')?.name || ''; } catch (_) {}
+
   const payload = {
     roomName: room,
     identity,
+    ...(singerName ? { name: singerName } : {}),
     role,
     ...(customLk?.url ? { livekitUrl: customLk.url } : {}),
     ...(customLk?.apiKey ? { apiKey: customLk.apiKey } : {}),
     ...(customLk?.apiSecret ? { apiSecret: customLk.apiSecret } : {})
   };
 
-  const endpoints = ['/api/livekit/token', '/.netlify/functions/livekit-token'];
-  const savedRelay = (localStorage.getItem('nirmal_stream_relay_url') || '').trim();
-  if (savedRelay) {
-    const cleanHost = savedRelay.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
-    const proto = savedRelay.startsWith('http://') ? 'http:' : 'https:';
-    endpoints.push(`${proto}//${cleanHost}/api/livekit/token`);
-  }
+  const endpoints = livekitTokenEndpoints();
 
   let lastError = null;
   for (const endpoint of endpoints) {
@@ -183,7 +215,7 @@ export class LiveKitLiveStreamHost {
         console.info('[Nirmal] LiveKit prepareConnection skipped:', e?.message || e);
       }
 
-      await room.connect(cfg.url, cfg.token, { autoSubscribe: true });
+      await connectRoomWithRetry(room, cfg.url, cfg.token);
       if (room.state !== 'connected') throw new Error(`LiveKit connected with unexpected state: ${room.state}`);
 
       // Subscribe to already-published remote media. TrackSubscribed is still the

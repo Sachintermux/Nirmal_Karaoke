@@ -11,6 +11,7 @@ import { ArtistToolsManager } from './artist-tools.js?v=31';
 import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=31';
 import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=31';
 import { CallOutputManager } from './call-output.js?v=1';
+import { ensureSingerName } from './name-prompt.js?v=1';
 
 const audioEngine = new AudioEngine();
 if (typeof window !== 'undefined') window.audioEngine = audioEngine;
@@ -21,6 +22,7 @@ const visualizer = new VisualizerRenderer(audioEngine);
 if (typeof window !== 'undefined') window.visualizer = visualizer;
 const liveHost = new LiveStreamHost(audioEngine);
 const presence = new PresenceManager();
+if (typeof window !== 'undefined') window.presence = presence;
 const multistream = new MultiStreamManager(liveHost, audioEngine, lyricsManager);
 const artistTools = new ArtistToolsManager(audioEngine);
 
@@ -542,6 +544,8 @@ function setupLiveShareUI() {
     if (liveStarting) return;
     liveStarting = true;
     btnOpen.disabled = true;
+    // Ask for the singer name once (saved on this device, reused next time).
+    await ensureSingerName(presence);
     const status = document.getElementById('liveTransportStatus');
 
     // Open modal immediately to show connection status
@@ -560,7 +564,7 @@ function setupLiveShareUI() {
       });
 
       const roomId = await liveHost.createRoom(allowDuetToggle?.checked ?? true);
-      presence.updateLiveStatus({ role: 'host', roomId, roomName: 'My Live Stage', isLive: true });
+      presence.updateLiveStatus({ role: 'host', roomId, roomName: `${presence.user.name}'s Stage`, isLive: true });
       syncBackgroundKeepAlive();
       renderShareLinks(roomId);
       const btnStopLive = document.getElementById('btnStopLive');
@@ -864,7 +868,8 @@ function setupLiveShareUI() {
 
     let list = users.filter(u => {
       if (u.id === presence.user.id) return false;
-      if (presence.currentRoomId && (u.roomId === presence.currentRoomId || u.id === `host_${presence.currentRoomId}`)) return false;
+      if (String(u.id).startsWith('host_')) return false; // legacy phantom "Live Host" entries
+      if (presence.currentRoomId && u.roomId === presence.currentRoomId) return false;
       return true;
     });
     if (desktopSearchQuery) {
@@ -944,9 +949,10 @@ function setupLiveShareUI() {
           try {
             // If host has not started a room yet, automatically create one so we can invite them directly to it!
             if (!liveHost.isConnected?.()) {
+              await ensureSingerName(presence);
               const rId = await liveHost.createRoom(true);
               await liveHost.ensureProgramAudioPublished?.().catch(() => {});
-              presence.updateLiveStatus({ role: 'host', roomId: rId, roomName: 'My Live Stage', isLive: true });
+              presence.updateLiveStatus({ role: 'host', roomId: rId, roomName: `${presence.user.name}'s Stage`, isLive: true });
               renderShareLinks(rId);
             }
 
@@ -984,9 +990,10 @@ function setupLiveShareUI() {
 
     try {
       if (!liveHost.isConnected?.()) {
+        await ensureSingerName(presence);
         const rId = await liveHost.createRoom(true);
         await liveHost.ensureProgramAudioPublished?.().catch(() => {});
-        presence.updateLiveStatus({ role: 'host', roomId: rId, roomName: 'My Live Stage', isLive: true });
+        presence.updateLiveStatus({ role: 'host', roomId: rId, roomName: `${presence.user.name}'s Stage`, isLive: true });
         renderShareLinks(rId);
       }
 

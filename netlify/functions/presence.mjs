@@ -82,31 +82,10 @@ export default async (req) => {
 
     // 1. GET USERS LIST
     if (pathname.endsWith('/users') || action === 'users') {
-      const liveRooms = await getLiveRoomsFromLiveKit();
-      
-      // Inject LiveKit active broadcasting stages if not already in presence
-      for (const r of liveRooms) {
-        if (r.numParticipants > 0) {
-          const alreadyHosted = Array.from(activeUsers.values()).some(u => u.roomId === r.name && (u.isLive || u.role === 'host'));
-          if (!alreadyHosted) {
-            const hostId = `host_${r.name}`;
-            if (!activeUsers.has(hostId)) {
-              activeUsers.set(hostId, {
-                id: hostId,
-                name: `Live Host (${r.name.slice(0, 8)})`,
-                avatar: '🎤',
-                role: 'host',
-                roomId: r.name,
-                roomName: 'Live Karaoke Stage',
-                isLive: true,
-                device: 'desktop',
-                lastSeen: Date.now()
-              });
-            }
-          }
-        }
-      }
-
+      // Note: this serverless copy keeps state in memory per function instance, so it is only a
+      // fallback; the always-on backend (server.js on Render) is the primary presence service.
+      // Rooms are no longer invented from LiveKit as extra "Live Host" users: those phantom
+      // entries showed a live person their own stage as someone else to invite.
       const usersList = Array.from(activeUsers.values()).map(u => ({
         id: u.id,
         name: u.name,

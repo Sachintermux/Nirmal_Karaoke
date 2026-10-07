@@ -34,6 +34,8 @@ export default async (req) => {
     const roomName = String(body.roomName || body.room_name || body.room || url.searchParams.get('room') || url.searchParams.get('roomName') || '').trim();
     const identity = String(body.identity || body.participant_identity || url.searchParams.get('identity') || '').trim();
     const role = String(body.role || url.searchParams.get('role') || 'audience').trim();
+    // Display name shown to other participants (the singer's chosen name); identity stays unique.
+    const displayName = String(body.name || url.searchParams.get('name') || '').replace(/\p{Cc}/gu, '').trim().slice(0, 32);
 
     const apiKey = String(body.apiKey || process.env.LIVEKIT_API_KEY || '').trim();
     const apiSecret = String(body.apiSecret || process.env.LIVEKIT_API_SECRET || '').trim();
@@ -272,25 +274,30 @@ export default async (req) => {
       return json({ error: 'Invalid role' }, 400);
     }
 
-    // If room was explicitly ended by host, inform audience/duet
-    if (endedRooms.has(roomName) && role !== 'host') {
-      return json({
-        error: 'This live broadcast has ended or is discontinued by the host.',
-        roomEnded: true,
-        discontinued: true,
-        room: roomName
-      }, 410);
-    }
-
-    // If host is re-creating or joining the room, unmark ended
-    if (role === 'host') {
-      endedRooms.delete(roomName);
+    // Serverless instances do not share memory, so an in-memory "ended rooms" list gave different
+    // answers on different calls (viewers randomly told the broadcast ended, or let in after it did).
+    // Ask LiveKit itself instead: ending a broadcast deletes the room, so a viewer/duet guest may only
+    // join a room that currently exists. Hosts always may (joining creates the room).
+    if (role !== 'host' && svc) {
+      let roomExists = true; // if LiveKit cannot be queried, do not block the join
+      try {
+        const rooms = await svc.listRooms([roomName]);
+        roomExists = Array.isArray(rooms) && rooms.length > 0;
+      } catch (_) {}
+      if (!roomExists) {
+        return json({
+          error: 'This live broadcast has ended or is not live yet.',
+          roomEnded: true,
+          discontinued: true,
+          room: roomName
+        }, 410);
+      }
     }
 
     // Generate JWT token with full room permissions
     const token = new AccessToken(apiKey, apiSecret, {
       identity,
-      name: identity,
+      name: displayName || identity,
       ttl: '24h'
     });
 

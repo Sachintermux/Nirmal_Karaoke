@@ -597,23 +597,27 @@
   import { PRESETS, SAAVN_API_URLS } from './js/config.js?v=34';
   import { FaceFilterEngine, FACE_FILTERS } from './js/face-filters.js?v=31';
   import { PresenceManager } from './js/presence-manager.js?v=31';
+  import { ensureSingerName } from './js/name-prompt.js?v=1';
   import { acquireWakeLock, releaseWakeLock } from './js/wake-lock.js?v=31';
   import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './js/media-session.js?v=31';
 
   const params = new URLSearchParams(location.search);
   const roomId = params.get('room');
-  const guestRole = params.get('role') || 'listen';
+  let guestRole = params.get('role') || 'listen'; // promoteToDuet() changes it
   const L = window.LivekitClient;
 
   const presence = new PresenceManager();
   let isDuetGuest = guestRole === 'participate' || guestRole === 'duet';
   let hostDisconnectGraceTimer = null;
+  let autoEnableMicAfterJoin = false;
   if (roomId) {
+    // A viewer / duet guest is in a room but is not themselves a live stage, so they must not be
+    // listed as "LIVE" (or offered "Watch/Duet" buttons) in the lobby.
     presence.updateLiveStatus({
       role: isDuetGuest ? 'duet' : 'audience',
       roomId,
       roomName: `Live Room #${roomId}`,
-      isLive: true
+      isLive: false
     });
   }
 
@@ -1457,7 +1461,7 @@
     const payload = new TextEncoder().encode(JSON.stringify({
       type: 'GUEST_HELLO',
       role: guestRole,
-      name: chatNickInput.value.trim() || 'Audience Guest',
+      name: chatNickInput.value.trim() || (presence.hasChosenName() ? presence.user.name : 'Audience Guest'),
       isDuetActive: !!livekitMicPublication && isMicEnabled && !isMicMuted,
       hasMic: !!livekitMicPublication && isMicEnabled && !isMicMuted,
       hasCamera: !!livekitCameraPublication && isCameraEnabled
@@ -1495,6 +1499,41 @@
     return livekitMicPublication;
   }
 
+  // Token endpoints in order of preference. The always-on backend is the last resort so a
+  // cold/failing serverless function does not stop someone from joining.
+  function livekitTokenEndpoints() {
+    const list = ['/api/livekit/token', '/.netlify/functions/livekit-token'];
+    const add = (host, proto) => {
+      const url = `${proto}//${host}/api/livekit/token`;
+      if (!list.includes(url)) list.push(url);
+    };
+    const savedRelay = (localStorage.getItem('nirmal_stream_relay_url') || '').trim();
+    if (savedRelay) {
+      const cleanHost = savedRelay.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
+      add(cleanHost, savedRelay.startsWith('http://') ? 'http:' : 'https:');
+    }
+    const h = location.hostname;
+    if (h !== 'localhost' && h !== '127.0.0.1' && !h.endsWith('.onrender.com')) add('nirmal-karaoke.onrender.com', 'https:');
+    return list;
+  }
+
+  // One failed handshake (cold start, flaky Wi-Fi, SFU hiccup) should not leave someone stuck
+  // on "not connected"; retry with a short backoff before giving up.
+  async function connectRoomWithRetry(r, url, token) {
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await r.connect(url, token, { autoSubscribe: true, maxRetries: 2 });
+        return;
+      } catch (e) {
+        lastErr = e;
+        console.warn(`[Nirmal] LiveKit connect attempt ${attempt + 1} failed:`, e?.message || e);
+        if (attempt < 2) await new Promise((res) => setTimeout(res, 900 * (attempt + 1)));
+      }
+    }
+    throw lastErr;
+  }
+
   async function connectLiveKit() {
     if (!roomId) throw new Error('Invalid room link.');
     if (!L) throw new Error('LiveKit client failed to load.');
@@ -1513,19 +1552,14 @@
     const tokenPayload = {
       roomName: roomId,
       identity,
+      name: presence.user.name,
       role,
       ...(customLk?.url ? { livekitUrl: customLk.url } : {}),
       ...(customLk?.apiKey ? { apiKey: customLk.apiKey } : {}),
       ...(customLk?.apiSecret ? { apiSecret: customLk.apiSecret } : {})
     };
 
-    const endpoints = ['/api/livekit/token', '/.netlify/functions/livekit-token'];
-    const savedRelay = (localStorage.getItem('nirmal_stream_relay_url') || '').trim();
-    if (savedRelay) {
-      const cleanHost = savedRelay.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
-      const proto = savedRelay.startsWith('http://') ? 'http:' : 'https:';
-      endpoints.push(`${proto}//${cleanHost}/api/livekit/token`);
-    }
+    const endpoints = livekitTokenEndpoints();
 
     let tokenData = null;
     let tokenError = null;
@@ -1541,7 +1575,7 @@
           body: JSON.stringify(tokenPayload)
         });
         const data = await tokenRes.json().catch(() => ({}));
-        if (tokenRes.status === 410 || tokenRes.status === 404 || data.roomEnded || data.discontinued) {
+        if (tokenRes.status === 410 || data.roomEnded || data.discontinued) {
           roomDiscontinued = true;
           if (btnTuneIn) btnTuneIn.style.display = 'none';
           clearTimeout(timer);
@@ -1793,6 +1827,7 @@
           const tokenPayload = {
             roomName: roomId,
             identity: participantIdentity,
+            name: presence.user.name,
             role: guestRole === 'participate' ? 'duet' : 'audience',
             ...(customLk?.url ? { livekitUrl: customLk.url } : {}),
             ...(customLk?.apiKey ? { apiKey: customLk.apiKey } : {}),
@@ -1800,20 +1835,14 @@
           };
           let tokenData = null;
           let tokenError = null;
-          const endpoints = ['/api/livekit/token', '/.netlify/functions/livekit-token'];
-          const savedRelay = (localStorage.getItem('nirmal_stream_relay_url') || '').trim();
-          if (savedRelay) {
-            const cleanHost = savedRelay.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/$/, '');
-            const proto = savedRelay.startsWith('http://') ? 'http:' : 'https:';
-            endpoints.push(`${proto}//${cleanHost}/api/livekit/token`);
-          }
+          const endpoints = livekitTokenEndpoints();
           for (const endpoint of endpoints) {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), 8000);
             try {
               const tokenRes = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', signal: controller.signal, body: JSON.stringify(tokenPayload) });
               const data = await tokenRes.json().catch(() => ({}));
-              if (tokenRes.status === 410 || tokenRes.status === 404 || data.roomEnded || data.discontinued) {
+              if (tokenRes.status === 410 || data.roomEnded || data.discontinued) {
                 roomDiscontinued = true;
                 setStatus('🔴 This live broadcast has ended. Room discontinued.', 'var(--accent-red)');
                 if (btnTuneIn) btnTuneIn.style.display = 'none';
@@ -1828,7 +1857,7 @@
             finally { clearTimeout(timer); }
           }
           if (!tokenData) throw tokenError || new Error('Token refresh failed.');
-          await room.connect(tokenData.url, tokenData.token, { autoSubscribe: true });
+          await connectRoomWithRetry(room, tokenData.url, tokenData.token);
           try {
             await room.startAudio();
           } catch (err) {
@@ -1863,7 +1892,7 @@
       setStatus(`Media device error: ${err?.message || err}`, 'var(--accent-orange)');
     });
 
-    await room.connect(tokenData.url, tokenData.token, { autoSubscribe: true });
+    await connectRoomWithRetry(room, tokenData.url, tokenData.token);
     if (btnEnableMic) btnEnableMic.disabled = false;
     if (btnToggleCamera) btnToggleCamera.disabled = false;
     if (btnLeaveStage) btnLeaveStage.style.display = 'block';
@@ -2046,6 +2075,11 @@
       if (isDuetGuest) {
         duetNotice.style.display = 'block';
         if (btnRequestMic) btnRequestMic.style.display = 'none';
+        // Came here through an accepted invite: turn the mic on automatically so they can sing right away.
+        if (autoEnableMicAfterJoin) {
+          autoEnableMicAfterJoin = false;
+          promoteToDuet(true).catch((e) => console.warn('[Nirmal] auto mic after invite failed:', e));
+        }
       } else {
         duetNotice.style.display = 'none';
         if (btnRequestMic) btnRequestMic.style.display = 'block';
@@ -2103,8 +2137,14 @@
     document.body.appendChild(overlay);
 
     const btnTrigger = overlay.querySelector('#btnTriggerGestureJoin');
-    btnTrigger?.addEventListener('click', () => {
+    btnTrigger?.addEventListener('click', async () => {
       overlay.remove();
+      // Duet singers are shown by name on the stage; ask once and remember it.
+      if (isDuetGuest) {
+        await ensureSingerName(presence, { title: 'Your name for the stage', confirmLabel: 'Join the stage' });
+        if (chatNickInput && !chatNickInput.value.trim()) chatNickInput.value = presence.user.name;
+      }
+      autoEnableMicAfterJoin = isDuetGuest;
       if (btnTuneIn && !btnTuneIn.disabled && btnTuneIn.style.display !== 'none') {
         btnTuneIn.click();
       }
@@ -2112,6 +2152,8 @@
   }
 
   chatNickInput.addEventListener('change', sendPresenceUpdate);
+  // Use the name saved on this device (chosen when going live / joining a stage) by default.
+  if (!chatNickInput.value.trim() && presence.hasChosenName()) chatNickInput.value = presence.user.name;
 
   const btnToggleSideBySide = document.getElementById('btnToggleSideBySide');
   btnToggleSideBySide?.addEventListener('click', () => {
