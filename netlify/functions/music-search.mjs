@@ -69,6 +69,7 @@ export default async function handler(req) {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=300, s-maxage=900',
         'X-Cache': 'HIT'
       }
     });
@@ -122,7 +123,8 @@ export default async function handler(req) {
             status: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=300, s-maxage=900'
             }
           });
         }
@@ -182,7 +184,8 @@ export default async function handler(req) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': tracks.length ? 'public, max-age=300, s-maxage=900' : 'no-store'
       }
     });
   } catch (err) {

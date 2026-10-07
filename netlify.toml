@@ -1,11 +1,49 @@
 [build]
-  publish = "."
+  # Build a lean, versioned dist/ (public frontend only) instead of publishing the repo root.
+  command = "node scripts/build-netlify.mjs"
+  publish = "dist"
 
 [functions]
   directory = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "22"
+
+# ── Caching ────────────────────────────────────────────────────────────────
+# JS/CSS references are stamped with a per-deploy ?v= by scripts/build-netlify.mjs,
+# so they can be cached forever and still refresh on every new deploy.
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# HTML always revalidates (cheap 304) so a new deploy is picked up immediately.
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/icon-*.png"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/favicon.ico"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
 [[redirects]]
   from = "/api/livekit/*"
   to = "/.netlify/functions/livekit-token"
@@ -36,5 +74,3 @@
   to = "/.netlify/functions/music-search"
   status = 200
   force = true
-
-
