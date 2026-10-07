@@ -5,7 +5,9 @@
   "description": "Web-only low-latency karaoke broadcast and duet app using Web Audio + LiveKit SFU",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "node scripts/build-netlify.mjs",
+    "prestart": "node scripts/build-netlify.mjs || exit 0"
   },
   "dependencies": {
     "cors": "^2.8.6",

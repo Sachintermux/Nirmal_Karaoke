@@ -6,6 +6,11 @@
 [functions]
   directory = "netlify/functions"
 
+# Local `netlify dev` / previews serve the source folder directly (dist/ only exists after a build).
+[dev]
+  framework = "#static"
+  publish = "."
+
 [build.environment]
   NODE_VERSION = "22"
 
