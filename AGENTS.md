@@ -189,6 +189,11 @@ music search work locally; LiveKit does not (no credentials).
 - Lyrics: new song clears old lyrics (also on audience), stale searches ignored, search box prefilled with the song.
 - Mobile: Auto-Tune card only in Effects; "Track & Karaoke Tools" card (`#trackToolsCard`) only in Mixer.
 - Presence/invite rework, name prompt, LiveKit join reliability (see sections above).
+- **Character voices**: 9 original voice archetypes (Baritone, Romantic, Gravel, Announcer, Hero, Melody, Husky,
+  Diva, Pop Star) in `PRESETS` (`js/config.js`) with buttons in the studio and audience pages. Presets are only
+  `pitch` ratio + high/low cut + one EQ band + drive, applied by `AudioEngine.applyPreset` (host) and
+  `applyGuestPreset` (audience). **Policy: do not add presets named after, or tuned to imitate, real people**
+  (personality/publicity rights, and impersonation risk with the call-output feature).
 
 ## Known limitations / ideas
 

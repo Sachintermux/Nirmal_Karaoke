@@ -8,7 +8,21 @@ export const PRESETS = {
   sad:    { pitch: 0.8908, lowCut: 90,  highCut: 7500,  eqFreq: 900,  eqGain:-1.5, drive: 0,   isBypass: false },
   robot:  { pitch: 1.0000, lowCut: 350, highCut: 4000,  eqFreq: 1100, eqGain: 1.8, drive: 0.8, isBypass: false },
   radio:  { pitch: 1.0594, lowCut: 400, highCut: 3000,  eqFreq: 1500, eqGain: 1.2, drive: 0.6, isBypass: false },
-  alien:  { pitch: 1.3348, lowCut: 120, highCut: 15000, eqFreq: 3800, eqGain: 1.5, drive: 0.5, isBypass: false }
+  alien:  { pitch: 1.3348, lowCut: 120, highCut: 15000, eqFreq: 3800, eqGain: 1.5, drive: 0.5, isBypass: false },
+
+  // ── Original character voices ────────────────────────────────────────────────
+  // Styled by TONE (pitch shift, chest/presence EQ, band-limiting, grit). They are generic archetypes
+  // and are deliberately NOT modelled on, or named after, any real person.
+  // pitch ratios: -3 st = .8409, -2 = .8909, -1 = .9439, +1 = 1.0595, +2 = 1.1225, +3 = 1.1892, +4 = 1.2599
+  baritone:  { pitch: 0.8409, lowCut: 55,  highCut: 9500,  eqFreq: 150,  eqGain: 3.0, drive: 0.15, isBypass: false }, // deep, resonant leading man
+  romantic:  { pitch: 0.9439, lowCut: 65,  highCut: 11000, eqFreq: 260,  eqGain: 2.5, drive: 0.1,  isBypass: false }, // warm, smooth, close-mic
+  veteran:   { pitch: 0.8909, lowCut: 90,  highCut: 6500,  eqFreq: 1800, eqGain: 2.0, drive: 1.0,  isBypass: false }, // gruff, gravelly elder
+  announcer: { pitch: 0.9439, lowCut: 110, highCut: 8500,  eqFreq: 3000, eqGain: 2.5, drive: 0.3,  isBypass: false }, // crisp, authoritative broadcast
+  hero:      { pitch: 1.0595, lowCut: 80,  highCut: 14000, eqFreq: 2800, eqGain: 2.0, drive: 0.1,  isBypass: false }, // bright, confident young lead
+  melody:    { pitch: 1.1892, lowCut: 120, highCut: 16000, eqFreq: 3200, eqGain: 2.0, drive: 0,    isBypass: false }, // sweet, clear female lead
+  husky:     { pitch: 1.0595, lowCut: 100, highCut: 8000,  eqFreq: 700,  eqGain: 2.5, drive: 0.5,  isBypass: false }, // breathy, smoky alto
+  diva:      { pitch: 1.1225, lowCut: 130, highCut: 17000, eqFreq: 2600, eqGain: 3.0, drive: 0.25, isBypass: false }, // powerful, projecting
+  popstar:   { pitch: 1.2599, lowCut: 150, highCut: 18000, eqFreq: 4000, eqGain: 2.5, drive: 0,    isBypass: false }  // glossy, airy pop vocal
 };
 
 export const SCALE_MAP = {
