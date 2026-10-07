@@ -216,7 +216,8 @@
           height: 48px;
           margin: 6px 0;
           border-radius: 12px;
-          overflow: hidden;
+          /* no overflow:hidden - rounded clip over an animating canvas forces a per-frame mask; bars never reach the corners */
+          contain: layout style;
           background: radial-gradient(ellipse 70% 60% at 50% 80%, rgba(82, 196, 255, 0.06), transparent 75%), linear-gradient(180deg, rgba(7, 10, 16, 0.4), rgba(3, 5, 8, 0.7));
           border: 1px solid rgba(82, 196, 255, 0.15);
           box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
@@ -717,6 +718,7 @@
       this._latestBars = null;
       this._hasSignal = false;
       this._isActive = false;
+      this._micActive = false;
       this._cachedGrad = null;
       this._cachedReflGrad = null;
       this._cachedH = 0;
@@ -842,32 +844,58 @@
       }
     }
 
+    // Host-sent bars (LiveKit data channel, ~10 Hz). The worker decides whether
+    // they carry signal; the main thread only forwards them.
     receiveData(bars) {
-      if (Array.isArray(bars) && bars.length > 0 && bars.some(v => v > 2)) {
-        this._latestBars = bars;
-        this._hasSignal = true;
-        this._silentFrames = 0;
-        if (this._worker) {
-          try { this._worker.postMessage({ type: 'BARS', bars: Uint8Array.from(bars) }); } catch (_) {}
-        }
-        if (!this._isActive) {
-          this._isActive = true;
-          if (this.wrap && this.wrap.style.display !== 'block') {
-            this.wrap.style.display = 'block';
-            this.wrap.classList.add('active');
-          }
-          if (!this._cachedWrapW || this._cachedWrapW !== this.wrap.clientWidth) {
-            this.resize();
-          }
-          this.startPump();
-        }
+      if (document.hidden) return; // nothing to see; the worker goes idle by itself
+      if (Array.isArray(bars) && bars.length > 0) {
+        this._post('host', Uint8Array.from(bars));
+        this._show();
       } else {
-        this._latestBars = null;
-        this._hasSignal = false;
-        if (this._worker) {
-          try { this._worker.postMessage({ type: 'BARS', bars: null }); } catch (_) {}
-        }
+        this._post('host', null);
+        if (!this._worker) { this._latestBars = null; this._hasSignal = false; }
       }
+    }
+
+    // The guest's own microphone (sampled by the page, ~30 Hz). Same path as host bars.
+    receiveMicBars(bars) {
+      if (document.hidden) return;
+      this._post('mic', bars);
+      if (bars) this._show();
+    }
+
+    // Mic on/off: while on, the strip stays visible (idle baseline) even between words.
+    setMicActive(on) {
+      on = !!on;
+      if (this._micActive === on) return;
+      this._micActive = on;
+      if (this._worker) {
+        try { this._worker.postMessage({ type: 'KEEP', on }); } catch (_) {}
+      }
+      if (on) this._show();
+      else if (!this._worker && !this._hasSignal) this.clear();
+    }
+
+    _post(src, bars) {
+      if (this._worker) {
+        try { this._worker.postMessage({ type: 'BARS', src, bars }, bars ? [bars.buffer] : []); } catch (_) {}
+        return;
+      }
+      // Main-thread fallback renderer: last writer wins.
+      this._latestBars = bars ? Array.from(bars) : null;
+      this._hasSignal = !!(bars && bars.some(v => v > 2));
+      if (this._hasSignal) this._silentFrames = 0;
+    }
+
+    _show() {
+      if (this._isActive) return;
+      this._isActive = true;
+      if (this.wrap) {
+        this.wrap.style.display = 'block';
+        this.wrap.classList.add('active');
+        if (!this._cachedWrapW || this._cachedWrapW !== this.wrap.clientWidth) this.resize();
+      }
+      this.startPump();
     }
 
     startPump() {
@@ -896,6 +924,7 @@
     clear() {
       this.stopPump();
       this._isActive = false;
+      this._micActive = false;
       this._latestBars = null;
       this._hasSignal = false;
       this._silentFrames = 0;
@@ -930,6 +959,17 @@
       }
 
       if (this._silentFrames > 20) {
+        if (this._micActive) { // mic on: idle baseline, keep the strip
+          ctx.clearRect(0, 0, w, h);
+          const y = Math.round(h * 0.82);
+          ctx.beginPath();
+          ctx.strokeStyle = 'rgba(82, 196, 255, 0.22)';
+          ctx.lineWidth = 1.5;
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+          return;
+        }
         this.clear();
         return;
       }
@@ -2207,6 +2247,61 @@
     updatePresetUi?.();
   }
 
+  // Guest mic -> visualizer. An AnalyserNode taps the processed voice and a ~30 Hz
+  // sampler hands the downsampled bars to the visualizer worker (merged there with
+  // the host's bars). The strip stays visible for as long as the mic is on.
+  let micViz = null; // { analyser, timer, taps, extraSource }
+  function startMicVisualizer(taps, extraSource = null) {
+    stopMicVisualizer();
+    if (!audioCtx || !audienceVisualizer) return;
+    try {
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.5;
+      analyser.minDecibels = -85;
+      analyser.maxDecibels = -25;
+      taps.forEach(n => n.connect(analyser));
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const BARS = 40;
+      const step = Math.max(1, Math.floor(data.length / (BARS * 3))); // voice range (~0-7 kHz)
+      let lastHad = false;
+      const timer = setInterval(() => {
+        if (document.hidden) return;
+        const silenced = isMicMuted || hostForcedMute;
+        let bars = null;
+        if (!silenced) {
+          analyser.getByteFrequencyData(data);
+          const out = new Uint8Array(BARS);
+          let peak = 0;
+          for (let i = 0; i < BARS; i++) {
+            const v = data[i * step] || 0;
+            out[i] = v;
+            if (v > peak) peak = v;
+          }
+          if (peak > 2) bars = out;
+        }
+        if (bars) { lastHad = true; audienceVisualizer.receiveMicBars(bars); }
+        else if (lastHad) { lastHad = false; audienceVisualizer.receiveMicBars(null); }
+      }, 33);
+      micViz = { analyser, timer, taps, extraSource };
+      audienceVisualizer.setMicActive(true);
+    } catch (err) {
+      console.warn('[Nirmal] mic visualizer unavailable:', err?.message || err);
+    }
+  }
+
+  function stopMicVisualizer() {
+    if (!micViz) return;
+    const v = micViz;
+    micViz = null;
+    clearInterval(v.timer);
+    try { v.taps.forEach(n => n.disconnect(v.analyser)); } catch (_) {}
+    try { v.analyser.disconnect(); } catch (_) {}
+    try { v.extraSource?.disconnect(); } catch (_) {}
+    audienceVisualizer?.receiveMicBars(null);
+    audienceVisualizer?.setMicActive(false);
+  }
+
   async function initGuestAudioDSP() {
     if (!room?.localParticipant) {
       alert('Please connect to the live room first by tapping Tune In.');
@@ -2254,6 +2349,10 @@
       console.warn('[Nirmal] audience DSP unavailable; publishing raw microphone:', workletError);
       try { await publishAudienceMicTrack(rawMicStream.getAudioTracks()[0], 'raw-fallback'); }
       catch (publishError) { rawMicStream?.getTracks().forEach(t => { try { t.stop(); } catch (_) {} }); rawMicStream = null; throw publishError; }
+      try {
+        const vizSource = audioCtx.createMediaStreamSource(rawMicStream);
+        startMicVisualizer([vizSource], vizSource);
+      } catch (_) {}
       guestVoiceModule.style.display = 'block';
       return;
     }
@@ -2330,17 +2429,23 @@
       updateMicButtons();
       sendPresenceUpdate();
       guestVoiceModule.style.display = 'block';
+      startMicVisualizer([dspNodes.fxBypassGain, dspNodes.voiceMod.output]);
     } catch (publishError) {
       // If the processed MediaStreamDestination track is rejected, immediately
       // republish the same physical microphone as a raw track so the LiveKit
       // audience-monitor path never depends on the DSP graph being perfect.
       console.warn('[Nirmal] processed mic publish failed; using raw mic fallback:', publishError);
-      try { await publishAudienceMicTrack(rawMicStream.getAudioTracks()[0], 'raw-publish-fallback'); guestVoiceModule.style.display = 'block'; }
+      try {
+        await publishAudienceMicTrack(rawMicStream.getAudioTracks()[0], 'raw-publish-fallback');
+        guestVoiceModule.style.display = 'block';
+        startMicVisualizer([dspNodes.fxBypassGain, dspNodes.voiceMod.output]);
+      }
       catch (fallbackError) { throw fallbackError; }
     }
   }
 
   async function disableGuestMic() {
+    stopMicVisualizer();
     if (!livekitMicPublication && !rawMicStream && !micSource) {
       isMicEnabled = false;
       updateMicButtons();
@@ -2892,6 +2997,7 @@
   window.renderAudienceLyrics = renderAudienceLyrics;
   window.updateAudienceScroll = updateAudienceScroll;
   window.drawAudienceVisualizer = () => audienceVisualizer?.renderFrame();
+  window.audienceVisualizer = audienceVisualizer; // debug handle (like window.audioEngine in the studio)
   window.addChatMessage = addChatMessage;
 
   async function promoteToDuet(autoEnableMic = false) {

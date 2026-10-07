@@ -5,7 +5,10 @@
  * the audience visualizer so none of it runs on the page's main thread. The
  * main thread only forwards frequency data:
  *   admin    -> { type: 'FRAME', data: Uint8Array }   (analyser bins)
- *   audience -> { type: 'BARS',  bars: Uint8Array|null } (host-sent bars)
+ *   audience -> { type: 'BARS',  src: 'host'|'mic', bars: Uint8Array|null }
+ *               host = bars the broadcaster sent, mic = the guest's own mic.
+ *               Both are merged (per-bar max) here, off the main thread.
+ *            -> { type: 'KEEP', on: bool }  keep the strip visible while the mic is on
  *
  * Math is a straight port of js/visualizer.js (admin) and the audience
  * renderer in audience.html so the look is unchanged.
@@ -32,9 +35,15 @@ let lastTime = 0;
 let pendingFrame = null;
 let drawScheduled = false;
 
-// audience: latest host bars + own 30 fps loop
-let latestBars = null;
+// audience: latest bars per source + own 30 fps loop
+const MERGED = 40;                       // every source is resampled to this many bins
+const FRESH_MS = { host: 600, mic: 250 }; // host sends ~10 Hz, the mic sampler ~30 Hz
+const srcBars = { host: null, mic: null };
+const srcTs = { host: 0, mic: 0 };
+const merged = new Uint8Array(MERGED);
+let latestBars = null;                    // merged view (null when nothing is fresh)
 let hasSignal = false;
+let keepVisible = false;                  // mic on: never ask the page to hide the strip
 let audienceTimer = null;
 
 function allocBars(n) {
@@ -80,16 +89,34 @@ self.onmessage = (e) => {
       pendingFrame = m.data || null;
       scheduleDraw();
       break;
-    case 'BARS':
-      latestBars = m.bars || null;
-      hasSignal = !!latestBars;
-      if (hasSignal) {
+    case 'BARS': {
+      const src = m.src === 'mic' ? 'mic' : 'host';
+      srcBars[src] = m.bars ? resample(m.bars) : null;
+      srcTs[src] = performance.now();
+      if (srcBars[src]) {
         silentFrames = 0;
         startAudienceLoop();
       }
       break;
+    }
+    case 'KEEP':
+      keepVisible = !!m.on;
+      if (keepVisible) {
+        silentFrames = 21;
+        drawAudienceBaseline(); // idle baseline right away
+      } else {
+        mergeSources(performance.now());
+        if (!hasSignal) { // mic switched off and the host is silent: let the page hide the strip
+          stopAudienceLoop();
+          if (ctx && w && h) ctx.clearRect(0, 0, w, h);
+          self.postMessage({ type: 'IDLE' });
+        }
+      }
+      break;
     case 'CLEAR':
       stopAudienceLoop();
+      srcBars.host = srcBars.mic = null;
+      keepVisible = false;
       latestBars = null;
       hasSignal = false;
       silentFrames = 0;
@@ -110,6 +137,35 @@ function scheduleDraw() {
   };
   if (typeof self.requestAnimationFrame === 'function') self.requestAnimationFrame(run);
   else setTimeout(run, 0);
+}
+
+// Nearest-bin resample to MERGED values; null when the frame carries no signal.
+function resample(src) {
+  const n = src.length;
+  if (!n) return null;
+  const out = new Uint8Array(MERGED);
+  let peak = 0;
+  for (let i = 0; i < MERGED; i++) {
+    const v = src[Math.min(n - 1, Math.floor(i * n / MERGED))] || 0;
+    out[i] = v;
+    if (v > peak) peak = v;
+  }
+  return peak > 2 ? out : null;
+}
+
+// Per-bar max of every source that is still fresh.
+function mergeSources(now) {
+  let any = false;
+  merged.fill(0);
+  for (const src of ['host', 'mic']) {
+    const b = srcBars[src];
+    if (!b) continue;
+    if (now - srcTs[src] > FRESH_MS[src]) { srcBars[src] = null; continue; }
+    any = true;
+    for (let i = 0; i < MERGED; i++) if (b[i] > merged[i]) merged[i] = b[i];
+  }
+  latestBars = any ? merged : null;
+  hasSignal = any;
 }
 
 function startAudienceLoop() {
@@ -298,15 +354,29 @@ function drawAdmin(freq) {
 }
 
 // ─── Audience (port of AudienceVisualizerRenderer.renderFrame) ───────────────
+function drawAudienceBaseline() {
+  if (!ctx || !w || !h) return;
+  const baseLine = Math.round(h * 0.82);
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(82, 196, 255, 0.22)';
+  ctx.lineWidth = 1.5;
+  ctx.moveTo(0, baseLine);
+  ctx.lineTo(w, baseLine);
+  ctx.stroke();
+}
+
 function drawAudience() {
   if (!ctx || !w || !h) return;
+  mergeSources(performance.now());
 
   if (!hasSignal) silentFrames++; else silentFrames = 0;
   if (silentFrames > 20) {
+    // Nothing fresh for ~0.7 s: park the loop (no more timer wake-ups, no drawing).
     stopAudienceLoop();
     for (let i = 0; i < numBars; i++) { bars[i] = 0; peaks[i] = 0; }
     ctx.clearRect(0, 0, w, h);
-    self.postMessage({ type: 'IDLE' });
+    if (keepVisible) drawAudienceBaseline();      // mic is on: keep the strip, just idle
+    else self.postMessage({ type: 'IDLE' });      // page hides the strip
     return;
   }
 
