@@ -210,7 +210,20 @@ export class VisualizerRenderer {
       // Do not consume GPU / CPU cycles when tab is hidden
       if (typeof document !== 'undefined' && document.hidden) return;
 
-      const isHidden = !this.cvs || this.cvs.offsetParent === null || (this.cvs.parentElement && this.cvs.parentElement.clientWidth <= 0);
+      // offsetParent/clientWidth force a synchronous layout, so sample them at
+      // ~4 Hz instead of every frame; ResizeObserver covers real size changes.
+      if (!this._layoutCheckTs || ts - this._layoutCheckTs > 250) {
+        this._layoutCheckTs = ts;
+        this._layoutHidden = !this.cvs || this.cvs.offsetParent === null || (this.cvs.parentElement && this.cvs.parentElement.clientWidth <= 0);
+        if (!this._layoutHidden && this.cvs.parentElement) {
+          const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 2);
+          const expectedW = Math.round(this.cvs.parentElement.clientWidth * dpr);
+          if (expectedW > 50 && Math.abs((this._worker ? this._w : this.cvs.width) - expectedW) > 6) {
+            this.resize();
+          }
+        }
+      }
+      const isHidden = this._layoutHidden;
       if (isHidden) {
         this._wasHidden = true;
         return;
@@ -222,15 +235,6 @@ export class VisualizerRenderer {
         this.resize();
         this._lastTime = ts;
         this._lastDrawTs = ts;
-      }
-
-      // Keep canvas resolution in sync with container layout if resized
-      if (this.cvs.parentElement) {
-        const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 2);
-        const expectedW = Math.round(this.cvs.parentElement.clientWidth * dpr);
-        if (expectedW > 50 && Math.abs((this._worker ? this._w : this.cvs.width) - expectedW) > 6) {
-          this.resize();
-        }
       }
 
       // Frame throttle:

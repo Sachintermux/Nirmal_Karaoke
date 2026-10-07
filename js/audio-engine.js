@@ -265,23 +265,34 @@ export class AudioEngine {
             const midi = Math.round(69 + 12 * Math.log2(data.detectedFreq / 440));
             const note = noteNames[((midi % 12) + 12) % 12];
             const oct = Math.floor(midi / 12) - 1;
-            if (hudNote) hudNote.textContent = `🎤 PITCH: ${note}${oct}`;
+            const noteText = `🎤 PITCH: ${note}${oct}`;
+            if (hudNote && this._lastHudNoteText !== noteText) {
+              this._lastHudNoteText = noteText;
+              hudNote.textContent = noteText;
+            }
 
             const isAutoTuneOn = document.getElementById('autoTuneToggle')?.checked;
             if (data.targetFreq && hudCoach && isAutoTuneOn) {
               const diff = data.detectedFreq - data.targetFreq;
+              let coachText, coachColor, coachBorder;
               if (Math.abs(diff) < 3.5) {
-                hudCoach.textContent = `🎯 COACH: PERFECT (${note})`;
-                hudCoach.style.color = "var(--accent-green)";
-                hudCoach.style.borderColor = "rgba(0, 255, 136, 0.4)";
+                coachText = `🎯 COACH: PERFECT (${note})`;
+                coachColor = "var(--accent-green)";
+                coachBorder = "rgba(0, 255, 136, 0.4)";
               } else if (diff < 0) {
-                hudCoach.textContent = `⬆ COACH: FLAT (${note})`;
-                hudCoach.style.color = "var(--accent-orange)";
-                hudCoach.style.borderColor = "rgba(255, 153, 0, 0.4)";
+                coachText = `⬆ COACH: FLAT (${note})`;
+                coachColor = "var(--accent-orange)";
+                coachBorder = "rgba(255, 153, 0, 0.4)";
               } else {
-                hudCoach.textContent = `⬇ COACH: SHARP (${note})`;
-                hudCoach.style.color = "var(--accent-pink)";
-                hudCoach.style.borderColor = "rgba(255, 0, 127, 0.4)";
+                coachText = `⬇ COACH: SHARP (${note})`;
+                coachColor = "var(--accent-pink)";
+                coachBorder = "rgba(255, 0, 127, 0.4)";
+              }
+              if (this._lastCoachText !== coachText) {
+                this._lastCoachText = coachText;
+                hudCoach.textContent = coachText;
+                hudCoach.style.color = coachColor;
+                hudCoach.style.borderColor = coachBorder;
               }
             }
           }

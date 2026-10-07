@@ -427,6 +427,8 @@ export class ArtistToolsManager {
       /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
     );
     const interval = isMobile ? 50 : 30;
+    let vuObserved = false;
+    let vuVisible = true;
 
     const meterLoop = (ts) => {
       if (!this._onPeakCallbacks.length && !this._onPeakUpdateHandler) {
@@ -441,9 +443,21 @@ export class ArtistToolsManager {
       if (ts - lastTime < interval) return;
       lastTime = ts;
 
-      // Lazy check: skip all processing if artistSuiteCard is hidden on mobile
-      const vuCard = document.getElementById('artistSuiteCard');
-      if (vuCard && vuCard.offsetParent === null) return;
+      // Lazy check: skip all processing if artistSuiteCard is hidden on mobile.
+      // Visibility comes from an IntersectionObserver; reading offsetParent here
+      // would force a synchronous layout on every tick.
+      if (!vuObserved) {
+        vuObserved = true;
+        const card = document.getElementById('artistSuiteCard');
+        if (card && typeof IntersectionObserver !== 'undefined') {
+          try {
+            new IntersectionObserver((entries) => {
+              for (const en of entries) vuVisible = en.isIntersecting;
+            }).observe(card);
+          } catch (_) { vuVisible = true; }
+        }
+      }
+      if (!vuVisible) return;
 
       const analyser = this.audioEngine?.engine?.analyser;
       if (analyser) {

@@ -1466,6 +1466,7 @@ function setupEventListeners() {
   const lblClip = document.getElementById('lblVuClipWarning');
   let lastVuPct = -1;
   let lastPeakText = '';
+  let lastPeakTextTs = 0;
   let lastClipState = false;
 
   artistTools.onPeakUpdate = ({ peak, peakDb, isClipping }) => {
@@ -1474,12 +1475,15 @@ function setupEventListeners() {
       const roundedPct = Math.round(pct);
       if (roundedPct !== lastVuPct) {
         lastVuPct = roundedPct;
-        vuBar.style.width = `${roundedPct}%`;
+        // transform is compositor-only; animating width forced layout on every update
+        vuBar.style.transform = `scaleX(${roundedPct / 100})`;
       }
     }
     if (lblPeak) {
       const peakText = `${peakDb.toFixed(1)} dB`;
-      if (peakText !== lastPeakText) {
+      const nowTs = performance.now();
+      if (peakText !== lastPeakText && (nowTs - lastPeakTextTs > 120 || isClipping !== lastClipState)) {
+        lastPeakTextTs = nowTs;
         lastPeakText = peakText;
         lblPeak.textContent = peakText;
         lblPeak.style.color = isClipping ? '#ef4444' : (peakDb > -6 ? '#eab308' : '#00e5ff');
