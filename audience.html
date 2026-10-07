@@ -673,7 +673,8 @@
   const sharedTextDecoder = new TextDecoder();
 
   // =========================================================================
-  // DIRECT 2D CANVAS AUDIO VISUALIZER (Zero Workers, Admin-Engine Architecture)
+  // AUDIO VISUALIZER: OffscreenCanvas worker (js/workers/visualizer.worker.js) with
+  // a direct main-thread 2D fallback when OffscreenCanvas/Worker is unavailable.
   // =========================================================================
   class AudienceVisualizerRenderer {
     constructor() {
@@ -690,6 +691,9 @@
       this._cachedReflGrad = null;
       this._cachedH = 0;
       this._cachedWrapW = 0;
+      this._worker = null;
+      this._w = 0;
+      this._h = 0;
 
       this._isMobile = typeof window !== 'undefined' && (
         window.innerWidth <= 850 ||
@@ -706,12 +710,61 @@
 
     init() {
       if (!this.cvs) return;
-      this.ctx = this.cvs.getContext('2d', { alpha: true });
-      if (!this.ctx) return;
+      if (!this._startWorker()) {
+        this.ctx = this.cvs.getContext('2d', { alpha: true });
+        if (!this.ctx) return;
+      }
 
       window.addEventListener('resize', () => { this._cachedWrapW = 0; this.resize(); }, { passive: true });
       window.addEventListener('orientationchange', () => setTimeout(() => { this._cachedWrapW = 0; this.resize(); }, 150), { passive: true });
       this.resize();
+    }
+
+    _startWorker() {
+      try {
+        if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' ||
+            typeof this.cvs.transferControlToOffscreen !== 'function') return false;
+        const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 1.75);
+        const width = Math.max(80, Math.round((this.wrap?.clientWidth || 300) * dpr));
+        const height = Math.max(40, Math.round(48 * dpr));
+        const worker = new Worker('./js/workers/visualizer.worker.js?v=1');
+        const offscreen = this.cvs.transferControlToOffscreen();
+        worker.onmessage = (e) => { if (e.data?.type === 'IDLE') this.clear(); };
+        worker.onerror = (err) => {
+          console.warn('[Nirmal] visualizer worker failed, using main-thread renderer:', err?.message || err);
+          this._fallbackToMainThread();
+        };
+        worker.postMessage({
+          type: 'INIT', canvas: offscreen, mode: 'audience',
+          width, height, isMobile: this._isMobile, numBars: this.numBars
+        }, [offscreen]);
+        this._worker = worker;
+        this._w = width;
+        this._h = height;
+        return true;
+      } catch (err) {
+        this._worker = null;
+        return false;
+      }
+    }
+
+    // A canvas whose control was transferred cannot be drawn on again, so swap in
+    // a fresh element with the same id/class/style and render on the main thread.
+    _fallbackToMainThread() {
+      if (!this._worker) return;
+      try { this._worker.terminate(); } catch (_) {}
+      this._worker = null;
+      const old = this.cvs;
+      if (!old) return;
+      const fresh = old.cloneNode(false);
+      old.replaceWith(fresh);
+      this.cvs = fresh;
+      this.ctx = fresh.getContext('2d', { alpha: true });
+      this._cachedGrad = null;
+      this._cachedReflGrad = null;
+      this._cachedWrapW = 0;
+      this.resize();
+      if (this._isActive && !this._rafId) this.startPump();
     }
 
     resize() {
@@ -737,6 +790,19 @@
       const targetW = Math.max(80, Math.round(wrapW * dpr));
       const targetH = Math.max(40, Math.round(48 * dpr));
 
+      if (this._worker) {
+        if (this._w !== targetW || this._h !== targetH || this._sentBars !== this.numBars) {
+          this._w = targetW;
+          this._h = targetH;
+          this._sentBars = this.numBars;
+          this._worker.postMessage({
+            type: 'RESIZE', width: targetW, height: targetH,
+            isMobile: this._isMobile, numBars: this.numBars
+          });
+        }
+        return;
+      }
+
       if (this.cvs.width !== targetW || this.cvs.height !== targetH) {
         this.cvs.width = targetW;
         this.cvs.height = targetH;
@@ -751,6 +817,9 @@
         this._latestBars = bars;
         this._hasSignal = true;
         this._silentFrames = 0;
+        if (this._worker) {
+          try { this._worker.postMessage({ type: 'BARS', bars: Uint8Array.from(bars) }); } catch (_) {}
+        }
         if (!this._isActive) {
           this._isActive = true;
           if (this.wrap && this.wrap.style.display !== 'block') {
@@ -765,11 +834,14 @@
       } else {
         this._latestBars = null;
         this._hasSignal = false;
+        if (this._worker) {
+          try { this._worker.postMessage({ type: 'BARS', bars: null }); } catch (_) {}
+        }
       }
     }
 
     startPump() {
-      if (this._rafId) return;
+      if (this._worker || this._rafId) return; // worker runs its own 30 fps loop
       const targetInterval = 33; // 30 FPS matched with host transmission rate
       const pumpLoop = (ts) => {
         this._rafId = requestAnimationFrame(pumpLoop);
@@ -801,7 +873,9 @@
         this.bars[i] = 0;
         this.peaks[i] = 0;
       }
-      if (this.ctx && this.cvs) {
+      if (this._worker) {
+        try { this._worker.postMessage({ type: 'CLEAR' }); } catch (_) {}
+      } else if (this.ctx && this.cvs) {
         this.ctx.clearRect(0, 0, this.cvs.width, this.cvs.height);
       }
       if (this.wrap) {
@@ -811,6 +885,7 @@
     }
 
     renderFrame() {
+      if (this._worker) return; // drawn off-thread
       const cvs = this.cvs;
       const ctx = this.ctx;
       if (!cvs || !ctx) return;

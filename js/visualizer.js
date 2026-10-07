@@ -10,7 +10,9 @@
  * - Ambient Cyber Breathing Wave when audio is silent
  * - Frame throttling (30 FPS on mobile, 60 FPS on desktop) & visibility pausing
  * - Capped DPR (1.5 on mobile, 2.0 on desktop) for 0ms lag
- * - 100% stable: Zero Web Workers, Zero OffscreenCanvas transfers, Zero InvalidStateErrors
+ * - Drawing + bar physics run in an OffscreenCanvas Web Worker (js/workers/visualizer.worker.js)
+ *   so the main thread only reads the analyser. Falls back to direct main-thread 2D
+ *   drawing when OffscreenCanvas/Worker is unavailable or the worker fails.
  */
 
 export class VisualizerRenderer {
@@ -41,6 +43,59 @@ export class VisualizerRenderer {
     this._wasHidden = false;
     this._resizeObserver = null;
     this._resizeBound = null;
+    this._worker = null;
+    this._w = 0;
+    this._h = 0;
+  }
+
+  _startWorker() {
+    try {
+      if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' ||
+          typeof this.cvs.transferControlToOffscreen !== 'function') return false;
+      const parent = this.cvs.parentElement;
+      const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 2);
+      const width = Math.max(80, Math.round((parent?.clientWidth || this.cvs.width || 300) * dpr));
+      const height = Math.max(40, Math.round((parent?.clientHeight || this.cvs.height || 150) * dpr));
+      const worker = new Worker('./js/workers/visualizer.worker.js?v=1');
+      const offscreen = this.cvs.transferControlToOffscreen();
+      worker.onerror = (err) => {
+        console.warn('[Visualizer] worker failed, using main-thread renderer:', err?.message || err);
+        this._fallbackToMainThread();
+      };
+      worker.postMessage({
+        type: 'INIT', canvas: offscreen, mode: 'admin',
+        width, height, isMobile: this._isMobile, numBars: this.numBars
+      }, [offscreen]);
+      this._worker = worker;
+      this._w = width;
+      this._h = height;
+      return true;
+    } catch (err) {
+      console.warn('[Visualizer] OffscreenCanvas unavailable:', err?.message || err);
+      this._worker = null;
+      return false;
+    }
+  }
+
+  // A canvas whose control was transferred cannot be drawn on again, so swap in a
+  // fresh element with the same id/class/style and render on the main thread.
+  _fallbackToMainThread() {
+    if (!this._worker) return;
+    try { this._worker.terminate(); } catch (_) {}
+    this._worker = null;
+    const old = this.cvs;
+    if (!old) return;
+    const fresh = old.cloneNode(false);
+    old.replaceWith(fresh);
+    this.cvs = fresh;
+    this.ctx = fresh.getContext('2d', { alpha: true });
+    this._cachedGrad = null;
+    this._cachedReflGrad = null;
+    this._resizeObserver?.disconnect();
+    if (this._resizeObserver && fresh.parentElement) {
+      try { this._resizeObserver.observe(fresh.parentElement); } catch (_) {}
+    }
+    this.resize();
   }
 
   resize() {
@@ -70,6 +125,19 @@ export class VisualizerRenderer {
     const targetW = Math.max(80, Math.round(parent.clientWidth * dpr));
     const targetH = Math.max(40, Math.round(parent.clientHeight * dpr));
 
+    if (this._worker) {
+      if (this._w !== targetW || this._h !== targetH || this._sentBars !== this.numBars) {
+        this._w = targetW;
+        this._h = targetH;
+        this._sentBars = this.numBars;
+        this._worker.postMessage({
+          type: 'RESIZE', width: targetW, height: targetH,
+          isMobile: this._isMobile, numBars: this.numBars
+        });
+      }
+      return;
+    }
+
     if (this.cvs.width !== targetW || this.cvs.height !== targetH) {
       this.cvs.width = targetW;
       this.cvs.height = targetH;
@@ -92,9 +160,11 @@ export class VisualizerRenderer {
     this.cvs = document.getElementById('visualizer');
     if (!this.cvs) return;
 
-    // Get direct 2D context - reliable and robust across all browsers
-    this.ctx = this.cvs.getContext('2d', { alpha: true });
-    if (!this.ctx) return;
+    // Prefer an OffscreenCanvas worker; otherwise draw directly on the main thread.
+    if (!this._startWorker()) {
+      this.ctx = this.cvs.getContext('2d', { alpha: true });
+      if (!this.ctx) return;
+    }
 
     const hudAccel = document.getElementById('hudAccel');
     if (hudAccel) {
@@ -158,7 +228,7 @@ export class VisualizerRenderer {
       if (this.cvs.parentElement) {
         const dpr = Math.min(window.devicePixelRatio || 1, this._isMobile ? 1.25 : 2);
         const expectedW = Math.round(this.cvs.parentElement.clientWidth * dpr);
-        if (expectedW > 50 && Math.abs(this.cvs.width - expectedW) > 6) {
+        if (expectedW > 50 && Math.abs((this._worker ? this._w : this.cvs.width) - expectedW) > 6) {
           this.resize();
         }
       }
@@ -188,6 +258,21 @@ export class VisualizerRenderer {
   }
 
   renderFrame(now = performance.now()) {
+    // Worker mode: the main thread only samples the analyser and forwards the
+    // bins; all physics and drawing happen off-thread.
+    if (this._worker) {
+      const analyser = this.audioEngine?.engine?.analyser;
+      let data = null;
+      if (analyser) {
+        data = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(data);
+      }
+      try {
+        this._worker.postMessage({ type: 'FRAME', data }, data ? [data.buffer] : []);
+      } catch (_) {}
+      return;
+    }
+
     const cvs = this.cvs;
     const ctx = this.ctx;
     if (!cvs || !ctx) return;
@@ -430,6 +515,10 @@ export class VisualizerRenderer {
   }
 
   destroy() {
+    if (this._worker) {
+      try { this._worker.terminate(); } catch (_) {}
+      this._worker = null;
+    }
     if (this._rafId) {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
