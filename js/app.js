@@ -10,6 +10,7 @@ import { MultiStreamManager } from './multistream.js?v=31';
 import { ArtistToolsManager } from './artist-tools.js?v=31';
 import { acquireWakeLock, releaseWakeLock } from './wake-lock.js?v=31';
 import { startBackgroundAudioKeepAlive, stopBackgroundAudioKeepAlive, updateMediaSession } from './media-session.js?v=31';
+import { CallOutputManager } from './call-output.js?v=1';
 
 const audioEngine = new AudioEngine();
 if (typeof window !== 'undefined') window.audioEngine = audioEngine;
@@ -2557,11 +2558,117 @@ function setupEventListeners() {
   navigator.mediaDevices?.addEventListener('devicechange', scanHardware);
 }
 
+// Sends the studio mix to a virtual audio cable so call apps can use it as a microphone.
+function setupCallOutput() {
+  const select = document.getElementById('callOutputSelect');
+  const btnStart = document.getElementById('btnCallOutputStart');
+  const btnStop = document.getElementById('btnCallOutputStop');
+  const btnDetect = document.getElementById('btnCallOutputDetect');
+  const slider = document.getElementById('sliderCallVol');
+  const lblVol = document.getElementById('lblCallVol');
+  const badge = document.getElementById('callOutputStatus');
+  const msg = document.getElementById('callOutputMsg');
+  if (!select || !btnStart) return;
+
+  const callOutput = new CallOutputManager(audioEngine);
+  if (typeof window !== 'undefined') window.callOutput = callOutput;
+
+  const say = (text, isError = false) => {
+    if (!msg) return;
+    msg.style.display = text ? 'block' : 'none';
+    msg.textContent = text || '';
+    msg.style.color = isError ? 'var(--accent-red, #ef4444)' : '';
+  };
+
+  callOutput.onStateChange = (state) => {
+    const live = state === 'live';
+    if (badge) {
+      badge.textContent = live ? 'LIVE' : 'OFF';
+      badge.classList.toggle('is-live', live);
+    }
+    btnStart.style.display = live ? 'none' : '';
+    if (btnStop) btnStop.style.display = live ? '' : 'none';
+    select.disabled = false;
+  };
+
+  const populate = async () => {
+    try {
+      const devices = await callOutput.listOutputDevices();
+      const keep = select.value || CallOutputManager.getSavedDevice();
+      select.innerHTML = '';
+      if (!devices.length) {
+        select.innerHTML = '<option value="">No devices found - press Detect</option>';
+        return;
+      }
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Choose the virtual cable...';
+      select.appendChild(placeholder);
+      devices.forEach((d) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.isVirtual ? `${d.label}  (virtual cable)` : d.label;
+        select.appendChild(opt);
+      });
+      const saved = devices.find((d) => d.deviceId === keep);
+      const cable = devices.find((d) => d.isVirtual && /cable input|blackhole/i.test(d.label)) || devices.find((d) => d.isVirtual);
+      select.value = (saved || cable)?.deviceId || '';
+      if (!devices.some((d) => d.hasLabel)) say('Press "Detect devices" and allow the microphone once so the browser shows device names.');
+      else if (!devices.some((d) => d.isVirtual)) say('No virtual cable found. Install VB-Cable (Windows) or BlackHole (Mac), then press Detect devices.');
+      else say('');
+    } catch (err) {
+      console.warn('[CallOutput] device scan failed:', err);
+    }
+  };
+
+  btnDetect?.addEventListener('click', async () => {
+    try { await callOutput.requestLabels(); } catch (_) { say('Microphone permission is needed once to show device names.', true); }
+    await populate();
+  });
+
+  btnStart.addEventListener('click', async () => {
+    say('');
+    try {
+      await callOutput.start(select.value, { monitorDeviceId: document.getElementById('speakerSelect')?.value || '' });
+      say('Sending to the call. In your call app choose the cable OUTPUT (e.g. "CABLE Output") as the microphone.');
+    } catch (err) {
+      callOutput.stop();
+      say(err?.message || 'Could not start the call output.', true);
+    }
+  });
+
+  btnStop?.addEventListener('click', () => { callOutput.stop(); say(''); });
+
+  slider?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    if (lblVol) lblVol.textContent = `${Math.round(v * 100)}%`;
+    callOutput.setVolume(v);
+  });
+
+  select.addEventListener('change', async () => {
+    if (!callOutput.active) return;
+    try {
+      await callOutput.changeDevice(select.value, { monitorDeviceId: document.getElementById('speakerSelect')?.value || '' });
+    } catch (err) {
+      callOutput.stop();
+      say(err?.message || 'Could not switch the call output device.', true);
+    }
+  });
+
+  navigator.mediaDevices?.addEventListener('devicechange', populate);
+  if (!CallOutputManager.isSupported()) {
+    btnStart.disabled = true;
+    say('This browser cannot pick an output device. Use Chrome or Edge on desktop.', true);
+  }
+  populate();
+}
+
 function initApp() {
   visualizer.init();
   scanHardware();
   setupEventListeners();
   setupLiveShareUI();
+  setupCallOutput();
 }
 
 if (document.readyState === 'loading') {

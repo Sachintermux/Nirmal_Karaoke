@@ -380,6 +380,29 @@
                     <button class="button button-quiet" id="btnStopSystemAudio" style="display:none">Stop</button>
                 </div>
             </div>
+            <div class="system-audio-box desktop-only" id="callOutputBox">
+                <div class="system-audio-head"><div><span class="eyebrow">CALLS &amp; MEETINGS</span><strong>Use this studio as your microphone</strong></div><span class="audio-badge" id="callOutputStatus">OFF</span></div>
+                <p class="help-text">Send your effected voice and music to Zoom, Meet, Teams or Discord. Choose a <b>virtual audio cable</b> below, then pick that cable's <b>output</b> as the microphone in your call app. You keep hearing yourself on your normal headphones.</p>
+                <label>Send to (virtual cable)<select id="callOutputSelect"><option value="">No devices found - press Detect</option></select></label>
+                <div class="control"><label>Call volume <b id="lblCallVol">100%</b></label><input id="sliderCallVol" max="2" min="0" step=".05" type="range" value="1"></div>
+                <div class="button-row">
+                    <button class="button button-primary" id="btnCallOutputStart">📞 Send to call</button>
+                    <button class="button button-quiet" id="btnCallOutputStop" style="display:none">Stop</button>
+                    <button class="button button-quiet" id="btnCallOutputDetect" title="Allow microphone access once so the browser shows device names">🔄 Detect devices</button>
+                </div>
+                <p class="help-text" id="callOutputMsg" style="display:none"></p>
+                <details class="help-text" style="margin-top:8px">
+                    <summary style="cursor:pointer;font-weight:700">How to set this up (one time)</summary>
+                    <ol style="margin:8px 0 0 18px;padding:0;line-height:1.5">
+                        <li>Install a free virtual audio cable: <b>VB-Cable</b> (Windows) or <b>BlackHole</b> (Mac).</li>
+                        <li>Use <b>Chrome or Edge</b>. Press <b>Detect devices</b> and allow the microphone once so names appear.</li>
+                        <li>Here, choose <b>CABLE Input</b> (the cable) and press <b>Send to call</b>.</li>
+                        <li>In Zoom / Meet / Teams / Discord, set the <b>Microphone</b> to <b>CABLE Output</b>.</li>
+                        <li>Start your mic here, pick a voice effect, play music. The call now hears this studio.</li>
+                        <li>Wear headphones and keep this site's main <b>Audio output</b> on them, not on the cable.</li>
+                    </ol>
+                </details>
+            </div>
         </section>
         <section class="card mobile-screen" id="proVocalRack" data-screen-group="mixer">
             <p class="eyebrow">PRO VOCAL RACK</p>
