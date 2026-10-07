@@ -419,7 +419,7 @@
             <div class="control"><label>Vocal presence <b id="valVocalPresence">2 dB</b></label><input id="sliderVocalPresence" max="8" min="-6" step=".5" type="range" value="2"></div>
             <p class="help-text desktop-only">Native VST3 hosting is available through the optional Windows audio bridge. Build the bridge to scan installed VST3 effects and route the native processing engine into the karaoke audio path.</p>
         </section>
-        <section class="card autotune-card mobile-screen" id="karaokeToolsCard" data-screen-group="effects mixer">
+        <section class="card autotune-card mobile-screen" id="karaokeToolsCard" data-screen-group="effects">
             <!-- Header Strip -->
             <div class="at-header">
                 <div class="at-brand">
@@ -673,23 +673,23 @@
                 </details>
             </div>
 
-            <!-- Karaoke Companion Controls -->
-            <div class="at-karaoke-companion">
-                <p class="eyebrow" style="margin-top:10px">TRACK & KARAOKE TOOLS</p>
-                <label class="switch-label">Remove original vocals <input id="vocalRemoverToggle" type="checkbox"><span class="switch"></span></label>
-                <div class="compact-row" style="margin-top:10px">
-                    <span>Track key pitch <b id="lblKey">0</b></span>
-                    <div>
-                        <button class="icon-button" id="btnKeyFlat">♭</button>
-                        <button class="icon-button" id="btnKeyReset">♮</button>
-                        <button class="icon-button" id="btnKeySharp">♯</button>
-                    </div>
+        </section>
+        <!-- Karaoke companion controls: own card so each tab shows them once (Mixer tab on mobile) -->
+        <section class="card mobile-screen" id="trackToolsCard" data-screen-group="mixer">
+            <p class="eyebrow">TRACK & KARAOKE TOOLS</p>
+            <label class="switch-label">Remove original vocals <input id="vocalRemoverToggle" type="checkbox"><span class="switch"></span></label>
+            <div class="compact-row" style="margin-top:10px">
+                <span>Track key pitch <b id="lblKey">0</b></span>
+                <div>
+                    <button class="icon-button" id="btnKeyFlat">♭</button>
+                    <button class="icon-button" id="btnKeyReset">♮</button>
+                    <button class="icon-button" id="btnKeySharp">♯</button>
                 </div>
-                <label class="switch-label" style="margin-top:10px">Guide vocal recovery <input checked id="guideDuckingToggle" type="checkbox"><span class="switch"></span></label>
-                <div class="control">
-                    <label>Guide vocal volume <b id="valGuideVol">0%</b></label>
-                    <input id="sliderGuideVol" max="1" min="0" step=".05" type="range" value="0">
-                </div>
+            </div>
+            <label class="switch-label" style="margin-top:10px">Guide vocal recovery <input checked id="guideDuckingToggle" type="checkbox"><span class="switch"></span></label>
+            <div class="control">
+                <label>Guide vocal volume <b id="valGuideVol">0%</b></label>
+                <input id="sliderGuideVol" max="1" min="0" step=".05" type="range" value="0">
             </div>
         </section>
         <section class="card mobile-screen" id="studioFxCard" data-screen-group="mixer"><p class="eyebrow">STUDIO FX</p>
