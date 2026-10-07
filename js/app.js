@@ -2663,12 +2663,79 @@ function setupCallOutput() {
   populate();
 }
 
+// "Reset all": puts every sound / effect / Auto-Tune control back to its start-up state.
+// Mic, music playback and the live stream keep running; only settings are reset.
+function setupResetAllSettings() {
+  const SCOPE = ['#mixer', '#proVocalRack', '#karaokeToolsCard', '#trackToolsCard', '#studioFxCard',
+    '#effects', '#artistSuiteCard', '#recording', '#lyrics'];
+  // Hardware choices, not settings: keep the user's selected devices.
+  const KEEP = new Set(['speakerSelect', 'callOutputSelect']);
+  // Their change handlers overwrite other sliders, so restore the value without firing them.
+  const SILENT = new Set(['atPresetSelect', 'proVocalPreset']);
+
+  const controls = [...new Set(SCOPE.flatMap((sel) =>
+    [...document.querySelectorAll(`${sel} input[type=range], ${sel} input[type=checkbox], ${sel} input[type=radio], ${sel} select`)]))]
+    .filter((el) => el.id && !KEEP.has(el.id));
+
+  // Snapshot taken at start-up (end of initApp) = the "normal" state.
+  const snapshot = new Map(controls.map((el) => [el, { value: el.value, checked: el.checked }]));
+  const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
+
+  const resetAll = async () => {
+    if (!window.confirm('Reset all sound, voice-effect and Auto-Tune settings to their start-up defaults? Your mic, music and live stream keep running.')) return;
+
+    try { await audioEngine.boot(); } catch (_) {}
+
+    // 1. Restore dropdowns whose handlers would otherwise rewrite other controls.
+    for (const el of controls) if (SILENT.has(el.id)) el.value = snapshot.get(el).value;
+
+    // 2. Voice effect back to Bypass, track key and lyric sync back to zero.
+    document.querySelector('.preset-btn[data-preset="normal"]')?.click();
+    document.getElementById('btnKeyReset')?.click();
+    document.getElementById('btnSyncReset')?.click();
+
+    // 3. Every other control: restore the start-up value and fire its normal event so the
+    //    audio engine and the labels update exactly as if the user had set it by hand.
+    for (const el of controls) {
+      if (SILENT.has(el.id)) continue;
+      const s = snapshot.get(el);
+      if (el.type === 'radio') {
+        el.checked = s.checked;
+        if (s.checked) fire(el, 'change'); // only the default option; firing the others would select them
+      } else if (el.type === 'checkbox') {
+        el.checked = s.checked;
+        fire(el, 'change');
+      } else {
+        el.value = s.value;
+        fire(el, el.type === 'range' ? 'input' : 'change');
+        if (el.type === 'range') fire(el, 'change');
+      }
+    }
+
+    // 4. Push the final state to the engine in one go (handlers above ran in DOM order).
+    try { audioEngine.updateAutoTuneSettings?.(); } catch (_) {}
+    try { audioEngine.updateProVocalSettings?.(); } catch (_) {}
+    try { audioEngine.updateMonitorRouting?.(); } catch (_) {}
+    try { audioEngine.applyPreset?.('normal'); } catch (_) {}
+
+    document.querySelectorAll('[data-reset-all]').forEach((btn) => {
+      const original = btn.dataset.label || (btn.dataset.label = btn.textContent);
+      btn.textContent = '✔ Reset done';
+      setTimeout(() => { btn.textContent = original; }, 1600);
+    });
+  };
+
+  document.querySelectorAll('[data-reset-all]').forEach((btn) => btn.addEventListener('click', resetAll));
+  if (typeof window !== 'undefined') window.resetAllSettings = resetAll;
+}
+
 function initApp() {
   visualizer.init();
   scanHardware();
   setupEventListeners();
   setupLiveShareUI();
   setupCallOutput();
+  setupResetAllSettings();
 }
 
 if (document.readyState === 'loading') {
