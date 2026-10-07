@@ -8,8 +8,16 @@
 const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 let silentAudioEl = null;
 
+// The silent <audio> trick only matters on phones/tablets, where the OS suspends a
+// backgrounded tab unless an audio session is playing. On desktop the live mic,
+// WebRTC and the 48 kHz WebAudio output already exempt the tab from throttling, and
+// this extra 8 kHz output stream next to the audio engine causes mixer contention that
+// shows up as lag when singing with the mic alone (nothing else playing).
+const IS_MOBILE_DEVICE = typeof navigator !== 'undefined' &&
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 export function startBackgroundAudioKeepAlive() {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined' || !IS_MOBILE_DEVICE) return;
   try {
     if (!silentAudioEl) {
       silentAudioEl = document.createElement('audio');
