@@ -41,7 +41,7 @@ export class PresenceManager {
   constructor() {
     this.user = this.loadOrCreateProfile();
     this.device = window.innerWidth <= 850 ? 'mobile' : 'desktop';
-    this.isStudioAdmin = typeof window !== 'undefined' && (!window.location.pathname.includes('audience.html') && !window.location.pathname.includes('users.html'));
+    this.isStudioAdmin = typeof window !== 'undefined' && window.location.pathname.includes('studio.html');
     this.currentRole = this.isStudioAdmin ? 'host' : 'idle'; // 'host' | 'audience' | 'duet' | 'idle'
     this.currentRoomId = null;
     this.currentRoomName = null;

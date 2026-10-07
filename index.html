@@ -1,1141 +1,377 @@
 <!doctype html>
 <html lang="en">
 <head>
-
-
     <meta charset="UTF-8">
     <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport">
-    <title>Nirmal Karaoke — Your singing stage</title>
+    <title>Nirmal Karaoke — Real-time voice studio, karaoke &amp; live stage in your browser</title>
+    <meta name="description" content="Nirmal Karaoke is a browser-based voice studio: sing karaoke with synced lyrics, change your voice in real time with 30+ voices and Auto-Tune, use a hotkey soundboard, go live with duets, stream to YouTube and send your sound to Zoom or Discord. Nothing to install.">
+    <meta name="theme-color" content="#080d17">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Nirmal Karaoke — Sing it. Shape it. Go live.">
+    <meta property="og:description" content="Real-time voice effects, karaoke, soundboard, live duets and streaming, right in your browser.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎤</text></svg>">
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
     <link rel="apple-touch-icon" href="./icon-192.png">
     <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml">
     <script async crossorigin="anonymous"
             src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5612148205285929"></script>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <!-- defer: runs in order before the module app script, without blocking first paint -->
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.min.js"></script>
-
-
     <link href="./css/style.css?v=32" rel="stylesheet">
-    <link href="./css/game-invite.css?v=32" rel="stylesheet">
-    <script>
-      (function() {
-        try {
-          var test = { a: { b: 1 } };
-          if (test?.a?.b !== 1) throw new Error();
-        } catch (_) {
-          console.warn('Notice: Browser does not support optional chaining. Please upgrade to a recent browser version.');
-        }
-      })();
-    </script>
-
+    <link href="./css/home.css?v=1" rel="stylesheet">
+    <script>document.documentElement.classList.add('js');</script>
 </head>
-<body>
+<body class="hm">
 
-
-<header class="topbar"><a class="brand" href="#stage"><span class="brand-mark">N</span>NIRMAL <em>KARAOKE</em></a>
-    <div class="status-deck"><span><i class="led" id="led-in"></i>Media</span><span><i class="led" id="led-mic"></i>Mic</span><span
-            class="desktop-only"><i class="led" id="led-dsp"></i>DSP</span><span class="desktop-only"><i class="led"
-                                                                                                         id="led-out"></i>Out</span><span
-            class="desktop-only"><i class="led" id="led-rec"></i>Rec</span></div>
-    <div class="topbar-actions">
-        <span class="badge" id="badgeExternalStreamLive" style="display:none;background:#ff0055;color:#fff;font-size:0.7rem;font-weight:800;padding:4px 8px;border-radius:6px;animation:pulseDot 1.5s infinite;">🔴 <span class="btn-text">Streaming</span></span>
-        <button class="button button-quiet" id="btnOpenDiagnostics" title="Developer Diagnostics HUD (Ctrl+Shift+D)">📊 <span class="btn-text">Diagnostics</span></button>
-        <button class="button button-quiet" id="btnOpenMultistream" title="Broadcast live to YouTube, Twitch, Facebook or RTMP">📡 <span class="btn-text">Multistream</span></button>
-        <button class="button button-quiet" id="btnOpenUsersLobby" title="View live online singers & send duet invites">👥 <span class="btn-text">Live Users</span> <span class="badge" id="topbarUsersBadge">0</span></button>
-        <button class="button button-live" id="btnOpenShareModal">● <span class="btn-text">Go live</span></button>
+<!-- ───────────── NAV ───────────── -->
+<header class="hm-nav" id="top">
+    <div class="hm-wrap hm-nav-inner">
+        <a class="hm-brand" href="./" aria-label="Nirmal Karaoke home"><span class="hm-logo">N</span><span>NIRMAL <em>KARAOKE</em></span></a>
+        <nav class="hm-links" id="hmLinks" aria-label="Sections">
+            <a href="#features">Features</a>
+            <a href="#voices">Voices</a>
+            <a href="#live">Go live</a>
+            <a href="#calls">Calls &amp; streaming</a>
+            <a href="#how">How it works</a>
+            <a href="#faq">FAQ</a>
+        </nav>
+        <div class="hm-nav-cta">
+            <a class="button button-quiet hm-hide-sm" href="./users.html">Singers lobby</a>
+            <a class="button button-primary" href="./studio.html">Open studio</a>
+            <button class="hm-burger" id="hmBurger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="hmLinks"><span></span><span></span><span></span></button>
+        </div>
     </div>
 </header>
-<div class="app-shell">
-    <aside class="sidebar"><a class="nav-link active" href="#stage">⌂<span>Stage</span></a><a class="nav-link"
-                                                                                              href="#music">♫<span>Music</span></a><a
-            class="nav-link" href="#lyrics">▤<span>Lyrics</span></a><a class="nav-link"
-                                                                       href="#mixer">⌘<span>Mixer</span></a><a
-            class="nav-link" href="#effects">✦<span>Effects</span></a><a class="nav-link" href="#audience">♧<span>Audience</span></a><a
-            class="nav-link" href="#recording">●<span>Record</span></a><a class="nav-link" id="navLinkUsers" href="#lobby">👥<span>Singers</span></a></aside>
-    <main class="studio-main">
-        <section class="stage-card mobile-screen" id="stage" data-screen-group="stage">
-            <div class="eyebrow">YOUR LIVE STAGE <span>● READY</span></div>
-            <div class="muted" style="margin-top:-2px">Sing, remix, add effects and share your stage — all in one place.</div>
-            <div class="stage-visual">
-                <canvas id="visualizer"></canvas>
-                <div class="hud-overlay">
-                    <div style="display:flex;gap:6px;align-items:center;">
-                        <span id="hudNote">PITCH: --</span>
-                        <span id="hudAccel">⚡ ACCEL: ON</span>
-                        <span id="hudFps">FPS: --</span>
-                    </div>
-                    <span id="hudCoach">COACH: READY</span>
-                </div>
-            </div>
-            <div class="stage-video-arena" id="adminStageVideoArena" style="display:none;">
-                <div class="stage-video-grid" id="liveStageVideoGrid"></div>
-                <div class="camera-filter-toolbar" id="adminCameraFilterToolbar" style="display:none;"></div>
-            </div>
-            <div class="now-playing">
-                <div class="artwork">♫</div>
-                <div><p class="muted">NOW PLAYING</p>
-                    <h1 id="nowPlayingTitle">Choose a song to begin</h1>
-                    <p id="nowPlayingArtist">Your personal karaoke studio</p></div>
-            </div>
-            <div class="quick-actions">
-                <button class="button button-primary" id="btnMic">🎙 Start singing</button>
-                <button class="button button-quiet" id="btnStopMic">Stop mic</button>
-                <button class="button button-quiet" id="btnFile">＋ Upload</button>
-                <button class="button button-quiet" id="btnOpenMusicSearch">⌕ Find music</button>
-                <button class="button button-quiet" id="btnStageHostCamera" title="Share your webcam video side-by-side with lyrics to audience">📹 Share camera</button>
-                <button class="button button-quiet" id="btnAdminSwitchCamera" style="display:none;" title="Switch between Front and Rear camera">🔄 Switch camera</button>
-            </div>
-            <div class="native-player" id="playerWrapper">
-                <audio controls crossorigin="anonymous" id="filePlayer" playsinline></audio>
-            </div>
-            <input accept="audio/*,video/*" hidden id="mediaInput" type="file"><input accept=".lrc,text/plain" hidden
-                                                                                      id="lrcInput" type="file">
-        </section>
-        <section class="card lyrics-card mobile-screen" id="lyrics" data-screen-group="stage">
-            <div class="card-heading">
-                <div><p class="eyebrow">SING ALONG</p>
-                    <h2>Lyrics</h2></div>
-                <label class="switch-label">Show <input checked id="lyricsWindowToggle" type="checkbox"><span
-                        class="switch"></span></label></div>
-            <div class="lyrics-container" id="lyricsDisplayContainer">
-                <div class="lyrics-content" id="lyricsContent">
-                    <div class="lyric-line">NIRMAL KARAOKE STAGE READY<br>Pick a playlist or search a song.</div>
-                </div>
-                <button class="btn-follow-lyrics" id="btnAdminFollowLyrics" style="display:none;" title="Recenter to active lyric">⤓ Follow lyrics</button>
-            </div>
-            <p class="help-text" id="lblLyricsStatus">Waiting for audio to scan lyrics…</p>
-            <div class="compact-row" id="lyricSyncControls" style="display:none"><span>Sync <b
-                    id="lblSyncOffset">0.0s</b></span>
-                <div>
-                    <button class="icon-button" id="btnSyncMinus">−</button>
-                    <button class="icon-button" id="btnSyncReset">↺</button>
-                    <button class="icon-button" id="btnSyncPlus">＋</button>
-                </div>
-            </div>
-            <div class="button-row">
-                <button class="button button-quiet" id="btnLoadLrc">Upload LRC</button>
-                <button class="button button-quiet" id="btnSearchLrc">Search lyrics</button>
-                <button class="button button-quiet" id="btnCreateLrc">Create</button>
-                <button class="button button-quiet" id="btnDownloadAutoLrc" style="display:none">Save LRC</button>
-            </div>
-            <div class="expand-box" id="lrcSearchBox" style="display:none"><input id="lrcSearchInput"
-                                                                                  placeholder="Song + artist">
-                <button class="button" id="btnDoSearch">Search</button>
-                <div id="lrcSearchResults"></div>
-            </div>
-            <div class="expand-box" id="lrcCreateBox" style="display:none"><textarea id="lrcEditor"
-                                                                                     placeholder="[00:00.00] First lyric line"></textarea>
-                <div class="button-row">
-                    <button class="button button-primary" id="btnApplyCustomLrc">Apply</button>
-                    <button class="button button-quiet" id="btnDownloadCustomLrc">Download</button>
-                </div>
-            </div>
-        </section>
-        <section class="card library-card mobile-screen" id="music" data-screen-group="music">
-            <div class="card-heading">
-                <div><p class="eyebrow">MUSIC LIBRARY</p>
-                    <h2>Your queue</h2></div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <button class="button button-primary" id="btnFindMusicInTab" style="padding:6px 12px;font-size:11px;">⌕ Find music</button>
-                    <label class="switch-label" style="margin-top:0;">Autoplay <input checked id="autoplayToggle" type="checkbox"><span
-                            class="switch"></span></label>
-                </div>
-            </div>
 
-            <!-- EXPANDABLE FIND MUSIC & LIVE AUTOSEARCH PANEL -->
-            <div class="expand-box" id="musicSearchBox" style="display:none; margin:10px 0 14px; border-color:rgba(79, 195, 255, 0.35); box-shadow:0 4px 18px rgba(0,0,0,0.35);">
-                <div class="search-row" style="position:relative;">
-                    <input id="musicSearchInput" placeholder="Search song, artist, film... (live autosearch)" autocomplete="off">
-                    <button id="btnClearMusicSearch" style="position:absolute; right:74px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--muted, #8e82a6); font-size:14px; cursor:pointer; padding:4px 8px; display:none;" title="Clear search">✕</button>
-                    <button class="button button-primary" id="btnDoMusicSearch">Search</button>
-                </div>
-
-                <!-- Quick Genre / Mood Discovery Chips -->
-                <div class="music-genre-chips" id="musicSearchChips">
-                    <button class="music-chip" data-query="Latest Bollywood Hits">🔥 Top Hits</button>
-                    <button class="music-chip" data-query="Romantic Hindi Melodies">❤️ Romance</button>
-                    <button class="music-chip" data-query="Top Punjabi Party Hits">💃 Punjabi</button>
-                    <button class="music-chip" data-query="90s Bollywood Evergreen Hits">✨ 90s Retro</button>
-                    <button class="music-chip" data-query="Arijit Singh Best Songs">🎤 Arijit Singh</button>
-                    <button class="music-chip" data-query="Bollywood Lo-Fi Chill">🌙 Lo-Fi</button>
-                </div>
-
-                <div class="compact-row" style="margin-top:10px;"><b id="musicListTitle">🔥 POPULAR KARAOKE TRACKS</b>
-                    <button class="text-button" id="btnRefreshTrending">↻ Refresh</button>
-                </div>
-                <div class="search-results" id="musicSearchResults"></div>
+<main>
+<!-- ───────────── HERO ───────────── -->
+<section class="hm-hero">
+    <div class="hm-wrap hm-hero-grid">
+        <div class="hm-hero-copy">
+            <span class="hm-chip"><i></i> Real-time voice studio · Karaoke · Live stage</span>
+            <h1>Sing it.<br>Shape it.<br><span class="hm-grad">Go live.</span></h1>
+            <p class="hm-lead">One browser tab gives you a karaoke player with synced lyrics, 30+ real-time voices, Auto-Tune, a hotkey soundboard and a live stage your friends can join from any phone. Nothing to install.</p>
+            <div class="hm-cta-row">
+                <a class="button button-primary hm-big" href="./studio.html">🎙 Open the studio</a>
+                <a class="button hm-big" href="#features">See what's inside</a>
             </div>
-
-            <select id="presetPlaylistSelect">
-                <option value="Latest Bollywood Hits">🔥 Top 50 Bollywood Hits</option>
-                <option value="Romantic Hindi Melodies">❤️ Romantic Bollywood Melodies</option>
-                <option value="Top Punjabi Party Hits">💃 Punjabi Dance Party</option>
-                <option value="90s Bollywood Evergreen Hits">✨ 90s Golden Classics</option>
-                <option value="Bollywood Lo-Fi Chill">🌙 Midnight Acoustic & Lo-Fi</option>
-                <option value="Arijit Singh Best Songs">🎤 Arijit Singh Special</option>
-                <option value="Kishore Kumar Lata Mangeshkar Hits">🌟 Retro Evergreen Legends</option>
-                <option value="Global English Pop Hits">🌍 Global English Pop</option>
-            </select>
-            <div class="compact-row"><span>Up next <b id="lblQueueCount">0 songs</b></span>
-                <div>
-                    <button class="icon-button" id="btnSkipNext" title="Skip to next track">⏭</button>
-                    <button class="icon-button danger" id="btnClearPlaylist" title="Clear playlist queue">⌫</button>
-                </div>
-            </div>
-            <div class="queue-list" id="playlistContainer">Loading playlist…</div>
-            <div class="button-row">
-                <button class="button button-primary" id="btnFindMusicInTabBottom">⌕ Find music</button>
-                <button class="button button-quiet desktop-only" id="btnTab">Capture tab</button>
-                <button class="button button-quiet" id="btnStopMedia">Stop media</button>
-            </div>
-        </section>
-        <section class="card effects-card mobile-screen" id="effects" data-screen-group="effects">
-            <div class="card-heading">
-                <div><p class="eyebrow">MAKE IT YOURS</p>
-                    <h2>Voice effects</h2></div>
-                <button class="button button-quiet" data-reset-all type="button" title="Reset every sound, effect and Auto-Tune setting to the start-up defaults">↺ Reset all</button>
-            </div>
-            <div class="route-row"><label class="switch-label">Track <input id="fxRouteMedia" type="checkbox"><span
-                    class="switch"></span></label><label class="switch-label">Microphone <input checked
-                                                                                                id="fxRouteMic" type="checkbox"><span
-                    class="switch"></span></label></div>
-            <div class="preset-grid">
-                <button class="preset-btn active" data-preset="normal">🎧<span>Bypass</span></button>
-                <button class="preset-btn" data-preset="female">👩<span>Female</span></button>
-                <button class="preset-btn" data-preset="kid">🧒<span>Kid</span></button>
-                <button class="preset-btn" data-preset="deep">🧔<span>Deep</span></button>
-                <button class="preset-btn" data-preset="old">👴<span>Vintage</span></button>
-                <button class="preset-btn" data-preset="angry">😡<span>Grit</span></button>
-                <button class="preset-btn" data-preset="sad">😢<span>Hollow</span></button>
-                <button class="preset-btn" data-preset="robot">🤖<span>Vocoder</span></button>
-                <button class="preset-btn" data-preset="radio">📻<span>Radio</span></button>
-                <button class="preset-btn" data-preset="alien">👽<span>Alien</span></button>
-            </div>
-            <p class="eyebrow" style="margin:16px 0 0">CHARACTER VOICES</p>
-            <p class="help-text" style="margin:4px 0 0">Original voice styles shaped by tone and pitch, not copies of any real person. Works live, with Auto-Tune, and in call output.</p>
-            <div class="preset-grid preset-grid-characters">
-                <button class="preset-btn" data-preset="baritone" title="Deep, resonant leading-man baritone">🎬<span>Baritone</span></button>
-                <button class="preset-btn" data-preset="romantic" title="Warm, smooth, close-mic romantic tenor">🌹<span>Romantic</span></button>
-                <button class="preset-btn" data-preset="veteran" title="Gruff, gravelly elder">🪨<span>Gravel</span></button>
-                <button class="preset-btn" data-preset="announcer" title="Crisp, authoritative broadcast voice">🎙️<span>Announcer</span></button>
-                <button class="preset-btn" data-preset="hero" title="Bright, confident young lead">🦸<span>Hero</span></button>
-                <button class="preset-btn" data-preset="melody" title="Sweet, clear female lead">🎵<span>Melody</span></button>
-                <button class="preset-btn" data-preset="husky" title="Breathy, smoky alto">🌙<span>Husky</span></button>
-                <button class="preset-btn" data-preset="diva" title="Powerful, projecting diva">👑<span>Diva</span></button>
-                <button class="preset-btn" data-preset="popstar" title="Glossy, airy pop vocal">⭐<span>Pop Star</span></button>
-            </div>
-            <p class="eyebrow" style="margin:16px 0 0">CUSTOM VOICE</p>
-            <p class="help-text" style="margin:4px 0 0">Build your own voice. Moving a slider switches to it.</p>
-            <div class="custom-voice" id="customVoiceBox">
-                <button class="preset-btn" data-preset="custom" title="Your own voice, shaped with the sliders">🎛️<span>Custom</span></button>
-                <div class="custom-voice-sliders">
-                    <div class="control"><label>Pitch <b id="valCvPitch">0 st</b></label><input id="cvPitch" type="range" min="-12" max="12" step="0.5" value="0"></div>
-                    <div class="control"><label>Body ⇄ Presence <b id="valCvTone">0 dB</b></label><input id="cvTone" type="range" min="-6" max="6" step="0.5" value="0"></div>
-                    <div class="control"><label>Grit <b id="valCvGrit">0%</b></label><input id="cvGrit" type="range" min="0" max="100" step="1" value="0"></div>
-                    <div class="control"><label>Brightness limit <b id="valCvBright">16 kHz</b></label><input id="cvBright" type="range" min="2000" max="20000" step="500" value="16000"></div>
-                    <div class="control"><label>Echo <b id="valCvEcho">0%</b></label><input id="cvEcho" type="range" min="0" max="100" step="1" value="0"></div>
-                </div>
-            </div>
-            <p class="eyebrow" style="margin:16px 0 0">EFFECT VOICES</p>
-            <p class="help-text" style="margin:4px 0 0">Robot, creature and sound-design voices from the voice modulator (ring mod, vibrato, echo, bit-crush).</p>
-            <div class="preset-grid preset-grid-characters">
-                <button class="preset-btn" data-preset="drone" title="Metallic ring-modulated robot">🔩<span>Drone</span></button>
-                <button class="preset-btn" data-preset="cyborg" title="Half human, half machine">🦾<span>Cyborg</span></button>
-                <button class="preset-btn" data-preset="underwater" title="Wobbly, muffled, underwater">🌊<span>Underwater</span></button>
-                <button class="preset-btn" data-preset="ghost" title="Haunting echo and wobble">👻<span>Ghost</span></button>
-                <button class="preset-btn" data-preset="helium" title="Very high, squeaky">🎈<span>Helium</span></button>
-                <button class="preset-btn" data-preset="demon" title="Deep, growling, echoing">😈<span>Demon</span></button>
-                <button class="preset-btn" data-preset="villain" title="Dark, menacing low voice">🦹<span>Villain</span></button>
-                <button class="preset-btn" data-preset="monster" title="Huge, growling">👹<span>Monster</span></button>
-                <button class="preset-btn" data-preset="megaphone" title="Loud-hailer">📢<span>Megaphone</span></button>
-                <button class="preset-btn" data-preset="telephone" title="Narrow band, crunchy line">☎️<span>Telephone</span></button>
-                <button class="preset-btn" data-preset="retro8bit" title="Retro chiptune crunch">👾<span>8-bit</span></button>
-                <button class="preset-btn" data-preset="cave" title="Big echoing space">🕳️<span>Cave</span></button>
-                <button class="preset-btn" data-preset="nervous" title="Trembling voice">😰<span>Nervous</span></button>
-            </div>
-        </section>
-
-        <!-- SOUNDBOARD: built-in sounds + your own uploads, with hotkeys (rendered by js/soundboard.js) -->
-        <section class="card mobile-screen" id="soundboardCard" data-screen-group="effects">
-            <div class="card-heading">
-                <div><p class="eyebrow">SOUNDBOARD</p><h2>Sounds &amp; hotkeys</h2></div>
-                <button class="button button-quiet" id="btnSbStop" type="button" title="Silence every sound that is playing">⏹ Stop all</button>
-            </div>
-            <p class="help-text">Tap a sound, or press its hotkey while the page is focused. Add your own audio files; they are saved on this device and play into your stream and call output.</p>
-            <div class="control"><label>Soundboard volume <b id="valSbVol">100%</b></label><input id="sliderSbVol" max="1.5" min="0" step=".05" type="range" value="1"></div>
-            <div class="sb-grid" id="sbGrid"></div>
-            <div class="button-row" style="margin-top:12px">
-                <label class="button button-primary" for="sbFileInput" style="cursor:pointer">＋ Add your sounds</label>
-                <input id="sbFileInput" type="file" accept="audio/*" multiple hidden>
-            </div>
-            <p class="help-text" id="sbMsg" style="display:none"></p>
-        </section>
-
-        <!-- PRO ARTIST LIVE SUITE CARD -->
-        <section class="card artist-suite-card mobile-screen" id="artistSuiteCard" data-screen-group="effects">
-            <div class="card-heading">
-                <div>
-                    <p class="eyebrow">LIVE PERFORMING ARTIST SUITE</p>
-                    <h2>Stage Master & Tools</h2>
-                </div>
-                <span class="pro-tag" style="background:linear-gradient(135deg,#2f7cf6,#27a9ff);color:#fff;font-size:0.65rem;font-weight:900;padding:3px 8px;border-radius:12px;">PRO STAGE</span>
-            </div>
-
-            <!-- Precision Digital Metronome & Beat Clock -->
-            <div class="artist-section">
-                <div class="artist-section-header">
-                    <span class="artist-section-title">⏱️ PRECISION METRONOME & BEAT CLOCK</span>
-                    <span class="metronome-bpm-badge" id="lblMetronomeBpm">120 BPM</span>
-                </div>
-                <!-- 4-Beat Flashing Visual Indicator Bar -->
-                <div class="metronome-beat-display" id="metronomeBeatBar">
-                    <div class="beat-dot accent" data-beat="0">1</div>
-                    <div class="beat-dot" data-beat="1">2</div>
-                    <div class="beat-dot" data-beat="2">3</div>
-                    <div class="beat-dot" data-beat="3">4</div>
-                </div>
-                <div class="metronome-controls-row">
-                    <button class="button button-quiet metro-btn-nudge" id="btnMetroMinus" type="button" title="Decrease 1 BPM">-1</button>
-                    <input class="metro-slider" id="sliderMetronomeBpm" max="240" min="40" step="1" type="range" value="120">
-                    <button class="button button-quiet metro-btn-nudge" id="btnMetroPlus" type="button" title="Increase 1 BPM">+1</button>
-                    <button class="button button-quiet" id="btnMetroTap" type="button" style="font-size:0.75rem; font-weight:800; color:#4fc3ff; border-color:rgba(79,195,255,0.4); white-space:nowrap;">⚡ Tap Tempo</button>
-                </div>
-                <div class="metronome-action-row">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <label class="switch-label" style="margin:0; font-size:0.72rem; color:var(--text-dim);">
-                            Route to stream
-                            <input id="chkMetroBroadcast" type="checkbox"><span class="switch"></span>
-                        </label>
-                        <span style="font-size:0.68rem; color:var(--text-dim);" id="lblMetroRouteDesc">(Off = In-Ear Only)</span>
-                    </div>
-                    <button class="button button-primary" id="btnToggleMetronome" type="button" style="padding:6px 14px; font-size:0.75rem; font-weight:800;">▶ Start Metronome</button>
-                </div>
-            </div>
-
-            <!-- Chromatic Vocal Pitch Pipe & Concert Reference -->
-            <div class="artist-section">
-                <div class="artist-section-header">
-                    <span class="artist-section-title">🎵 CHROMATIC VOCAL PITCH PIPE & REFERENCE</span>
-                    <div class="pitch-ref-pills" id="pitchRefPills">
-                        <button class="ref-pill active" id="btnRef440" type="button">440 Hz</button>
-                        <button class="ref-pill" id="btnRef432" type="button">432 Hz</button>
-                    </div>
-                </div>
-                <div class="pitch-pipe-grid">
-                    <button class="pitch-key-btn" data-note="C4" type="button">C4</button>
-                    <button class="pitch-key-btn" data-note="D4" type="button">D4</button>
-                    <button class="pitch-key-btn" data-note="E4" type="button">E4</button>
-                    <button class="pitch-key-btn" data-note="F4" type="button">F4</button>
-                    <button class="pitch-key-btn" data-note="G4" type="button">G4</button>
-                    <button class="pitch-key-btn" data-note="A4" type="button">A4</button>
-                    <button class="pitch-key-btn" data-note="B4" type="button">B4</button>
-                    <button class="pitch-key-btn stop-key" id="btnStopPitchPipe" type="button">⏹ Stop</button>
-                </div>
-            </div>
-
-            <!-- 1-Tap Quick Transpose Key Bar -->
-            <div class="artist-section">
-                <div class="artist-section-header">
-                    <span class="artist-section-title">🎹 1-TAP QUICK TRANSPOSE KEY BAR</span>
-                    <span id="lblQuickKeyShift" style="font-size:0.72rem; font-weight:800; color:#4fc3ff;">Original (0)</span>
-                </div>
-                <div class="quick-transpose-row" id="quickTransposeRow">
-                    <button class="transpose-pill" data-semitone="-3" type="button">-3</button>
-                    <button class="transpose-pill" data-semitone="-2" type="button">-2</button>
-                    <button class="transpose-pill" data-semitone="-1" type="button">-1</button>
-                    <button class="transpose-pill active" data-semitone="0" type="button">♮ 0</button>
-                    <button class="transpose-pill" data-semitone="1" type="button">+1</button>
-                    <button class="transpose-pill" data-semitone="2" type="button">+2</button>
-                    <button class="transpose-pill" data-semitone="3" type="button">+3</button>
-                </div>
-            </div>
-
-            <!-- Auto-Ducking / DJ Talkover Mode -->
-            <div class="artist-section">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <span class="artist-section-title" style="display:block;">🎙️ AUTO-DUCKING / DJ TALKOVER</span>
-                        <span style="font-size:0.68rem; color:var(--text-dim);">Dips backing track volume by -10dB when you speak or sing into mic</span>
-                    </div>
-                    <label class="switch-label" style="margin:0;">
-                        <input id="chkAutoDucking" type="checkbox"><span class="switch"></span>
-                    </label>
-                </div>
-                <div id="lblDuckingStatus" style="font-size:0.68rem; color:#4fc3ff; font-weight:600; margin-top:4px; display:none;">
-                    ⚡ Auto-Ducking Active: Music ducks dynamically with vocals
-                </div>
-            </div>
-
-            <!-- Broadcast Safety VU Peak & Clip Guard -->
-            <div class="artist-section" style="margin-bottom:0;">
-                <div class="artist-section-header">
-                    <span class="artist-section-title">🛡️ BROADCAST SAFETY VU PEAK & CLIP GUARD</span>
-                    <span id="lblVuPeakDb" style="font-size:0.72rem; font-family:monospace; font-weight:800; color:#4fc3ff;">-48.0 dB</span>
-                </div>
-                <div class="vu-meter-track" style="height:10px; background:rgba(0,0,0,0.5); border-radius:5px; overflow:hidden; border:1px solid var(--border); position:relative;">
-                    <div id="vuMeterBar" style="width:100%; height:100%; background:linear-gradient(90deg, #10b981 0%, #eab308 75%, #ef4444 100%); transform:scaleX(0); transform-origin:left center; transition:transform 60ms ease-out; will-change:transform; border-radius:4px;"></div>
-                    <div style="position:absolute; right:10%; top:0; bottom:0; width:1px; background:rgba(255,255,255,0.4);" title="-3dB Safety Threshold"></div>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-                    <span style="font-size:0.65rem; color:var(--text-dim);">-60 dB</span>
-                    <span style="font-size:0.65rem; color:var(--text-dim);">-12 dB</span>
-                    <span style="font-size:0.65rem; color:var(--text-dim);">-3 dB (Safe)</span>
-                    <span id="lblVuClipWarning" style="font-size:0.65rem; font-weight:900; color:#ef4444; opacity:0; transition:opacity 0.2s;">⚠️ CLIP GUARD</span>
-                    <span style="font-size:0.65rem; color:var(--text-dim);">0 dB</span>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <aside class="control-rail">
-        <section class="card mobile-screen" id="mixer" data-screen-group="mixer"><p class="eyebrow">YOUR SOUND</p>
-            <div class="card-heading"><h2>Mixer</h2>
-                <button class="button button-quiet" data-reset-all type="button" title="Reset every sound, effect and Auto-Tune setting to the start-up defaults">↺ Reset all</button></div>
-            <label>Audio output<select id="speakerSelect">
-                <option value="">Default audio interface</option>
-            </select></label>
-            <div class="control"><label>Backing track <b id="lblMediaVol">100%</b></label><input id="sliderMediaVol"
-                                                                                                 max="2"
-                                                                                                 min="0" step=".05"
-                                                                                                 type="range" value="1">
-            </div>
-            <div class="control"><label>Live vocals <b id="lblMicVol">100%</b></label><input id="sliderMicVol"
-                                                                                             max="2" min="0"
-                                                                                             step=".05" type="range"
-                                                                                             value="1"></div>
-            <div class="control"><label>Master volume <b id="valVol">100%</b></label><input id="sliderVol" max="2"
-                                                                                            min="0" step=".01" type="range"
-                                                                                            value="1"></div>
-            <div class="control"><label>Vocal clarity <b id="valAir">+2.0 dB</b></label><input id="sliderAir"
-                                                                                               max="12" min="-12"
-                                                                                               step=".5" type="range"
-                                                                                               value="2"></div>
-            <div class="system-audio-box native-audio-box desktop-only">
-                <div class="system-audio-head"><div><span class="eyebrow">WINDOWS AUDIO ENGINE</span><strong>Native output capture</strong></div><span class="audio-badge" id="nativeAudioStatus">BROWSER</span></div>
-                <p class="help-text">Optional Windows bridge: capture the selected speaker/output directly with WASAPI loopback. This bypasses the browser screen-share picker and feeds the captured mix into your live stream.</p>
-                                <div class="button-row">
-                                        <button class="button button-quiet" id="btnNativeStop" style="display:none">Stop native</button>
-                </div>
-                
-            </div>
-            <div class="system-audio-box">
-                <div class="system-audio-head"><div><span class="eyebrow">SHAREABLE AUDIO</span><strong>System sound • Stereo 2ch</strong></div><span class="audio-badge" id="systemAudioStatus">OFF</span></div>
-                <p class="help-text">Capture Windows system/browser audio directly in Chrome/Edge. In the picker, choose the source and turn on <b>Share audio</b>. Nirmal keeps the shared program audio in a 48 kHz, 2-channel stereo path; capture video is not broadcast. If the browser supplies only one source channel, it is safely duplicated to left/right rather than publishing a mono LiveKit track.</p>
-                <div class="button-row">
-                    <button class="button button-primary" id="btnSystemAudio">🔊 Share system sound</button>
-                    <button class="button button-quiet" id="btnStopSystemAudio" style="display:none">Stop</button>
-                </div>
-            </div>
-            <div class="system-audio-box desktop-only" id="callOutputBox">
-                <div class="system-audio-head"><div><span class="eyebrow">CALLS &amp; MEETINGS</span><strong>Use this studio as your microphone</strong></div><span class="audio-badge" id="callOutputStatus">OFF</span></div>
-                <p class="help-text">Send your effected voice and music to Zoom, Meet, Teams or Discord. Choose a <b>virtual audio cable</b> below, then pick that cable's <b>output</b> as the microphone in your call app. You keep hearing yourself on your normal headphones.</p>
-                <label>Send to (virtual cable)<select id="callOutputSelect"><option value="">No devices found - press Detect</option></select></label>
-                <div class="control"><label>Call volume <b id="lblCallVol">100%</b></label><input id="sliderCallVol" max="2" min="0" step=".05" type="range" value="1"></div>
-                <div class="button-row">
-                    <button class="button button-primary" id="btnCallOutputStart">📞 Send to call</button>
-                    <button class="button button-quiet" id="btnCallOutputStop" style="display:none">Stop</button>
-                    <button class="button button-quiet" id="btnCallOutputDetect" title="Allow microphone access once so the browser shows device names">🔄 Detect devices</button>
-                </div>
-                <p class="help-text" id="callOutputMsg" style="display:none"></p>
-                <details class="help-text" style="margin-top:8px">
-                    <summary style="cursor:pointer;font-weight:700">How to set this up (one time)</summary>
-                    <ol style="margin:8px 0 0 18px;padding:0;line-height:1.5">
-                        <li>Install a free virtual audio cable: <a href="https://vb-audio.com/Cable/" target="_blank" rel="noopener noreferrer"><b>Download VB-Cable</b></a> (Windows) or <a href="https://existential.audio/blackhole/" target="_blank" rel="noopener noreferrer"><b>BlackHole</b></a> (Mac). Restart your computer after installing.</li>
-                        <li>Use <b>Chrome or Edge</b>. Press <b>Detect devices</b> and allow the microphone once so names appear.</li>
-                        <li>Here, choose <b>CABLE Input</b> (the cable) and press <b>Send to call</b>.</li>
-                        <li>In Zoom / Meet / Teams / Discord, set the <b>Microphone</b> to <b>CABLE Output</b>.</li>
-                        <li>Start your mic here, pick a voice effect, play music. The call now hears this studio.</li>
-                        <li>Wear headphones and keep this site's main <b>Audio output</b> on them, not on the cable.</li>
-                    </ol>
-                </details>
-            </div>
-        </section>
-        <!-- MIC BOOST + NOISE SUPPRESSION + LEVEL METERS -->
-        <section class="card mobile-screen" id="micToolsCard" data-screen-group="mixer">
-            <div class="card-heading"><div><p class="eyebrow">MIC BOOST &amp; NOISE</p><h2>Clean, loud, clear</h2></div></div>
-            <div class="meter-row"><span>IN</span><div class="meter"><i id="meterIn"></i></div><b id="dbIn">-∞ dB</b></div>
-            <div class="meter-row"><span>OUT</span><div class="meter"><i id="meterOut"></i></div><b id="dbOut">-∞ dB</b></div>
-            <div class="control"><label>Mic boost <b id="valMicBoost">+0 dB</b></label><input id="sliderMicBoost" max="24" min="0" step="1" type="range" value="0"></div>
-            <div class="control">
-                <label>Noise suppression <b id="valNs">Low</b></label>
-                <div class="seg" id="nsSeg" role="group" aria-label="Noise suppression strength">
-                    <button type="button" data-ns="0">Off</button>
-                    <button type="button" data-ns="1" class="active">Low</button>
-                    <button type="button" data-ns="2">Medium</button>
-                    <button type="button" data-ns="3">High</button>
-                </div>
-                <p class="help-text" id="nsHelp" style="margin-top:8px"></p>
-            </div>
-        </section>
-        <section class="card mobile-screen" id="proVocalRack" data-screen-group="mixer">
-            <p class="eyebrow">PRO VOCAL RACK</p>
-            <div class="card-heading"><div><h2>Studio vocal chain</h2><p class="help-text">Low-latency built-in processing inspired by a modern vocal channel strip.</p></div></div>
-            <label class="switch-label">Pro chain <input checked id="proChainToggle" type="checkbox"><span class="switch"></span></label>
-            <div class="two-col">
-                <label>Preset<select id="proVocalPreset">
-                    <option value="clean">Clean Pop</option><option value="warm">Warm Vocal</option><option value="bright">Bright & Airy</option><option value="radio">Radio Voice</option><option value="live">Live Stage</option>
-                </select></label>
-                <label>De-esser <input id="sliderDeEsser" max="1" min="0" step=".05" type="range" value=".35"></label>
-            </div>
-            <div class="control"><label>Compression <b id="valVocalComp">45%</b></label><input id="sliderVocalComp" max="1" min="0" step=".01" type="range" value=".45"></div>
-            <div class="control"><label>Saturation <b id="valVocalSat">8%</b></label><input id="sliderVocalSat" max="1" min="0" step=".01" type="range" value=".08"></div>
-            <div class="control"><label>Vocal presence <b id="valVocalPresence">2 dB</b></label><input id="sliderVocalPresence" max="8" min="-6" step=".5" type="range" value="2"></div>
-            <p class="help-text desktop-only">Native VST3 hosting is available through the optional Windows audio bridge. Build the bridge to scan installed VST3 effects and route the native processing engine into the karaoke audio path.</p>
-        </section>
-        <section class="card autotune-card mobile-screen" id="karaokeToolsCard" data-screen-group="effects">
-            <!-- Header Strip -->
-            <div class="at-header">
-                <div class="at-brand">
-                    <span class="at-badge">AUTO-TUNE</span>
-                    <span class="at-pro-badge">PRO X</span>
-                    <span class="at-dot" id="atStatusDot"></span>
-                </div>
-                <div class="at-header-actions">
-                    <div class="at-mode-toggle" title="Correction Algorithm">
-                        <label class="at-mode-btn active" id="lblModeModern">
-                            <input type="radio" name="atMode" value="modern" checked id="atModeModern"> Modern
-                        </label>
-                        <label class="at-mode-btn" id="lblModeClassic">
-                            <input type="radio" name="atMode" value="classic" id="atModeClassic"> Classic
-                        </label>
-                    </div>
-                    <label class="switch-label at-power-toggle" title="Auto-Tune Power / Bypass">
-                        <input id="autoTuneToggle" type="checkbox"><span class="switch"></span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Presets Bar -->
-            <div class="at-preset-row">
-                <div class="at-preset-select-wrapper">
-                    <span class="at-preset-icon">⚡</span>
-                    <select id="atPresetSelect" class="at-preset-dropdown">
-                        <optgroup label="PRO X FACTORY PRESETS">
-                            <option value="hardTune">⚡ Hard Tune (T-Pain / Trap)</option>
-                            <option value="modernPop" selected>🎙️ Modern Pop Lead</option>
-                            <option value="subtlePolish">💎 Subtle Natural Polish</option>
-                            <option value="rnbSmooth">🌊 R&B Smooth Vibrato</option>
-                            <option value="acousticWarmth">🎸 Acoustic Warmth</option>
-                            <option value="classic5">🌟 Classic Auto-Tune 5</option>
-                            <option value="robotVocoder">🤖 Robot Vocoder</option>
-                            <option value="deepMonster">🪐 Deep Throat / Monster</option>
-                            <option value="hyperpop">🧚 Hyperpop Chipmunk</option>
-                            <option value="liveSafe">🎤 Live Stage Safe</option>
-                        </optgroup>
-                        <optgroup label="USER PRESETS" id="atUserPresetsGroup"></optgroup>
-                    </select>
-                </div>
-                <button class="at-btn-save" id="btnSavePreset" title="Save current settings as preset">💾 Save</button>
-                <button class="at-btn-graph active" id="btnToggleGraph" title="Toggle Real-Time Pitch Graph">📈 Graph</button>
-            </div>
-
-            <!-- Real-Time Pitch Needle & Cents Meter -->
-            <div class="at-meter-container">
-                <div class="at-meter-scale">
-                    <span>-50¢</span><span>-25¢</span><span class="at-center-tick">0¢</span><span>+25¢</span><span>+50¢</span>
-                </div>
-                <div class="at-meter-track">
-                    <div class="at-meter-needle" id="atPitchNeedle" style="left: 50%;"></div>
-                    <div class="at-meter-center-glow" id="atCenterGlow"></div>
-                </div>
-                <div class="at-readout-row">
-                    <div class="at-readout-item">
-                        <span class="at-readout-label">DETECTED</span>
-                        <b class="at-readout-val" id="atInputReadout">--</b>
-                    </div>
-                    <div class="at-status-badge" id="atStatusBadge">READY</div>
-                    <div class="at-readout-item">
-                        <span class="at-readout-label">TARGET</span>
-                        <b class="at-readout-val" id="atTargetReadout">--</b>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Real-Time Scrolling Pitch Graph (Graph Mode canvas) -->
-            <div class="at-graph-wrapper" id="atGraphWrapper">
-                <canvas id="atPitchGraphCanvas" width="380" height="90"></canvas>
-                <div class="at-graph-legend">
-                    <span class="at-legend-item"><span class="at-legend-dot dot-raw"></span> Sung Pitch</span>
-                    <span class="at-legend-item"><span class="at-legend-dot dot-corrected"></span> Auto-Tuned</span>
-                </div>
-            </div>
-
-            <!-- Main Tuning Knobs / Sliders Grid -->
-            <div class="at-knobs-grid">
-                <div class="at-knob-cell">
-                    <div class="at-knob-head">
-                        <label for="atSpeed">RETUNE SPEED</label>
-                        <b id="valAtSpeed">20 ms</b>
-                    </div>
-                    <input id="atSpeed" max="400" min="0" step="1" type="range" value="20" class="at-slider">
-                    <div class="at-knob-sub">Fast (0ms) — Slow (400ms)</div>
-                </div>
-                <div class="at-knob-cell">
-                    <div class="at-knob-head">
-                        <label for="atFlex">FLEX-TUNE</label>
-                        <b id="valAtFlex">0%</b>
-                    </div>
-                    <input id="atFlex" max="100" min="0" step="1" type="range" value="0" class="at-slider">
-                    <div class="at-knob-sub">Natural vocal scoops</div>
-                </div>
-                <div class="at-knob-cell">
-                    <div class="at-knob-head">
-                        <label for="atHumanize">HUMANIZE</label>
-                        <b id="valAtHumanize">0%</b>
-                    </div>
-                    <input id="atHumanize" max="100" min="0" step="1" type="range" value="0" class="at-slider">
-                    <div class="at-knob-sub">Sustained note warmth</div>
-                </div>
-                <div class="at-knob-cell">
-                    <div class="at-knob-head">
-                        <label for="atMix">DRY / WET</label>
-                        <b id="valAtMix">100%</b>
-                    </div>
-                    <input id="atMix" max="1" min="0" step="0.01" type="range" value="1.0" class="at-slider">
-                    <div class="at-knob-sub">Tuned signal mix</div>
-                </div>
-            </div>
-
-            <!-- Key & Scale Selection -->
-            <div class="at-scale-row">
-                <div class="at-field">
-                    <label>KEY</label>
-                    <select id="atKey" class="at-select">
-                        <option value="0">C</option><option value="1">C# / D♭</option><option value="2">D</option><option value="3">D# / E♭</option><option value="4">E</option><option value="5">F</option><option value="6">F# / G♭</option><option value="7">G</option><option value="8">G# / A♭</option><option value="9">A</option><option value="10">A# / B♭</option><option value="11">B</option>
-                    </select>
-                </div>
-                <div class="at-field">
-                    <label>SCALE</label>
-                    <select id="atScale" class="at-select">
-                        <option value="chromatic">Chromatic</option>
-                        <option value="major">Major (Ionian)</option>
-                        <option value="minor">Natural Minor (Aeolian)</option>
-                        <option value="harmonicMinor">Harmonic Minor</option>
-                        <option value="melodicMinor">Melodic Minor</option>
-                        <option value="pentatonicMajor">Pentatonic Major</option>
-                        <option value="pentatonicMinor">Pentatonic Minor</option>
-                        <option value="blues">Blues Scale</option>
-                        <option value="dorian">Dorian Mode</option>
-                        <option value="mixolydian">Mixolydian Mode</option>
-                        <option value="lydian">Lydian Mode</option>
-                        <option value="phrygian">Phrygian Mode</option>
-                        <option value="locrian">Locrian Mode</option>
-                        <option value="wholeTone">Whole Tone</option>
-                        <option value="arabic">Arabic (Double Harmonic)</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Interactive Virtual Piano Keyboard Strip -->
-            <div class="at-keyboard-section">
-                <div class="at-keyboard-head">
-                    <span>KEYBOARD SCALE EDIT</span>
-                    <div class="at-keyboard-actions">
-                        <button class="at-btn-mini" id="btnAllActive" type="button" title="Set all keys active">All On</button>
-                        <button class="at-btn-mini" id="btnBypassAll" type="button" title="Bypass all keys">Bypass</button>
-                        <button class="at-btn-mini" id="btnResetScale" type="button" title="Reset to current scale">Reset</button>
-                    </div>
-                </div>
-                <div class="at-piano-keys" id="atPianoStrip">
-                    <button class="piano-key key-white active" data-note="0" type="button" title="C: Click to cycle Active/Bypass/Remove"><span>C</span></button>
-                    <button class="piano-key key-black active" data-note="1" type="button" title="C#: Click to cycle Active/Bypass/Remove"><span>C#</span></button>
-                    <button class="piano-key key-white active" data-note="2" type="button" title="D: Click to cycle Active/Bypass/Remove"><span>D</span></button>
-                    <button class="piano-key key-black active" data-note="3" type="button" title="D#: Click to cycle Active/Bypass/Remove"><span>D#</span></button>
-                    <button class="piano-key key-white active" data-note="4" type="button" title="E: Click to cycle Active/Bypass/Remove"><span>E</span></button>
-                    <button class="piano-key key-white active" data-note="5" type="button" title="F: Click to cycle Active/Bypass/Remove"><span>F</span></button>
-                    <button class="piano-key key-black active" data-note="6" type="button" title="F#: Click to cycle Active/Bypass/Remove"><span>F#</span></button>
-                    <button class="piano-key key-white active" data-note="7" type="button" title="G: Click to cycle Active/Bypass/Remove"><span>G</span></button>
-                    <button class="piano-key key-black active" data-note="8" type="button" title="G#: Click to cycle Active/Bypass/Remove"><span>G#</span></button>
-                    <button class="piano-key key-white active" data-note="9" type="button" title="A: Click to cycle Active/Bypass/Remove"><span>A</span></button>
-                    <button class="piano-key key-black active" data-note="10" type="button" title="A#: Click to cycle Active/Bypass/Remove"><span>A#</span></button>
-                    <button class="piano-key key-white active" data-note="11" type="button" title="B: Click to cycle Active/Bypass/Remove"><span>B</span></button>
-                </div>
-                <div class="at-keyboard-legend">
-                    <span class="legend-active">● Active (Snap)</span>
-                    <span class="legend-bypass">● Bypass (Raw)</span>
-                    <span class="legend-removed">✕ Excluded</span>
-                </div>
-            </div>
-
-            <!-- Advanced Pro X Rack Sections -->
-            <div class="at-advanced-accordion">
-                <!-- Section 1: Vocal Voicing, Detune & Transpose -->
-                <details class="at-details">
-                    <summary class="at-summary">⚙️ Input Voicing, Detune & Pitch Transpose</summary>
-                    <div class="at-details-body">
-                        <div class="two-col">
-                            <label>Input Vocal Range
-                                <select id="atInputType" class="at-select">
-                                    <option value="altoTenor" selected>Alto / Tenor (Default)</option>
-                                    <option value="soprano">Soprano (High Female)</option>
-                                    <option value="lowMale">Low Male (Baritone/Bass)</option>
-                                    <option value="instrument">Instrument (Wide)</option>
-                                    <option value="bassInst">Bass Instrument</option>
-                                </select>
-                            </label>
-                            <label>Tracking <b id="valAtTracking">85%</b>
-                                <input id="atTracking" max="1" min="0.1" step="0.05" type="range" value="0.85" class="at-slider">
-                            </label>
-                        </div>
-                        <div class="two-col">
-                            <label>Concert Detune (<span id="valAtDetune">440.0</span> Hz)
-                                <input id="atDetune" max="50" min="-50" step="1" type="range" value="0" class="at-slider">
-                            </label>
-                            <label>Transpose <b id="valAtTranspose">0 st</b>
-                                <input id="atTranspose" max="24" min="-24" step="1" type="range" value="0" class="at-slider">
-                            </label>
-                        </div>
-                    </div>
-                </details>
-
-                <!-- Section 2: Formant Correction & Throat Modeling -->
-                <details class="at-details">
-                    <summary class="at-summary">🗣️ Formant Correction & Throat Modeling</summary>
-                    <div class="at-details-body">
-                        <label class="switch-label">Formant Preservation <input checked id="atFormantToggle" type="checkbox"><span class="switch"></span></label>
-                        <div class="control">
-                            <label>Throat Length <b id="valAtThroat">1.00x</b></label>
-                            <input id="atThroat" max="1.4" min="0.75" step="0.01" type="range" value="1.0" class="at-slider">
-                            <div class="at-knob-sub">0.8x Younger / Hyperpop — 1.3x Deeper Chest</div>
-                        </div>
-                    </div>
-                </details>
-
-                <!-- Section 3: Natural & Synthetic Vibrato -->
-                <details class="at-details">
-                    <summary class="at-summary">〰️ Vibrato Control (Natural / Synthetic)</summary>
-                    <div class="at-details-body">
-                        <label class="switch-label">Vibrato Generator <input id="atVibratoToggle" type="checkbox"><span class="switch"></span></label>
-                        <div class="two-col">
-                            <label>LFO Shape
-                                <select id="atVibShape" class="at-select">
-                                    <option value="sine" selected>Sine Wave</option>
-                                    <option value="triangle">Triangle Wave</option>
-                                    <option value="square">Square Wave</option>
-                                    <option value="saw">Saw Wave</option>
-                                    <option value="random">Random Sample & Hold</option>
-                                </select>
-                            </label>
-                            <label>Depth <b id="valAtVibDepth">0¢</b>
-                                <input id="atVibDepth" max="100" min="0" step="1" type="range" value="0" class="at-slider">
-                            </label>
-                        </div>
-                        <div class="two-col">
-                            <label>Rate <b id="valAtVibRate">5.5 Hz</b>
-                                <input id="atVibRate" max="10" min="0.5" step="0.1" type="range" value="5.5" class="at-slider">
-                            </label>
-                            <label>Onset Delay <b id="valAtVibDelay">0 ms</b>
-                                <input id="atVibDelay" max="1500" min="0" step="50" type="range" value="0" class="at-slider">
-                            </label>
-                        </div>
-                        <div class="control">
-                            <label>Human Variation <b id="valAtVibVariation">0%</b></label>
-                            <input id="atVibVariation" max="100" min="0" step="1" type="range" value="0" class="at-slider">
-                        </div>
-                    </div>
-                </details>
-            </div>
-
-        </section>
-        <!-- Karaoke companion controls: own card so each tab shows them once (Mixer tab on mobile) -->
-        <section class="card mobile-screen" id="trackToolsCard" data-screen-group="mixer">
-            <p class="eyebrow">TRACK & KARAOKE TOOLS</p>
-            <label class="switch-label">Remove original vocals <input id="vocalRemoverToggle" type="checkbox"><span class="switch"></span></label>
-            <div class="compact-row" style="margin-top:10px">
-                <span>Track key pitch <b id="lblKey">0</b></span>
-                <div>
-                    <button class="icon-button" id="btnKeyFlat">♭</button>
-                    <button class="icon-button" id="btnKeyReset">♮</button>
-                    <button class="icon-button" id="btnKeySharp">♯</button>
-                </div>
-            </div>
-            <label class="switch-label" style="margin-top:10px">Guide vocal recovery <input checked id="guideDuckingToggle" type="checkbox"><span class="switch"></span></label>
-            <div class="control">
-                <label>Guide vocal volume <b id="valGuideVol">0%</b></label>
-                <input id="sliderGuideVol" max="1" min="0" step=".05" type="range" value="0">
-            </div>
-        </section>
-        <section class="card mobile-screen" id="studioFxCard" data-screen-group="mixer"><p class="eyebrow">STUDIO FX</p>
-            <h2>Space & clarity</h2><label class="switch-label">Studio reverb <input id="reverbToggle"
-                                                                                     type="checkbox"><span
-                    class="switch"></span></label>
-            <div class="control"><label>Wet mix <b id="valReverb">0%</b></label><input id="sliderReverb" max="1"
-                                                                                        min="0" step=".05" type="range"
-                                                                                        value="0"></div>
-            <label class="switch-label">Noise gate <input id="gateToggle" type="checkbox"><span
-                    class="switch"></span></label>
-            <div class="control"><label>Threshold <b id="valGate">-50 dB</b></label><input id="sliderGate" max="-20"
-                                                                                           min="-80" step="1" type="range"
-                                                                                           value="-50"></div>
-            <label class="switch-label">Space echo <input id="echoToggle" type="checkbox"><span
-                    class="switch"></span></label>
-            <div class="control"><label>Time <b id="valEcho">220 ms</b></label><input id="sliderEcho" max="1"
-                                                                                      min=".05" step=".01" type="range"
-                                                                                      value=".22"></div>
-        </section>
-        <!-- USAGE STATS (this device only) -->
-        <section class="card mobile-screen" id="statsCard" data-screen-group="mixer">
-            <div class="card-heading">
-                <div><p class="eyebrow">YOUR STATS</p><h2>Usage</h2></div>
-                <button class="button button-quiet" id="btnResetStats" type="button">Reset stats</button>
-            </div>
-            <div class="st-grid">
-                <div class="st-kpi"><span>Mic today</span><b id="stMicToday">0s</b></div>
-                <div class="st-kpi"><span>Mic total</span><b id="stMicTotal">0s</b></div>
-                <div class="st-kpi"><span>Broadcasts</span><b id="stLiveCount">0</b></div>
-                <div class="st-kpi"><span>Time live</span><b id="stLiveTime">0s</b></div>
-                <div class="st-kpi"><span>Songs played</span><b id="stSongs">0</b></div>
-                <div class="st-kpi"><span>Sounds played</span><b id="stSfx">0</b></div>
-            </div>
-            <p class="eyebrow" style="margin:16px 0 8px">TOP VOICES</p>
-            <div class="st-voices" id="stVoices"></div>
-            <p class="help-text" style="margin-top:10px">Stored only on this device. Nothing is uploaded.</p>
-        </section>
-        <section class="card mobile-screen" id="recording" data-screen-group="audience"><p class="eyebrow">CAPTURE THE MOMENT</p>
-            <h2>Recording & Monitor</h2><label class="switch-label">Mic monitor (Headphones only) <input id="monitorToggle"
-                                                                                    type="checkbox"><span class="switch"></span></label>
-            <p class="help-text" style="font-size:0.75rem; color:var(--text-dim); margin:2px 0 10px;">⚠️ Keep OFF with speakers to prevent echo & screeching feedback loop. Turn ON only when wearing headphones.</p>
-            <button class="button button-record" id="btnRecord">● Start recording</button>
-        </section>
-        <section class="card audience-card mobile-screen" id="audience" data-screen-group="audience">
-            <div class="card-heading">
-                <div><p class="eyebrow">YOUR CROWD</p>
-                    <h2>Audience</h2></div>
-                <span class="count" id="lblLiveAudienceCount">0 online</span></div>
-            <div class="chat-log" id="adminChatLog"><p>No audience requests yet.</p></div>
-            <div class="search-row"><input id="adminReplyInput" placeholder="Reply to audience…">
-                <button class="button" id="btnSendAdminReply">Send</button>
-            </div>
-            <h3>Connected singers</h3>
-            <button class="button button-quiet audience-monitor" id="btnHearAudienceAudio" type="button" aria-pressed="false" style="width:100%; justify-content:space-between; margin:8px 0 10px; display:flex; align-items:center;">
-                <span class="monitor-label">🔇 Hear audience audio on admin</span>
-                <span class="audio-badge" id="audienceMonitorState">OFF</span>
-            </button>
-            <p class="help-text" style="margin:0 0 8px">OFF keeps audience microphones silent on admin. ON routes each subscribed LiveKit audience microphone to the admin speakers only. It uses a dedicated local audio monitor and never enters the broadcast program mix.</p>
-            <div class="audience-list" id="adminAudienceList"><p>No singers connected yet.</p></div>
-        </section>
-    </aside>
-</div>
-<nav class="mobile-nav" id="mobileNav"><a class="active" data-screen="stage" href="#stage">⌂<span>Stage</span></a><a
-        data-screen="music" href="#music">♫<span>Music</span></a><a
-        data-screen="mixer" href="#mixer">🎛<span>Mixer</span></a><a
-        data-screen="effects" href="#effects">✦<span>Effects</span></a><a
-        data-screen="audience" href="#audience">👥<span>Crowd</span></a><a
-        id="mobileNavLobbyBtn" href="#lobby">⚡<span>Lobby</span></a></nav>
-<div class="modal" id="shareModal" style="display:none; overflow-y:auto; padding:20px 10px; align-items:flex-start; box-sizing:border-box;">
-    <div class="modal-card" style="margin:auto; max-height:calc(100vh - 40px); overflow-y:auto; overscroll-behavior:contain;">
-        <button class="modal-close" id="btnCloseShareModal">×</button>
-        <p class="eyebrow">GO LIVE</p>
-        <h2>Share your stage</h2>
-        <div class="qr" id="shareQrWrapper"></div>
-        <label class="switch-label">Allow audience mic & camera <input checked id="allowDuetToggle"
-                                                                        type="checkbox"><span class="switch"></span></label>
-        <input id="shareLinkInput" readonly style="width:100%; box-sizing:border-box; margin:8px 0; font-size:0.75rem; text-align:center; padding:8px; background:var(--bg-dark); border:1px solid var(--border); border-radius:6px; color:var(--accent-blue); font-weight:600;" type="text" value="Generating link..."/>
-        <button class="button button-primary" id="btnCopyListenLink">Copy listener link</button>
-        <button class="button button-quiet" id="btnCopyDuetLink">Copy participant link</button>
-        <button class="button button-quiet" id="btnHostCamera">📹 Share admin camera</button>
-        <button class="button button-quiet" id="btnModalSwitchCamera" style="display:none;">🔄 Switch camera</button>
-        <button class="button button-quiet danger" id="btnStopLive" style="display:none; margin-top:8px; border-color:var(--accent-red); color:var(--accent-red); width:100%;">⏹ End broadcast</button>
-        <details id="detailsLiveKitConfig" style="margin-top:10px; font-size:0.75rem; color:var(--text-dim); text-align:left; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px;">
-            <summary style="cursor:pointer; font-weight:700; user-select:none; color:var(--accent-cyan, #52c4ff);">⚙️ Cloud LiveKit Configuration</summary>
-            <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
-                <span style="font-size:0.68rem; color:var(--text-dim);">Optional: If Netlify environment variables are not configured, save your Cloud LiveKit credentials here:</span>
-                <input id="inputLiveKitUrl" placeholder="LiveKit URL: wss://your-project.livekit.cloud" style="padding:6px 8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:6px; color:#fff; font-size:0.75rem;">
-                <input id="inputLiveKitApiKey" placeholder="API Key: APIxxxxxxxx" style="padding:6px 8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:6px; color:#fff; font-size:0.75rem;">
-                <input id="inputLiveKitApiSecret" type="password" placeholder="API Secret: secretxxxxxxxx" style="padding:6px 8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:6px; color:#fff; font-size:0.75rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <button type="button" id="btnSaveLiveKitConfig" class="button button-quiet" style="padding:4px 10px; font-size:0.72rem;">💾 Save Credentials</button>
-                    <span id="lblLiveKitConfigStatus" style="font-size:0.68rem; color:var(--accent-green, #00ff88); display:none;">Saved!</span>
-                </div>
-            </div>
-        </details>
-        <p class="help-text" id="liveTransportStatus" style="margin-top:10px">Web-only LiveKit SFU • music-quality 48 kHz stereo • audio-first congestion control</p>
-    </div>
-</div>
-<!-- Active Singers & Duet Lobby Modal (PC, Tablet & Mobile In-Page Sheet) -->
-<div class="modal" id="usersModal" style="display:none; overflow-y:auto; padding:20px 10px; align-items:flex-start; box-sizing:border-box;">
-    <div class="modal-card" style="max-width:580px; width:100%; margin:auto; max-height:calc(100vh - 40px); overflow-y:auto; overscroll-behavior:contain; box-sizing:border-box;">
-        <button class="modal-close" id="btnCloseUsersModal">×</button>
-        <div class="card-heading" style="margin-bottom:12px;">
-            <div>
-                <p class="eyebrow">ACTIVE KARAOKE COMMUNITY</p>
-                <h2>Live Singers & Duet Lobby</h2>
-            </div>
-            <span class="count" id="lblModalOnlineCount">0 online</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.3); padding:8px 12px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border);">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span id="desktopMyAvatar" style="font-size:1.4rem; cursor:pointer;" title="Click to cycle avatar">🎤</span>
-                <div>
-                    <strong id="desktopMyName" style="font-size:0.88rem;">Singer</strong>
-                    <div style="font-size:0.68rem; color:var(--accent-blue);">● Online & Ready for Duets</div>
-                </div>
-            </div>
-            <button class="button button-quiet" id="btnDesktopEditName" style="padding:4px 8px; font-size:0.7rem;">✎ Edit Name</button>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
-            <button class="button button-quiet" id="btnInviteAllSingers" type="button" style="padding:5px 12px; font-size:0.75rem; border-color:var(--accent-blue); color:var(--accent-blue); font-weight:700; border-radius:6px; cursor:pointer;">⚡ Invite All Online</button>
-            <span id="lblLobbyBatchStatus" style="font-size:0.72rem; color:var(--text-dim); font-weight:600;"></span>
-        </div>
-        <div class="search-row" style="margin-bottom:10px;">
-            <input id="desktopSearchUsersInput" placeholder="Search singers by name…">
-        </div>
-        <div id="desktopSingersList" style="max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">
-            <p class="muted" style="text-align:center; padding:16px;">Scanning for online singers…</p>
-        </div>
-        <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
-            <button type="button" class="text-button" id="btnRefreshLobbySingers" style="font-size:0.75rem; background:none; border:none; color:var(--accent-blue); cursor:pointer;">🔄 Refresh Singers</button>
-            <button class="button button-primary" id="btnQuickGoLiveFromLobby">🎙 Go Live on My Stage</button>
-        </div>
-    </div>
-</div>
-
-<!-- Multistream / External RTMP Streaming Modal -->
-<div class="modal" id="modalExternalStream" style="display:none; overflow-y:auto; padding:20px 10px; align-items:flex-start; box-sizing:border-box;">
-    <div class="modal-card" style="max-width:560px; width:100%; margin:auto; max-height:calc(100vh - 40px); overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; text-align:left; gap:12px; box-sizing:border-box;">
-        <button class="modal-close" id="btnCloseMultistream" style="position:sticky; top:0; float:right; margin-top:-6px; margin-right:-6px; z-index:20; cursor:pointer;">×</button>
-        <div class="card-heading" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:flex-start;">
-            <div>
-                <p class="eyebrow">BROADCAST TO THE WORLD</p>
-                <h2>📡 Multistream (YouTube, Twitch, RTMP)</h2>
-            </div>
-            <div id="streamStatusBadge" class="status-badge-offline" style="font-size:0.7rem; font-weight:800; padding:4px 8px; border-radius:6px; background:rgba(255,255,255,0.08); color:var(--text-dim); margin-right:32px;">⚪ OFFLINE</div>
+            <ul class="hm-trust">
+                <li>⚡ Real-time, in your browser</li>
+                <li>📱 Desktop &amp; mobile</li>
+                <li>🎭 30+ voices + custom</li>
+                <li>👥 Live duets &amp; chat</li>
+            </ul>
         </div>
 
-        <p class="muted" style="font-size:0.78rem; margin-bottom:14px;">
-            Livestream your mixed karaoke audio, Auto-Tune vocals and video directly to YouTube Live, Twitch, Facebook or any custom RTMP server.
-        </p>
-
-        <!-- Live Broadcast Scene Monitor (Interactive Preview Screen) -->
-        <div style="position:relative; width:100%; aspect-ratio:16/9; background:#05070e; border-radius:10px; overflow:hidden; border:1px solid rgba(79,195,255,0.35); margin-bottom:8px; box-shadow:0 8px 24px rgba(0,0,0,0.6); user-select:none; touch-action:none;">
-            <canvas id="broadcastScenePreview" width="640" height="360" style="width:100%; height:100%; display:block; object-fit:cover; pointer-events:none;"></canvas>
-            <!-- OBS Studio Interactive Draggable & Resizable Overlay -->
-            <div id="obsCanvasOverlay" class="obs-canvas-overlay"></div>
-            <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; font-weight:800; color:#4fc3ff; display:flex; align-items:center; gap:5px; pointer-events:none; z-index:12;">
-                <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#4fc3ff;"></span> LIVE MONITOR (VIEWER FEED)
-            </div>
-            <div id="previewActiveLayoutBadge" style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:2px 6px; font-size:0.65rem; color:#4fc3ff; font-weight:700; pointer-events:none; z-index:12;">
-                Spotlight Layout
-            </div>
-        </div>
-
-        <!-- OBS Studio Custom Canvas Toolbar (Visible when OBS Custom layout is active) -->
-        <div id="obsStudioToolbar" style="display:none; margin-bottom:12px; background:rgba(79,195,255,0.06); border:1px solid rgba(79,195,255,0.25); border-radius:8px; padding:10px 12px; flex-direction:column; gap:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                <span style="font-size:0.75rem; font-weight:800; color:#4fc3ff; display:flex; align-items:center; gap:5px;">
-                    🎨 OBS CUSTOM CANVAS STUDIO
-                </span>
-                <div style="display:flex; gap:6px;">
-                    <button type="button" class="button button-quiet" id="btnSnapObsCanvas" style="padding:3px 8px; font-size:0.68rem; border-radius:4px;">🎯 Snap Center</button>
-                    <button type="button" class="button button-quiet" id="btnResetObsCanvas" style="padding:3px 8px; font-size:0.68rem; color:#ff6b6b; border-color:rgba(255,107,107,0.3); border-radius:4px;">↺ Reset</button>
+        <!-- decorative studio mock-up, pure CSS -->
+        <div class="hm-window" aria-hidden="true">
+            <div class="hm-win-bar"><span></span><span></span><span></span><b>nirmal karaoke · studio</b><em>● LIVE</em></div>
+            <div class="hm-win-body">
+                <div class="hm-bars">
+                    <i style="--d:0s"></i><i style="--d:.12s"></i><i style="--d:.3s"></i><i style="--d:.05s"></i><i style="--d:.22s"></i><i style="--d:.4s"></i><i style="--d:.16s"></i><i style="--d:.34s"></i><i style="--d:.08s"></i><i style="--d:.26s"></i><i style="--d:.44s"></i><i style="--d:.14s"></i><i style="--d:.32s"></i><i style="--d:.02s"></i><i style="--d:.38s"></i><i style="--d:.2s"></i><i style="--d:.46s"></i><i style="--d:.1s"></i><i style="--d:.28s"></i><i style="--d:.36s"></i><i style="--d:.18s"></i><i style="--d:.42s"></i><i style="--d:.06s"></i><i style="--d:.24s"></i>
                 </div>
-            </div>
-            <div style="font-size:0.68rem; color:var(--text-dim); line-height:1.4;">
-                💡 <b>OBS Drag & Resize:</b> Drag any element inside the monitor to reposition. Drag the handle (⤡) to resize. Position updates stream live to YouTube!
-            </div>
-            <div style="display:flex; gap:6px; align-items:center;">
-                <span style="font-size:0.7rem; font-weight:700; color:var(--text-dim); white-space:nowrap;">📣 Live Ticker:</span>
-                <input id="inputObsTickerText" placeholder="Artist announcements, social handles or UPI/tips…" style="flex:1; padding:6px 8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:6px; color:#fff; font-size:0.74rem;">
-                <button type="button" class="button button-quiet" id="btnApplyObsTicker" style="padding:6px 10px; font-size:0.7rem; color:#4fc3ff; border-color:rgba(79,195,255,0.3); font-weight:700;">Set</button>
-            </div>
-        </div>
-
-        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px;">
-            <!-- Real-Time Layout Switcher -->
-            <div>
-                <label style="font-size:0.72rem; font-weight:800; color:#4fc3ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">LAYOUT PRESET</label>
-                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;" id="broadcastLayoutPills">
-                    <button type="button" class="button button-quiet" data-layout="spotlight" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px; background:rgba(79,195,255,0.15); border:1px solid #4fc3ff; color:#4fc3ff;">🎤 Spotlight</button>
-                    <button type="button" class="button button-quiet" data-layout="karaoke" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">🎼 Karaoke</button>
-                    <button type="button" class="button button-quiet" data-layout="duet" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">👥 Duet</button>
-                    <button type="button" class="button button-quiet" data-layout="visualizer" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px;">📊 Visualizer</button>
-                    <button type="button" class="button button-quiet" data-layout="custom" style="padding:6px 2px; font-size:0.68rem; font-weight:800; border-radius:6px; color:#27a9ff;">🎨 OBS Custom</button>
+                <div class="hm-voices-mini">
+                    <span>🎧<small>Natural</small></span><span class="on">🌊<small>Underwater</small></span><span>🎬<small>Baritone</small></span><span>🎵<small>Melody</small></span><span>😈<small>Demon</small></span><span>🔩<small>Drone</small></span>
                 </div>
-            </div>
-
-            <!-- Stage Theme & Stream Resolution -->
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                <div>
-                    <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px;">STAGE THEME</label>
-                    <select id="selectStreamTheme" style="width:100%; padding:8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:0.78rem; font-weight:700;">
-                        <option value="cyberpunk" selected>⚡ Cyberpunk Neon</option>
-                        <option value="sunset">🌅 Sunset Glow</option>
-                        <option value="midnight">🌌 Midnight Electric</option>
-                        <option value="emerald">🌿 Emerald Stage</option>
-                    </select>
-                </div>
-                <div>
-                    <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px;">STREAM RESOLUTION</label>
-                    <select id="selectStreamQuality" style="width:100%; padding:8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:0.78rem; font-weight:700;">
-                        <option value="360p">360p Ultra-Light (Low-End Mobile & Zero Lag)</option>
-                        <option value="480p" selected>480p Smooth (Recommended - Zero Buffering)</option>
-                        <option value="540p">540p Balanced</option>
-                        <option value="720p">720p HD (High Bandwidth)</option>
-                    </select>
-                </div>
-            </div>
-
-            <div>
-                <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px; letter-spacing:0.5px;">STREAM DESTINATION</label>
-                <select id="selectStreamPlatform" style="width:100%; padding:10px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-weight:700; font-size:0.85rem;">
-                    <option value="youtube_rtmps" selected>🔴 YouTube Live (RTMPS Secure: rtmps://a.rtmps.youtube.com:443/live2)</option>
-                    <option value="youtube">🔴 YouTube Live (RTMP Standard: rtmp://a.rtmp.youtube.com/live2)</option>
-                    <option value="twitch">🟣 Twitch (rtmp://live.twitch.tv/app)</option>
-                    <option value="facebook">🔵 Facebook Live (rtmps://live-api-s.facebook.com:443/rtmp/)</option>
-                    <option value="custom">🟠 Custom RTMP Server</option>
-                </select>
-            </div>
-
-            <div id="wrapCustomRtmpUrl" style="display:none;">
-                <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px; letter-spacing:0.5px;">RTMP SERVER URL</label>
-                <input id="inputCustomRtmpUrl" placeholder="rtmp://your-streaming-server/live" style="width:100%; padding:10px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:0.85rem;">
-            </div>
-
-            <div>
-                <label style="font-size:0.72rem; font-weight:800; color:var(--text-dim); display:block; margin-bottom:4px; letter-spacing:0.5px;">STREAM KEY / STREAM PASSWORD</label>
-                <div style="display:flex; gap:6px;">
-                    <input id="inputStreamKey" type="password" placeholder="Paste your stream key here (e.g. xxxx-xxxx-xxxx-xxxx-xxxx)…" style="flex:1; padding:10px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:0.85rem;">
-                    <button class="button button-quiet" id="btnToggleStreamKey" type="button" style="padding:0 12px;" title="Show/Hide Key">👁️</button>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-                    <span style="font-size:0.68rem; color:var(--text-dim); flex:1;">🔑 <b>How to connect:</b> In YouTube Studio, copy the secret <b>Stream key</b> (`••••••••••••`) from <i>Stream settings</i>.</span>
-                    <button class="button button-quiet" id="btnTestStreamKey" type="button" style="padding:4px 10px; font-size:0.72rem; border-radius:6px; background:rgba(79,195,255,0.12); color:#4fc3ff; border:1px solid rgba(79,195,255,0.3); font-weight:700; white-space:nowrap; cursor:pointer;">🧪 Test Connection</button>
-                </div>
-                <div id="testStreamResult" style="display:none; font-size:0.75rem; padding:8px 10px; border-radius:6px; margin-top:6px;"></div>
-                <div style="margin-top:6px; padding:6px 10px; background:rgba(79,195,255,0.06); border:1px solid rgba(79,195,255,0.2); border-radius:6px; font-size:0.68rem; color:var(--text-dim); line-height:1.4;">
-                    ⚡ <b>Zero-Buffering Tips:</b> In YouTube Studio, set <b>Stream latency</b> to <i>Low-latency</i> or <i>Normal latency</i>. For mobile/budget devices, <b>480p Smooth</b> or <b>360p Ultra-Light</b> keeps live streams completely lag-free.
-                </div>
-            </div>
-
-            <!-- Broadcast Scene Content Selector -->
-            <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
-                <label style="font-size:0.72rem; font-weight:800; color:#4fc3ff; display:block; margin-bottom:6px; letter-spacing:0.5px;">🎬 BROADCAST SCENE LAYERS (TOGGLE ON/OFF)</label>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:0.78rem;">
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                        <input type="checkbox" id="chkStreamVisualizer" checked style="accent-color:#4fc3ff;">
-                        <span>📊 Audio Visualizer</span>
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                        <input type="checkbox" id="chkStreamLyrics" checked style="accent-color:#4fc3ff;">
-                        <span>🎤 Live Lyrics</span>
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                        <input type="checkbox" id="chkStreamHostCam" checked style="accent-color:#4fc3ff;">
-                        <span>📹 My Camera</span>
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                        <input type="checkbox" id="chkStreamGuestCam" checked style="accent-color:#4fc3ff;">
-                        <span>👥 Guest Duet Cam</span>
-                    </label>
-                </div>
-            </div>
-
-            <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:10px; margin-top:4px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <label for="inputCloudRelayUrl" style="font-size:0.75rem; font-weight:700; color:#fff; display:flex; align-items:center; gap:6px;">
-                        <span>📡 Render Streaming Relay URL</span>
-                        <span id="relayStatusIndicator" style="font-size:0.65rem; padding:2px 6px; border-radius:10px; background:rgba(79,195,255,0.15); color:#4fc3ff;">Ready</span>
-                    </label>
-                    <button type="button" class="text-button" id="btnPingRelayServer" style="font-size:0.7rem; color:var(--accent-cyan, #52c4ff); cursor:pointer; background:none; border:none; padding:2px 6px;">⚡ Ping Server</button>
-                </div>
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <input id="inputCloudRelayUrl" placeholder="https://your-relay.onrender.com" style="width:100%; padding:8px 10px; background:var(--bg-surface); border:1px solid var(--border); border-radius:6px; color:#fff; font-size:0.78rem;">
-                    <span style="font-size:0.68rem; color:var(--text-dim); line-height:1.3;">When deployed on Netlify, paste your Render backend URL here. Render runs FFmpeg to broadcast your stage to YouTube Live. (Saved automatically)</span>
-                </div>
-            </div>
-        </div>
-
-        <div id="streamErrorNotice" style="display:none; margin-top:10px; padding:10px 12px; background:rgba(255,51,102,0.15); border:1px solid #ff3366; border-radius:8px; color:#ff3366; font-size:0.76rem;"></div>
-
-        <div style="position:sticky; bottom:-26px; margin:10px -26px -26px -26px; padding:14px 26px; background:rgba(14, 18, 24, 0.96); backdrop-filter:blur(14px); border-top:1px solid rgba(255,255,255,0.08); border-radius:0 0 25px 25px; display:flex; justify-content:space-between; align-items:center; z-index:15;">
-            <div style="font-size:0.8rem; font-weight:700; color:var(--text-dim);">
-                Uptime: <span id="streamTimer" style="color:#4fc3ff; font-family:monospace; font-size:0.9rem;">00:00</span>
-            </div>
-            <div style="display:flex; gap:8px;">
-                <button class="button button-primary" id="btnStartExternalStream" style="background:linear-gradient(135deg, #ff0055 0%, #ff5500 100%); border:none; font-weight:900;">🚀 Start Live Stream</button>
-                <button class="button button-quiet danger" id="btnStopExternalStream" style="display:none; border-color:#ff3366; color:#ff3366;">⏹️ Stop Live Stream</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Developer Diagnostics HUD Modal -->
-<div class="modal" id="diagnosticsModal" style="display:none;">
-    <div class="modal-card" style="max-width:760px; width:95%; max-height:88vh; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--accent-cyan, #52c4ff); box-shadow:0 0 40px rgba(82,196,255,0.25);">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px; margin-bottom:16px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:1.4rem;">📊</span>
-                <h2 style="margin:0; font-size:1.15rem; font-weight:800; color:var(--accent-cyan, #52c4ff); letter-spacing:0.5px;">AUDIO & WEBRTC DIAGNOSTICS HUD</h2>
-            </div>
-            <button class="button button-quiet" id="btnCloseDiagnostics" style="padding:4px 10px; font-size:0.9rem;">✕ Close</button>
-        </div>
-
-        <div style="flex:1; overflow-y:auto; padding-right:6px; display:flex; flex-direction:column; gap:16px;">
-            <!-- Web Audio Engine -->
-            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
-                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-green, #00ff88); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">🎧 Web Audio DSP Engine</div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
-                    <div><span style="color:var(--text-dim);">Context State:</span> <b id="diagCtxState">--</b></div>
-                    <div><span style="color:var(--text-dim);">Sample Rate:</span> <b id="diagSampleRate">--</b></div>
-                    <div><span style="color:var(--text-dim);">Base Latency:</span> <b id="diagBaseLatency">--</b></div>
-                    <div><span style="color:var(--text-dim);">Output Latency:</span> <b id="diagOutputLatency">--</b></div>
-                    <div><span style="color:var(--text-dim);">Hardware Channels:</span> <b id="diagChannels">--</b></div>
-                    <div><span style="color:var(--text-dim);">Program Output Level:</span> <b id="diagProgramLevel">--</b></div>
-                    <div><span style="color:var(--text-dim);">DSP Worklets:</span> <b id="diagWorklets">--</b></div>
-                    <div><span style="color:var(--text-dim);">Vocal Monitor Mode:</span> <b id="diagMonitorMode">--</b></div>
-                </div>
-            </div>
-
-            <!-- Microphone Hardware -->
-            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
-                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-pink, #27a9ff); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">🎤 Microphone Hardware Input</div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
-                    <div><span style="color:var(--text-dim);">Track Active:</span> <b id="diagMicActive">--</b></div>
-                    <div><span style="color:var(--text-dim);">Hardware Rate:</span> <b id="diagMicRate">--</b></div>
-                    <div><span style="color:var(--text-dim);">Input Channels:</span> <b id="diagMicChannels">--</b></div>
-                    <div><span style="color:var(--text-dim);">Echo Cancellation:</span> <b id="diagMicEcho">--</b></div>
-                    <div><span style="color:var(--text-dim);">Noise Suppression:</span> <b id="diagMicNoise">--</b></div>
-                    <div><span style="color:var(--text-dim);">Auto Gain Control:</span> <b id="diagMicAgc">--</b></div>
-                </div>
-            </div>
-
-            <!-- LiveKit Real-time SFU -->
-            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
-                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-cyan, #52c4ff); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">📡 LiveKit SFU Real-Time Transport</div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
-                    <div><span style="color:var(--text-dim);">Connection:</span> <b id="diagLkState">--</b></div>
-                    <div><span style="color:var(--text-dim);">Room ID:</span> <b id="diagLkRoom">--</b></div>
-                    <div><span style="color:var(--text-dim);">Audience Count:</span> <b id="diagLkAudience">--</b></div>
-                    <div><span style="color:var(--text-dim);">Published Audio:</span> <b id="diagLkPubAudio">--</b></div>
-                    <div><span style="color:var(--text-dim);">Duet Guests Bridged:</span> <b id="diagLkDuets">--</b></div>
-                    <div><span style="color:var(--text-dim);">Guest Monitor Audio:</span> <b id="diagLkDuetMonitor">--</b></div>
-                </div>
-            </div>
-
-            <!-- Stage Recording & Broadcasting -->
-            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;">
-                <div style="font-size:0.75rem; font-weight:800; color:var(--accent-purple, #2f7cf6); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">⏺️ Stage Recording & Stream Bus</div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; font-size:0.75rem;">
-                    <div><span style="color:var(--text-dim);">Recording Bus:</span> <b id="diagRecState">--</b></div>
-                    <div><span style="color:var(--text-dim);">Recording Stream:</span> <b id="diagRecStream">--</b></div>
-                    <div><span style="color:var(--text-dim);">Audio Bus Channels:</span> <b>Stereo 2-Channel Discrete</b></div>
+                <div class="hm-mini-sliders">
+                    <div><small>MIC BOOST</small><i style="--v:42%"></i></div>
+                    <div><small>REVERB</small><i style="--v:68%"></i></div>
+                    <div><small>AUTO-TUNE</small><i style="--v:80%"></i></div>
                 </div>
             </div>
         </div>
     </div>
-</div>
+</section>
 
-<script src="./js/app.js?v=34" type="module"></script>
+<!-- ───────────── STATS STRIP ───────────── -->
+<section class="hm-strip">
+    <div class="hm-wrap hm-strip-grid">
+        <div><b>30+</b><span>real-time voices</span></div>
+        <div><b>5</b><span>vocal-chain presets</span></div>
+        <div><b>40</b><span>custom soundboard slots</span></div>
+        <div><b>4</b><span>noise-suppression levels</span></div>
+        <div><b>0</b><span>installs needed</span></div>
+    </div>
+</section>
 
-<!-- Sandboxed ad container isolated from DAW and AudioContext -->
-<div class="ad-container-sandboxed" style="margin:16px auto;text-align:center;max-width:320px;overflow:hidden;position:relative;z-index:1;">
-    <iframe srcdoc="&lt;!DOCTYPE html&gt;&lt;html&gt;&lt;head&gt;&lt;meta charset='utf-8'&gt;&lt;style&gt;body{margin:0;padding:0;overflow:hidden;background:transparent;display:flex;justify-content:center;align-items:center;}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;script&gt;var atOptions={'key':'617f00214bc6eda5b7aef8978adc5a83','format':'iframe','height':50,'width':320,'params':{}};&lt;/script&gt;&lt;script src='https://www.highrevenueformat.com/617f00214bc6eda5b7aef8978adc5a83/invoke.js'&gt;&lt;/script&gt;&lt;script async='async' data-cfasync='false' src='https://pl31550342.profitableratecpmnetwork.com/4403cd38e0ec5ad362a273973942af65/invoke.js'&gt;&lt;/script&gt;&lt;div id='container-4403cd38e0ec5ad362a273973942af65'&gt;&lt;/div&gt;&lt;/body&gt;&lt;/html&gt;" sandbox="allow-scripts allow-popups" width="320" height="50" style="border:none;overflow:hidden;display:block;" title="Sponsored"></iframe>
-</div>
+<!-- ───────────── FEATURES ───────────── -->
+<section class="hm-section" id="features">
+    <div class="hm-wrap">
+        <div class="hm-head hm-reveal">
+            <span class="hm-eyebrow">EVERYTHING IN ONE STUDIO</span>
+            <h2>All the tools a singer, streamer or party host needs</h2>
+            <p>Every tool below runs in the same page and works together, so a change you make is heard instantly by you, your audience and your recording.</p>
+        </div>
 
+        <div class="hm-grid">
+            <article class="hm-card hm-reveal">
+                <div class="hm-ic">🎤</div>
+                <h3>Karaoke player &amp; lyrics</h3>
+                <p>Bring your own backing tracks or search songs and build a queue with autoplay.</p>
+                <ul>
+                    <li>Upload audio/video files, or share tab and system audio</li>
+                    <li>Synced lyrics fetched automatically, with a sync nudge</li>
+                    <li>Key up/down, vocal remover and guide-vocal recovery</li>
+                    <li>Animated spectrum stage and a built-in pitch pipe</li>
+                </ul>
+            </article>
+
+            <article class="hm-card hm-reveal">
+                <div class="hm-ic">🎭</div>
+                <h3>Voice lab</h3>
+                <p>Change your voice live. Switch presets while you sing; there is no processing delay to wait for.</p>
+                <ul>
+                    <li>10 classics, 9 character voices and 13 effect voices</li>
+                    <li>Custom voice: pitch, body/presence, grit, brightness, echo</li>
+                    <li>Works with Auto-Tune, the soundboard and call output</li>
+                    <li>Original styles, never copies of real people</li>
+                </ul>
+            </article>
+
+            <article class="hm-card hm-reveal">
+                <div class="hm-ic">🎯</div>
+                <h3>Auto-Tune Pro</h3>
+                <p>Studio-style pitch correction with the controls singers actually use.</p>
+                <ul>
+                    <li>Retune speed, flex-tune and humanize</li>
+                    <li>Scale and key with a piano keyboard to allow, bypass or remove notes</li>
+                    <li>Formant and throat-length control, vibrato generator</li>
+                    <li>Live pitch needle, graph and coach readout</li>
+                </ul>
+            </article>
+
+            <article class="hm-card hm-reveal">
+                <div class="hm-ic">🎚️</div>
+                <h3>Pro vocal chain</h3>
+                <p>Make a plain microphone sound finished.</p>
+                <ul>
+                    <li>Compressor, de-esser, presence and saturation presets</li>
+                    <li>Studio reverb, space echo and "air" clarity EQ</li>
+                    <li>Mic boost up to +24 dB with a safety limiter</li>
+                    <li>Noise suppression: Off, Low, Medium or High, plus a noise gate</li>
+                    <li>Live IN/OUT level meters</li>
+                </ul>
+            </article>
+
+            <article class="hm-card hm-reveal">
+                <div class="hm-ic">🔊</div>
+                <h3>Soundboard &amp; hotkeys</h3>
+                <p>Cheers, airhorns and your own sound clips, one tap or one key away.</p>
+                <ul>
+                    <li>8 built-in sounds, plus your own uploads saved on your device</li>
+                    <li>Click a key badge and press a key to bind a hotkey</li>
+                    <li>Per-sound volume, a master volume and Stop all</li>
+                    <li>Everything plays into your stream and call output</li>
+                </ul>
+            </article>
+
+            <article class="hm-card hm-reveal">
+                <div class="hm-ic">📡</div>
+                <h3>Live stage</h3>
+                <p>Go live in one click and share a link or QR code. Viewers need no account.</p>
+                <ul>
+                    <li>Low-latency stereo audio and optional camera with filters</li>
+                    <li>Viewers chat, request songs and see lyrics in sync</li>
+                    <li>Invite singers to a duet; they join and their mic turns on</li>
+                    <li>Host can mute or manage guests</li>
+                </ul>
+            </article>
+
+            <article class="hm-card hm-reveal">
+                <div class="hm-ic">🎬</div>
+                <h3>Stream everywhere</h3>
+                <p>Send your show to the platforms your audience already uses.</p>
+                <ul>
+                    <li>YouTube, Twitch, Facebook or any custom RTMP server</li>
+                    <li>Scene layouts: spotlight, karaoke, duet, visualizer, custom</li>
+                    <li>Lyrics, visualizer and cameras composed into the video</li>
+                </ul>
+            </article>
+
+            <article class="hm-card hm-reveal">
+                <div class="hm-ic">📞</div>
+                <h3>Calls &amp; meetings</h3>
+                <p>Use the studio as your microphone in Zoom, Meet, Teams or Discord.</p>
+                <ul>
+                    <li>Sends your effected voice and music to a virtual audio cable</li>
+                    <li>You keep hearing yourself on your own headphones</li>
+                    <li>Desktop Chrome or Edge, with VB-Cable or BlackHole</li>
+                </ul>
+            </article>
+
+            <article class="hm-card hm-reveal">
+                <div class="hm-ic">📊</div>
+                <h3>Record, monitor, review</h3>
+                <p>Capture the session and see how you sing.</p>
+                <ul>
+                    <li>Record your mix, with headphone monitoring on request</li>
+                    <li>Local-only stats: mic time, broadcasts, songs, top voices</li>
+                    <li>One "Reset all" button returns every setting to normal</li>
+                </ul>
+            </article>
+        </div>
+    </div>
+</section>
+
+<!-- ───────────── VOICES ───────────── -->
+<section class="hm-section hm-alt" id="voices">
+    <div class="hm-wrap hm-split">
+        <div class="hm-head hm-left hm-reveal">
+            <span class="hm-eyebrow">VOICE LAB</span>
+            <h2>32 voices, plus the one you build yourself</h2>
+            <p>Voices are shaped by pitch, tone, grit and effects. Tap one while you sing; the change is instant. Combine any voice with Auto-Tune, reverb and the soundboard.</p>
+            <p class="hm-note">🛡️ These are original character styles, described by how they sound. They are not designed to imitate, or named after, any real person. Please use voice effects honestly and never to pass yourself off as someone else.</p>
+            <a class="button button-primary" href="./studio.html#effects">Try the voices</a>
+        </div>
+        <div class="hm-voicebox hm-reveal">
+            <h4>Classics</h4>
+            <div class="hm-tags"><span>🎧 Natural</span><span>👩 Female</span><span>🧒 Kid</span><span>🧔 Deep</span><span>👴 Vintage</span><span>😡 Grit</span><span>😢 Hollow</span><span>🤖 Vocoder</span><span>📻 Radio</span><span>👽 Alien</span></div>
+            <h4>Character voices</h4>
+            <div class="hm-tags"><span>🎬 Baritone</span><span>🌹 Romantic</span><span>🪨 Gravel</span><span>🎙️ Announcer</span><span>🦸 Hero</span><span>🎵 Melody</span><span>🌙 Husky</span><span>👑 Diva</span><span>⭐ Pop Star</span></div>
+            <h4>Effect voices</h4>
+            <div class="hm-tags"><span>🔩 Drone</span><span>🦾 Cyborg</span><span>🌊 Underwater</span><span>👻 Ghost</span><span>🎈 Helium</span><span>😈 Demon</span><span>🦹 Villain</span><span>👹 Monster</span><span>📢 Megaphone</span><span>☎️ Telephone</span><span>👾 8-bit</span><span>🕳️ Cave</span><span>😰 Nervous</span></div>
+            <h4>Make your own</h4>
+            <div class="hm-tags"><span class="hot">🎛️ Custom voice: pitch · body ⇄ presence · grit · brightness · echo</span></div>
+        </div>
+    </div>
+</section>
+
+<!-- ───────────── LIVE ───────────── -->
+<section class="hm-section" id="live">
+    <div class="hm-wrap">
+        <div class="hm-head hm-reveal">
+            <span class="hm-eyebrow">GO LIVE</span>
+            <h2>A stage your friends can join in seconds</h2>
+            <p>Press Go live, enter your name once and share the link. Anyone can listen and watch from a phone; singers you invite can step on stage and duet with you.</p>
+        </div>
+        <ol class="hm-flow">
+            <li class="hm-reveal"><b>1</b><h3>Go live</h3><p>The studio opens a live room and gives you a share link and QR code. Your name is saved so you are never asked twice.</p></li>
+            <li class="hm-reveal"><b>2</b><h3>Invite a singer</h3><p>Pick someone from the Singers lobby. They get a game-style invite popup with a countdown.</p></li>
+            <li class="hm-reveal"><b>3</b><h3>They join the stage</h3><p>Accepting takes them straight to your room as a duet singer, mic ready, with your lyrics and track in sync.</p></li>
+            <li class="hm-reveal"><b>4</b><h3>The crowd joins in</h3><p>Viewers listen, chat and request songs. You can mute guests, change voices and fire sounds while you perform.</p></li>
+        </ol>
+    </div>
+</section>
+
+<!-- ───────────── CALLS & STREAMING ───────────── -->
+<section class="hm-section hm-alt" id="calls">
+    <div class="hm-wrap hm-two">
+        <div class="hm-panel hm-reveal">
+            <span class="hm-eyebrow">CALLS &amp; MEETINGS</span>
+            <h3>Be your voice effect on any call</h3>
+            <p>Browsers cannot create a microphone by themselves, so Nirmal Karaoke sends its output to a free <b>virtual audio cable</b> and your call app listens to that cable as a microphone.</p>
+            <ol>
+                <li>Install <a href="https://vb-audio.com/Cable/" target="_blank" rel="noopener noreferrer">VB-Cable</a> (Windows) or <a href="https://existential.audio/blackhole/" target="_blank" rel="noopener noreferrer">BlackHole</a> (Mac).</li>
+                <li>In the studio Mixer, choose <b>CABLE Input</b> under "Calls &amp; meetings" and press <b>Send to call</b>.</li>
+                <li>In Zoom, Meet, Teams or Discord, set the microphone to <b>CABLE Output</b>.</li>
+            </ol>
+            <p class="hm-fine">Desktop Chrome or Edge. Phones cannot expose a virtual microphone to other apps.</p>
+        </div>
+        <div class="hm-panel hm-reveal">
+            <span class="hm-eyebrow">STREAMING</span>
+            <h3>Broadcast to YouTube, Twitch and Facebook</h3>
+            <p>Add your stream key and the studio composes a 720p show (spotlight, karaoke, duet or visualizer layout, with lyrics and cameras) and sends it out through the built-in relay.</p>
+            <ul>
+                <li>Stereo program audio with your voice, effects and music</li>
+                <li>Custom RTMP supported for any other platform</li>
+                <li>Stream keys are saved only in your own browser</li>
+            </ul>
+            <a class="button" href="./studio.html">Open the studio</a>
+        </div>
+    </div>
+</section>
+
+<!-- ───────────── HOW IT WORKS ───────────── -->
+<section class="hm-section" id="how">
+    <div class="hm-wrap">
+        <div class="hm-head hm-reveal">
+            <span class="hm-eyebrow">GETTING STARTED</span>
+            <h2>From open tab to singing in under a minute</h2>
+        </div>
+        <div class="hm-steps">
+            <div class="hm-step hm-reveal"><b>01</b><h3>Open the studio</h3><p>Click <i>Open studio</i> and allow the microphone. Use headphones for the best sound.</p></div>
+            <div class="hm-step hm-reveal"><b>02</b><h3>Pick your music</h3><p>Upload a track, search a song or share a tab. Lyrics appear and scroll in time.</p></div>
+            <div class="hm-step hm-reveal"><b>03</b><h3>Choose a voice</h3><p>Try a preset, switch on Auto-Tune, add reverb and tune the noise level for your room.</p></div>
+            <div class="hm-step hm-reveal"><b>04</b><h3>Share it</h3><p>Go live, invite a duet partner, stream out, or send the sound to your call.</p></div>
+        </div>
+    </div>
+</section>
+
+<!-- ───────────── COMPATIBILITY / PRIVACY ───────────── -->
+<section class="hm-section hm-alt">
+    <div class="hm-wrap hm-two">
+        <div class="hm-panel hm-reveal">
+            <span class="hm-eyebrow">WORKS WITH</span>
+            <h3>What you need</h3>
+            <table class="hm-table">
+                <tr><th>Studio &amp; effects</th><td>Recent Chrome or Edge (recommended); other modern browsers run many features</td></tr>
+                <tr><th>Watching a live stage</th><td>Any modern phone or computer browser</td></tr>
+                <tr><th>Call output (virtual mic)</th><td>Desktop Chrome/Edge + VB-Cable or BlackHole</td></tr>
+                <tr><th>Microphone</th><td>Any mic; headphones recommended to avoid echo</td></tr>
+                <tr><th>Install</th><td>None. It is just a web page.</td></tr>
+            </table>
+        </div>
+        <div class="hm-panel hm-reveal">
+            <span class="hm-eyebrow">PRIVACY &amp; RESPONSIBLE USE</span>
+            <h3>Your sound stays yours</h3>
+            <ul>
+                <li>Voice effects run locally in your browser.</li>
+                <li>Your soundboard clips, settings, name and stats are stored on your device only.</li>
+                <li>Live audio travels through an encrypted real-time connection to the people in your room.</li>
+                <li>Voice presets are original styles. Please do not use them to impersonate real people.</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- ───────────── FAQ ───────────── -->
+<section class="hm-section" id="faq">
+    <div class="hm-wrap hm-narrow">
+        <div class="hm-head hm-reveal">
+            <span class="hm-eyebrow">FAQ</span>
+            <h2>Questions, answered</h2>
+        </div>
+        <div class="hm-faq">
+            <details class="hm-reveal"><summary>Do I need to install anything?</summary><p>No. Everything runs in your browser. Only the call-output feature needs a free virtual audio cable on your computer.</p></details>
+            <details class="hm-reveal"><summary>Does the voice change in real time?</summary><p>Yes. Voices, Auto-Tune and effects are processed live as you speak or sing, so you can switch presets mid-song. Use headphones to avoid hearing a feedback echo.</p></details>
+            <details class="hm-reveal"><summary>Can it make me sound like a specific celebrity?</summary><p>No, and it is not meant to. The voices are original styles shaped by pitch, tone and effects. Impersonating real people raises personality-rights and honesty problems, so we do not offer it.</p></details>
+            <details class="hm-reveal"><summary>How do my friends join a live stage?</summary><p>Share the link or QR code from the Go live window, or invite them from the Singers lobby. Viewers need no account; invited singers can duet with their own microphones.</p></details>
+            <details class="hm-reveal"><summary>Can I use it in Zoom, Meet or Discord?</summary><p>Yes, on desktop Chrome or Edge with a virtual audio cable (VB-Cable on Windows, BlackHole on Mac). The studio sends its output to the cable and your call app uses it as a microphone.</p></details>
+            <details class="hm-reveal"><summary>Does it work on my phone?</summary><p>Yes for the studio, voices, soundboard and watching or joining live stages. Phones cannot provide a virtual microphone to other apps, so call output is desktop-only.</p></details>
+            <details class="hm-reveal"><summary>Where are my sounds and settings stored?</summary><p>On your device, in your browser. Clearing the site data in your browser removes them.</p></details>
+            <details class="hm-reveal"><summary>Something sounds wrong or laggy. What should I try?</summary><p>Use headphones, close other heavy tabs, set noise suppression to Low, and press <i>Reset all</i> in the Mixer to return every setting to normal.</p></details>
+        </div>
+    </div>
+</section>
+
+<!-- ───────────── FINAL CTA ───────────── -->
+<section class="hm-final">
+    <div class="hm-wrap hm-reveal">
+        <h2>Ready to sing?</h2>
+        <p>Open the studio, allow your microphone, and pick a voice. It takes less than a minute.</p>
+        <div class="hm-cta-row hm-center">
+            <a class="button button-primary hm-big" href="./studio.html">🎙 Open the studio</a>
+            <a class="button hm-big" href="./users.html">👥 See who is singing now</a>
+        </div>
+    </div>
+</section>
+</main>
+
+<footer class="hm-footer">
+    <div class="hm-wrap hm-foot-grid">
+        <div>
+            <a class="hm-brand" href="./"><span class="hm-logo">N</span><span>NIRMAL <em>KARAOKE</em></span></a>
+            <p>Real-time voice studio, karaoke and live stage in your browser.</p>
+        </div>
+        <nav aria-label="Footer">
+            <a href="./studio.html">Studio</a>
+            <a href="./users.html">Singers lobby</a>
+            <a href="#features">Features</a>
+            <a href="#voices">Voices</a>
+            <a href="#faq">FAQ</a>
+        </nav>
+    </div>
+    <div class="hm-wrap hm-legal">© <span id="hmYear">2026</span> Nirmal Karaoke. Voice effects are original styles and are not affiliated with or imitating any real person.</div>
+</footer>
+
+<script src="./js/home.js?v=1" defer></script>
 </body>
 </html>

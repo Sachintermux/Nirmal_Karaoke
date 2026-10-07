@@ -50,7 +50,8 @@ Shared/real-time state belongs in `server.js` (Render, single process) or in Liv
 
 | File | Purpose |
 |---|---|
-| `index.html` | **Studio / host**. Mixer, effects, Auto-Tune, lyrics, library, Go Live, lobby modal, multistream, call output. Driven by `js/app.js`. |
+| `index.html` | **Home / landing page** (root URL; css/home.css, js/home.js). Describes every tool and links to the studio. Old studio bookmarks like `/#mixer` are redirected to `studio.html#mixer`. |
+| `studio.html` | **Studio / host** (was index.html). Mixer, effects, Auto-Tune, lyrics, library, Go Live, lobby modal, multistream, call output. Driven by `js/app.js`. |
 | `audience.html` | Viewer + duet guest page (very large inline `<script type="module">`, ~3000 lines). Connects to a room by `?room=<id>&role=audience|duet&autoJoin=1`. |
 | `users.html` | Standalone "Live Singers" lobby (online users, invite, watch/join). |
 | `googleb691adf1eb31de8a.html`, `sitemap.xml`, `robots.txt` | SEO/verification files. |

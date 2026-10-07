@@ -18,7 +18,7 @@ const OUT = join(ROOT, 'dist');
 const VERSION = (process.env.COMMIT_REF || process.env.DEPLOY_ID || Date.now().toString(36)).slice(0, 10);
 
 const FILES = [
-  'index.html', 'audience.html', 'users.html', 'googleb691adf1eb31de8a.html',
+  'index.html', 'studio.html', 'audience.html', 'users.html', 'googleb691adf1eb31de8a.html',
   'favicon.ico', 'icon-192.png', 'icon-512.png', 'robots.txt', 'sitemap.xml'
 ];
 const DIRS = ['css', 'js'];
