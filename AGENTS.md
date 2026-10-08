@@ -199,8 +199,8 @@ music search work locally; LiveKit does not (no credentials).
   `--pink/--purple/--cyan` variable names remain as aliases of the new palette (`--pink` = primary blue, `--accent-pink` = red
   for live/record). `scripts/retheme-colors.py` is the one-off record of the old-pink/purple → blue remap. Reds are kept for
   live/record/error. Do not reintroduce neon pink/purple.
-- **Voice lab**: 13 effect voices (Drone, Cyborg, Underwater, Ghost, Helium, Demon, Villain, Monster, Megaphone, Telephone,
-  8-bit, Cave, Nervous), the 9 character voices, and a **Custom voice** builder (pitch, body/presence, grit, brightness, echo →
+- **Voice lab**: 14 effect voices (Drone, Cyborg, Underwater, Ghost, Helium, Demon, Villain, Monster, Megaphone, Telephone,
+  8-bit, Cave, Nervous, Stuffy Cold), the 9 character voices, and a **Custom voice** builder (pitch, body/presence, grit, brightness, echo →
   `AudioEngine.applyCustomVoice`, saved in `localStorage.nirmal_custom_voice`). Presets may use the modulator fields listed in
   `voice-fx.js`; the audience guest chain applies them too.
 - **Soundboard card** (Effects tab), **Mic boost & noise suppression + IN/OUT meters** (Mixer tab; engine nodes `nsHighpass →

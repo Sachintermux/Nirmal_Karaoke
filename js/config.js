@@ -38,6 +38,7 @@ export const PRESETS = {
   retro8bit:  { pitch: 1.0,    lowCut: 200, highCut: 5000,  eqFreq: 2000, eqGain: 2,   drive: 0,   crushSteps: 16, crushMix: 1, isBypass: false },    // chiptune-style crunch
   cave:       { pitch: 0.9439, lowCut: 100, highCut: 5000,  eqFreq: 400,  eqGain: 1.5, drive: 0,   echoMs: 170, echoFb: 0.55, echoMix: 0.5, isBypass: false },
   nervous:    { pitch: 1.0595, lowCut: 120, highCut: 12000, eqFreq: 3000, eqGain: 1.5, drive: 0,   tremHz: 7, tremDepth: 0.7, isBypass: false },      // trembling voice
+  stuffy:     { pitch: 0.9439, lowCut: 300, highCut: 4600,  eqFreq: 1150, eqGain: 5,   drive: 0.3, isBypass: false },                                  // comedy blocked-nose cold: -1 st, thin chest (HP), nasal bump, dull top, soft drive
 
   // User-built voice (rewritten by AudioEngine.applyCustomVoice from the Custom voice sliders)
   custom:     { pitch: 1.0,    lowCut: 60,  highCut: 16000, eqFreq: 3200, eqGain: 0,   drive: 0,   isBypass: false }
