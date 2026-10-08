@@ -1,0 +1,21 @@
+/* "For couples" section on the home page (#couples) and the /couples guide.
+   Loaded after home.css. Every class is prefixed nkc- so nothing collides with existing styles. */
+
+/* Four cards: 2 x 2 on desktop/tablet (the stock .hm-grid is 3 columns and would leave an orphan), 1 column on phones. */
+.nkc-grid{grid-template-columns:repeat(2,1fr)}
+@media (max-width:640px){.nkc-grid{grid-template-columns:1fr}}
+
+.nkc-panel{max-width:860px;margin:22px auto 0}
+.nkc-panel h3{margin-top:10px}
+.nkc-panel ul{margin:14px 0 0}
+
+.nkc-cta{justify-content:center;margin-top:34px}
+
+/* Guide page: the lede row of buttons sits under the intro, tight to the text. */
+.nkc-top{margin-top:22px}
+
+/* The nav gained a 7th link; keep it on one row between the burger breakpoint (860px) and ~1100px. */
+@media (min-width:861px) and (max-width:1120px){
+  .hm-links{gap:0;margin-left:6px}
+  .hm-links a{padding:8px 9px;font-size:12.5px}
+}

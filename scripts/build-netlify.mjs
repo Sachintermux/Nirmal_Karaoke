@@ -19,7 +19,7 @@ const VERSION = (process.env.COMMIT_REF || process.env.DEPLOY_ID || Date.now().t
 
 const FILES = [
   'index.html', 'studio.html', 'audience.html', 'users.html', 'googleb691adf1eb31de8a.html',
-  'about/index.html', 'privacy/index.html', 'terms/index.html', 'contact/index.html',
+  'about/index.html', 'couples/index.html', 'privacy/index.html', 'terms/index.html', 'contact/index.html',
   'voice-changer-for-zoom-discord/index.html',
   'favicon.ico', 'icon-192.png', 'icon-512.png', 'og-image.png',
   'robots.txt', 'sitemap.xml', 'llms.txt', '_headers'

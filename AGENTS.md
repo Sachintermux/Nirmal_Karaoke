@@ -54,7 +54,7 @@ Shared/real-time state belongs in `server.js` (Render, single process) or in Liv
 | `studio.html` | **Studio / host** (was index.html). Mixer, effects, Auto-Tune, lyrics, library, Go Live, lobby modal, multistream, call output. Driven by `js/app.js`. |
 | `audience.html` | Viewer + duet guest page (very large inline `<script type="module">`, ~3000 lines). Connects to a room by `?room=<id>&role=audience|duet&autoJoin=1`. |
 | `users.html` | Standalone "Live Singers" lobby (online users, invite, watch/join). |
-| `about/`, `privacy/`, `terms/`, `contact/`, `voice-changer-for-zoom-discord/` (each `index.html`) | Static info pages for SEO / AdSense trust. Use `/css/style.css` + `home.css` + `pages.css` (`nk-*` classes) and only `/js/home.js` (burger menu). No studio JS, no donation UI. Canonicals, sitemap, OG tags and JSON-LD use the production domain `https://nirmalkaraoke.site`; if the domain changes, `grep -r nirmalkaraoke.site` and replace. |
+| `about/`, `couples/`, `privacy/`, `terms/`, `contact/`, `voice-changer-for-zoom-discord/` (each `index.html`) | Static info pages for SEO / AdSense trust. Use `/css/style.css` + `home.css` + `pages.css` (`nk-*` classes) and only `/js/home.js` (burger menu). No studio JS, no donation UI. Canonicals, sitemap, OG tags and JSON-LD use the production domain `https://nirmalkaraoke.site`; if the domain changes, `grep -r nirmalkaraoke.site` and replace. |
 | `googleb691adf1eb31de8a.html`, `sitemap.xml`, `robots.txt` | SEO/verification files. |
 
 Mobile uses a tabbed layout (`.mobile-screen` sections with `data-screen-group`, switched by
@@ -227,6 +227,12 @@ music search work locally; LiveKit does not (no credentials).
   `keydown` listener except while the popup is open (soundboard hotkeys). Idle detection uses `keyup` + `pointerdown`.
   Phones (`(hover:none) and (pointer:coarse)`) also get a floating "Buy me a coffee" `upi://` link after `PILL_AFTER_SEC` (300 s) of
   cumulative visible time (`sessionStorage.nkd_vis`, counted across pages); its own x sets `nk_support.pillHiddenAt` (7 days).
+
+- **Couples** (Oct 2026): home section `#couples` (nav link + footer link) and the guide `/couples`; styles in `css/couples.css`
+  (`nkc-*`, also loaded by index.html). Copy rules from the owner: only describe real features, never claim a private room,
+  end-to-end encryption, anonymity, cloud-saved recordings, ratings or testimonials. The `/couples` FAQ text must stay equal to
+  its FAQPage JSON-LD: edit both together. The room has no password or approval gate:
+  anyone with the link can join and (participant link) publish mic/camera.
 
 ## Known limitations / ideas
 
