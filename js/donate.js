@@ -4,18 +4,22 @@
  * Everything is wrapped in try/catch so a failure here can never affect the site.
  *
  * Where it runs
- *   home   (/ or /index.html)      : modal after ~10 s visible AND (scrolled past 60 % OR 45 s visible)
- *   studio (/studio[.html])        : non-blocking corner card after 5 min visible AND 10 s without a click/key
+ *   home   (/ or /index.html)      : never opens by itself. The static strip/section buttons open the modal on click,
+ *                                    and the time spent here counts towards the studio popup (see below).
+ *   studio (/studio[.html])        : non-blocking corner card once the site has been in use for AUTO_AFTER_SEC (5 min
+ *                                    of cumulative visible time, counted across pages in sessionStorage "nkd_vis"),
+ *                                    at least AUTO_MIN_PAGE_SEC on the studio page itself, and 10 s without a
+ *                                    click/key (waived after one more minute so it still shows for a busy user)
  *   anywhere else                   : only wires up the static strip/section buttons (none exist elsewhere)
  *
  * Keyboard: a keydown listener exists ONLY while the popup is open (Escape closes it; Tab is kept inside the
  * home modal). While the popup is closed nothing listens to keydown, so soundboard hotkeys are untouched.
  * Idle detection uses keyup (an observer that cannot pre-empt a hotkey) plus pointerdown.
  *
- * Phones also get a small floating "Buy me a coffee" button after PILL_AFTER_SEC of cumulative visible time on the
- * site (counted across pages in sessionStorage "nkd_vis"). It is a plain upi:// link, so tapping it opens the
- * payment-app chooser directly. It can be hidden with its own x (back after 7 days) and never shows for 30 days
- * after a coffee/copy.
+ * Phones also get a small floating "Buy me a coffee" button after PILL_AFTER_SEC of the same cumulative visible
+ * time. It is a plain upi:// link, so tapping it opens the payment-app chooser directly. It can be hidden with its
+ * own x (back after 7 days) and never shows for 30 days after a coffee/copy. On the studio the corner card takes
+ * its place while it is still pending (and once the card has opened, the pill is not added on top of it).
  *
  * Storage: localStorage "nk_support" = { lastShown, dismissCount, coffeeAt, stripHidden, pillHiddenAt }.
  */
@@ -30,7 +34,9 @@
     var UPI_ID = 'nirmalkaraoke@ybl';
     var MAIL = 'mailto:sachindss2000@gmail.com?subject=Nirmal%20Karaoke';
     var DAY = 86400000;
-    var PILL_AFTER_SEC = 300; // 5 minutes of visible time before the phone button appears
+    var AUTO_AFTER_SEC = 300;     // 5 minutes of cumulative visible time on the site before the studio popup
+    var AUTO_MIN_PAGE_SEC = 20;   // ...and never straight after landing on the studio page
+    var PILL_AFTER_SEC = 300;     // same 5 minutes before the phone button appears
 
     var path = location.pathname;
     var isHome = /^\/(index\.html)?$/.test(path);
@@ -216,46 +222,6 @@
       } catch (e) { /* ignore */ }
       return false;
     }
-    function scrolledPast(frac) {
-      var d = document.documentElement;
-      var total = Math.max(d.scrollHeight, document.body ? document.body.scrollHeight : 0);
-      return total > 0 && (window.scrollY + window.innerHeight) / total > frac;
-    }
-
-    function startAuto() {
-      if (!(isHome || isStudio)) return;
-      if (navigator.webdriver) return;                 // bots / automation
-      if (window.top !== window.self) return;          // embedded
-      if (!storageOk() || sessionShown() || !eligible()) return;
-
-      var visibleSec = 0, lastAct = Date.now();
-      var act = function () { lastAct = Date.now(); };
-      if (isStudio) {
-        window.addEventListener('pointerdown', act, { passive: true });
-        window.addEventListener('keyup', act, { passive: true });
-      }
-      var timer = setInterval(function () {
-        try {
-          if (shownThisPage || sessionShown()) { stop(); return; }
-          if (document.hidden) return;
-          visibleSec++;
-          if (popEl) return;
-          var ready = isHome
-            ? visibleSec >= 10 && (visibleSec >= 45 || scrolledPast(0.6))
-            : visibleSec >= 300 && Date.now() - lastAct >= 10000;
-          if (!ready || adInView()) return;
-          if (!eligible()) { stop(); return; }
-          open(true);
-          stop();
-        } catch (e) { stop(); }
-      }, 1000);
-      function stop() {
-        clearInterval(timer);
-        window.removeEventListener('pointerdown', act);
-        window.removeEventListener('keyup', act);
-      }
-    }
-
     // ── phone button: floating "Buy me a coffee" that opens the payment apps directly ──
     var pillEl = null;
     function readVis() {
@@ -294,23 +260,65 @@
       document.body.appendChild(wrap);
       pillEl = wrap;
     }
-    function startPill() {
-      if (!(isHome || isStudio)) return;
-      if (navigator.webdriver || window.top !== window.self) return;
-      if (!window.matchMedia || !window.matchMedia('(hover:none) and (pointer:coarse)').matches) return; // phones/tablets only
-      if (!storageOk() || !pillEligible()) return;
-      var secs = readVis();
-      var t = setInterval(function () {
-        try {
-          if (document.hidden) return;
-          secs += 5;
-          writeVis(secs);
-          if (secs >= PILL_AFTER_SEC) { clearInterval(t); if (pillEligible()) showPill(); }
-        } catch (e) { clearInterval(t); }
-      }, 5000);
+    function isPhone() {
+      return !!(window.matchMedia && window.matchMedia('(hover:none) and (pointer:coarse)').matches); // phones/tablets only
     }
 
-    function init() { try { wireStatic(); startAuto(); startPill(); } catch (e) { /* silent */ } }
+    // ── one visible-time counter drives both the studio popup and the phone button ──
+    // The counter lives in sessionStorage so time on the home page counts towards the studio popup, and it only
+    // advances while the tab is visible. Nothing here listens to keydown.
+    function startTracking() {
+      if (!(isHome || isStudio)) return;
+      if (navigator.webdriver) return;                 // bots / automation
+      if (window.top !== window.self) return;          // embedded
+      if (!storageOk()) return;
+
+      var autoPending = !sessionShown() && eligible();
+      var pillPending = isPhone() && pillEligible();
+      if (!autoPending && !pillPending) return;
+
+      var total = readVis(), page = 0, lastAct = Date.now(), timer = 0;
+      var act = function () { lastAct = Date.now(); };
+      if (isStudio && autoPending) {
+        window.addEventListener('pointerdown', act, { passive: true });
+        window.addEventListener('keyup', act, { passive: true });
+      }
+      function stop() {
+        clearInterval(timer);
+        window.removeEventListener('pointerdown', act);
+        window.removeEventListener('keyup', act);
+        writeVis(total);
+      }
+      window.addEventListener('pagehide', function () { writeVis(total); });
+
+      timer = setInterval(function () {
+        try {
+          if (document.hidden) return;
+          total++; page++;
+          if (total % 5 === 0) writeVis(total);
+
+          if (autoPending) {
+            if (shownThisPage || sessionShown()) autoPending = false;
+            else if (total >= AUTO_AFTER_SEC) {
+              if (!isStudio) autoPending = false;      // home only keeps the count; the popup appears in the studio
+              else if (!popEl && page >= AUTO_MIN_PAGE_SEC &&
+                       (Date.now() - lastAct >= 10000 || total >= AUTO_AFTER_SEC + 60) && !adInView()) {
+                if (eligible()) { open(true); hidePill(); pillPending = false; }
+                autoPending = false;
+              }
+            }
+          }
+          // On the studio the card is the prompt; the pill only covers pages/cases where the card is not coming.
+          if (pillPending && total >= PILL_AFTER_SEC && !(isStudio && autoPending)) {
+            pillPending = false;
+            if (pillEligible() && !popEl) showPill();
+          }
+          if (!autoPending && !pillPending) stop();
+        } catch (e) { stop(); }
+      }, 1000);
+    }
+
+    function init() { try { wireStatic(); startTracking(); } catch (e) { /* silent */ } }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
   } catch (e) { /* silent: the support message must never affect the site */ }
 })();

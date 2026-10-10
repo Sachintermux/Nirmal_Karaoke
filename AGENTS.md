@@ -221,12 +221,16 @@ music search work locally; LiveKit does not (no credentials).
 - `/studio` (no `.html`) works on Netlify but 404s on the Render Express server (no `extensions` option). The canonical uses `/studio`.
 - **Support / donation (UPI + email)**: `js/donate.js` + `css/donate.css` (all classes `nkd-*`) + `donate/upi-qr.{svg,png}`
   (generated offline with `segno`, level M, encodes the exact `upi://pay?...` link). Loaded only by `index.html` and `studio.html`.
-  Home: static top strip + bottom section (work without JS) and a modal after 10 s and (60 % scroll or 45 s). Studio: corner card
-  after 5 min visible and 10 s without click/key. Caps in `localStorage.nk_support` `{lastShown, dismissCount, coffeeAt, stripHidden}`:
-  7 days after a dismissal, never after 3, 30 days after copy/coffee, once per session. The script must **never** add a global
-  `keydown` listener except while the popup is open (soundboard hotkeys). Idle detection uses `keyup` + `pointerdown`.
+  Home: static top strip + bottom section (work without JS); they open the modal on click, but the home page **never opens a
+  popup by itself**. The automatic popup is **studio only**: a non-blocking corner card once the site has been in use for 5 min of
+  cumulative visible time (`AUTO_AFTER_SEC`, `sessionStorage.nkd_vis`, counted across home + studio), after at least 20 s on the
+  studio page and 10 s without click/key (the idle wait is waived after one more minute). Caps in `localStorage.nk_support`
+  `{lastShown, dismissCount, coffeeAt, stripHidden}`: 7 days after a dismissal, never after 3, 30 days after copy/coffee, once per
+  session. The script must **never** add a global `keydown` listener except while the popup is open (soundboard hotkeys). Idle
+  detection uses `keyup` + `pointerdown`.
   Phones (`(hover:none) and (pointer:coarse)`) also get a floating "Buy me a coffee" `upi://` link after `PILL_AFTER_SEC` (300 s) of
-  cumulative visible time (`sessionStorage.nkd_vis`, counted across pages); its own x sets `nk_support.pillHiddenAt` (7 days).
+  the same counter; on the studio the corner card takes its place while it is still pending. Its own x sets
+  `nk_support.pillHiddenAt` (7 days).
 
 - **Couples** (Oct 2026): home section `#couples` (nav link + footer link) and the guide `/couples`; styles in `css/couples.css`
   (`nkc-*`, also loaded by index.html). Copy rules from the owner: only describe real features, never claim a private room,
