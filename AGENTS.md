@@ -206,6 +206,11 @@ music search work locally; LiveKit does not (no credentials).
 - **Soundboard card** (Effects tab), **Mic boost & noise suppression + IN/OUT meters** (Mixer tab; engine nodes `nsHighpass →
   micBoostGain → (limiter only when boosting) → gateGain`; levels Off/Low/Medium/High drive the rumble filter, the browser
   `noiseSuppression` constraint and the noise gate), **Stats** card (Mixer tab). All are included in Reset all.
+- **Mic monitor (Headphones only)** (`#monitorToggle`, Recording & Monitor card) is **ON by default** (`checked` in studio.html), so the
+  singer hears themselves. ON = the local output carries the program mix (`programMonitorGain`) and the separate backing/system monitor
+  paths are 0; OFF = backing track straight to the speakers. Anything that changes a monitor gain must go through
+  `AudioEngine.updateMonitorRouting()` (the backing-volume slider used to set `mediaMonitorGain` directly, which doubled the backing
+  track with the toggle on). Reset all returns the toggle to ON.
 - **Character voices**: 9 original voice archetypes (Baritone, Romantic, Gravel, Announcer, Hero, Melody, Husky,
   Diva, Pop Star) in `PRESETS` (`js/config.js`) with buttons in the studio and audience pages. Presets are only
   `pitch` ratio + high/low cut + one EQ band + drive, applied by `AudioEngine.applyPreset` (host) and

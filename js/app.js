@@ -1508,9 +1508,9 @@ function setupEventListeners() {
     if (audioEngine.engine.mediaGain && audioEngine.ctx) {
       audioEngine.engine.mediaGain.gain.setTargetAtTime(v, audioEngine.ctx.currentTime, 0.02);
     }
-    if (audioEngine.engine.mediaMonitorGain && audioEngine.ctx) {
-      audioEngine.engine.mediaMonitorGain.gain.setTargetAtTime(v, audioEngine.ctx.currentTime, 0.02);
-    }
+    // Routing decides what is audible locally: with Mic monitor (headphones) ON the backing track is heard through
+    // the program mix, so its separate monitor path must stay at 0 (otherwise it plays twice).
+    audioEngine.updateMonitorRouting?.();
   });
 
   // Guide vocal slider
